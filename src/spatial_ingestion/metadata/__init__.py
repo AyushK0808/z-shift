@@ -1,0 +1,2 @@
+"""Unified metadata schema."""
+

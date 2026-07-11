@@ -1,0 +1,2 @@
+"""Multi-source synchronization logic."""
+
