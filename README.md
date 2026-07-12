@@ -2,7 +2,10 @@
 
 A 2D-to-3D generation pipeline. **Phase 1** ingests and normalizes heterogeneous 2D
 media into a single unified schema; **Phase 2** takes that normalized output across a
-generation-handoff boundary and reconstructs 3D geometry with MASt3R.
+generation-handoff boundary and reconstructs 3D geometry with MASt3R; **Phase 3** refines
+that raw reconstruction into a clean, watertight mesh ready for downstream use; **Phase 4**
+routes the finished geometry to a use-case-specific deliverable — an editable interchange
+file, a packaged point cloud, or a real-time stream.
 
 ## Repo Layout
 
@@ -17,9 +20,12 @@ src/spatial_ingestion/
   metadata/                   Phase 1 — UnifiedSpatialIngestionSchema
   generation_handoff/         Phase 2 — normalized payload -> generation-ready view
   reconstruction/             Phase 2 — job builder, backends, MASt3R runner, CLI
+  outcomes_engine/            Phase 4 — use-case router + deliverable packaging/export
+scripts/refinement.py         Phase 3 — mesh cleaning / refinement (clean_ai_mesh)
 third_party/mast3r/           upstream MASt3R checkout or submodule
 data/normalized/              Phase 1 normalized media outputs
 data/reconstruction/          Phase 2 reconstruction artifacts
+src/spatial_ingestion/outcomes_engine/deliverables/   Phase 4 packaged deliverables
 ```
 
 `third_party/` is the intended place for upstream reconstruction repos. The runner code
@@ -155,6 +161,132 @@ Reconstruction artifacts are written under `data/reconstruction/`:
 - `camera_poses.json`
 - `point_cloud.ply`
 - `mesh.obj`
+
+---
+
+## Phase 3 — Mesh Refinement
+
+Phase 2 produces geometry straight from the reconstruction models, which is typically
+noisy: disconnected floating fragments, open holes, rough surfaces, and inconsistent
+normals. Phase 3 (`scripts/refinement.py`) cleans that raw mesh into a polished,
+optionally watertight result ready for rendering, simulation, or export.
+
+The entry point is `clean_ai_mesh(mesh, config=None, **overrides)`. It operates on a
+[PyVista](https://docs.pyvista.org/) `DataSet` **already in memory** — it performs no file
+I/O — and returns the cleaned mesh plus diagnostics. The pipeline runs these steps, each
+wrapped so any VTK/PyVista failure is reported with the failing step name:
+
+1. **Validate** — reject empty meshes or meshes with NaN/Inf coordinates.
+2. **Component filter** — the behaviour depends on the mode:
+   - `object` (default) — keep only the single largest connected component, discarding
+     stray fragments.
+   - `room` — split into bodies and keep every component larger than `min_cell_count`,
+     then merge them (for scenes made of multiple legitimate pieces).
+3. **Fill holes** — close boundary holes up to `hole_size` (auto-sized to the mesh's
+   bounding diagonal when not specified).
+4. **Smooth** — Taubin smoothing (shrink-free). In `room` mode, feature edges and
+   boundaries are preserved using `feature_angle`.
+5. **Finalize** — merge coincident points, triangulate, optionally decimate
+   (`decimate_target_reduction`), and recompute consistent, outward-facing normals.
+6. **Watertight check** (optional) — count open boundary edges and flag the mesh as
+   watertight; a non-watertight result is reported as a warning rather than an error.
+
+### Configuration
+
+Behaviour is controlled by `MeshCleaningConfig` (or the same fields passed as keyword
+overrides):
+
+- `mode` — `object` or `room` (default `object`).
+- `smoothing_iters` — Taubin smoothing iterations (default `15`; `0` disables smoothing).
+- `pass_band` — Taubin pass-band (default `0.1`).
+- `hole_size` — max hole size to fill; `None` auto-sizes to the model scale.
+- `min_cell_count` — `room` mode: drop components at/below this size (default `500`).
+- `feature_angle` — `room` mode: sharp-edge preservation threshold (default `45.0`).
+- `merge_tolerance` — relative tolerance for duplicate-point merging (default `1e-5`).
+- `decimate_target_reduction` — e.g. `0.5` drops ~50% of triangles; `None` keeps all.
+- `verify_watertight` — run the open-edge watertight check (default `True`).
+
+### Run
+
+`clean_ai_mesh` is a library function rather than a CLI, so it is driven from Python. It
+requires `pyvista`, which is not yet declared in the project dependencies — install it into
+the environment first:
+
+```bash
+uv pip install pyvista
+```
+
+Then load a Phase 2 mesh, clean it, and write the result:
+
+```python
+import pyvista as pv
+from scripts.refinement import clean_ai_mesh, MeshCleaningConfig
+
+raw = pv.read("data/reconstruction/mesh.obj")
+
+result = clean_ai_mesh(raw, MeshCleaningConfig(mode="object", smoothing_iters=15))
+# or with keyword overrides: clean_ai_mesh(raw, mode="object", smoothing_iters=15)
+
+print(result["output_point_count"], "points, watertight:", result["is_watertight"])
+result["mesh"].save("data/reconstruction/mesh_refined.obj")
+```
+
+The returned dict includes `mesh`, `mode`, input/output point and cell counts,
+`is_watertight`, `open_edge_count`, and any `warnings`.
+
+---
+
+## Phase 4 — Outcomes & Deliverables Engine
+
+Phases 1–3 turn 2D media into clean 3D geometry; Phase 4 (`outcomes_engine/`) decides what
+that geometry should *become*. Rather than producing one fixed output, it routes each job to
+a use-case-specific delivery track and packages the result into the right format.
+
+The core is `deliverable_router(input_type, use_case)`, which assigns a job id and selects a
+track:
+
+- **Track A — Editing** (`use_case="editing"`) — exports a Blender-ready `.glb` interchange
+  file via `export_blender_ready`, for jobs that will be edited in a DCC tool.
+- **Track B — Viewing** (`use_case="viewing"` with a `video` or `folder` input) — packages
+  the point cloud / Gaussian-splat data into a `.ply` via `package_4d_gaussian`, for
+  web-based viewing of dynamic 3D scenes.
+- **Track C — Live** (`use_case="live"` or a `live_stream` input) — establishes a real-time
+  delivery layer (WebRTC / WebSocket) instead of writing a file.
+
+Any other combination is rejected as an invalid routing request.
+
+Packaged deliverables are written under
+`src/spatial_ingestion/outcomes_engine/deliverables/`:
+
+- `blender_ready/<job_id>_model.glb`
+- `4d_gaussians/<job_id>_splat.ply`
+
+### Run
+
+The current module is a proof of concept: it mocks the Phase 3 handoff with in-memory
+geometry (`get_phase3_cleaned_mesh`, `get_phase3_point_cloud`) so the routing and packaging
+paths can be exercised without running the upstream models. It requires `trimesh`, which is
+not yet declared in the project dependencies — install it into the environment first:
+
+```bash
+uv pip install trimesh
+```
+
+Then run the proof-of-concept, which fires one request through each track:
+
+```bash
+uv run python src/spatial_ingestion/outcomes_engine/engine.py
+```
+
+Or drive the router directly from Python:
+
+```python
+from spatial_ingestion.outcomes_engine.engine import deliverable_router
+
+deliverable_router(input_type="single_image", use_case="editing")   # Track A -> .glb
+deliverable_router(input_type="video", use_case="viewing")          # Track B -> .ply
+deliverable_router(input_type="live_stream", use_case="live")       # Track C -> stream
+```
 
 ---
 
