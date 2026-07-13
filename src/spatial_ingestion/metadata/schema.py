@@ -34,11 +34,13 @@ class CameraIntrinsics(BaseModel):
 class FrameReference(BaseModel):
     frame_id: str
     uri: str | None = None
+    original_uri: str | None = None
     index: int
     timestamp_ms: float | None = None
     source_id: str | None = None
     motion_score: float | None = None
     resolution: tuple[int, int] | None = None
+    camera_intrinsics: CameraIntrinsics | None = None
 
 
 class SyncMapEntry(BaseModel):
@@ -66,4 +68,3 @@ class UnifiedSpatialIngestionSchema(BaseModel):
     @classmethod
     def new_sync_group_id(cls) -> str:
         return f"sync_{uuid4().hex}"
-

@@ -27,13 +27,16 @@ class FFmpegTools:
             "-show_streams",
             str(video_path),
         ]
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=20,
-        )
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=20,
+            )
+        except subprocess.TimeoutExpired:
+            return {"available": True, "error": "timeout"}
         if result.returncode != 0:
             return {"available": True, "error": result.stderr.strip()}
         try:
@@ -42,4 +45,3 @@ class FFmpegTools:
             payload = {"raw": result.stdout}
         payload["available"] = True
         return payload
-

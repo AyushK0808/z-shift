@@ -8,6 +8,8 @@ from uuid import uuid4
 import cv2
 import numpy as np
 
+from spatial_ingestion.config import MAX_LIVE_FRAME_BYTES
+
 
 @dataclass(frozen=True)
 class LiveFrame:
@@ -27,13 +29,22 @@ class BackpressureDecision:
 class LiveStreamBuffer:
     """Low-latency in-memory ring buffer for live frames."""
 
-    def __init__(self, stream_id: str, max_frames: int = 64) -> None:
+    def __init__(
+        self,
+        stream_id: str,
+        max_frames: int = 64,
+        max_payload_bytes: int = MAX_LIVE_FRAME_BYTES,
+    ) -> None:
         self.stream_id = stream_id
         self._buffer: deque[LiveFrame] = deque(maxlen=max_frames)
         self._sequence = 0
         self._dropped = 0
+        self._max_payload_bytes = max_payload_bytes
 
     def push_encoded_frame(self, payload: bytes) -> BackpressureDecision:
+        if len(payload) > self._max_payload_bytes:
+            return BackpressureDecision(accepted=False, action="payload_too_large")
+
         arr = np.frombuffer(payload, dtype=np.uint8)
         image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if image is None:
@@ -69,4 +80,3 @@ class LiveStreamBuffer:
     @property
     def dropped_frames(self) -> int:
         return self._dropped
-

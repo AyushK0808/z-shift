@@ -9,25 +9,27 @@ from fastapi import (
     File,
     Header,
     HTTPException,
+    Request,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
+    status,
 )
 from pydantic import BaseModel
 
 from spatial_ingestion.batch_normalization.normalizer import BatchNormalizer
+from spatial_ingestion.config import MAX_UPLOAD_FILE_BYTES
 from spatial_ingestion.ingestion_gateway.auth import AuthContext, AuthProvider
 from spatial_ingestion.ingestion_gateway.rate_limit import RateLimiter
 from spatial_ingestion.live_stream.manager import LiveStreamManager
 from spatial_ingestion.media_classifier.router import MediaClassifierRouter, MediaItemDescriptor
 from spatial_ingestion.metadata.schema import UnifiedSpatialIngestionSchema
+from spatial_ingestion.storage.object_store import ObjectStore
 
 
 class StreamConnectRequest(BaseModel):
     transport: str
     stream_id: str | None = None
-    rtsp_url: str | None = None
-    webrtc_offer_sdp: str | None = None
 
 
 class GatewayState:
@@ -37,13 +39,18 @@ class GatewayState:
         self.router = MediaClassifierRouter()
         self.batch_normalizer = BatchNormalizer()
         self.live_streams = LiveStreamManager()
+        self.object_store = ObjectStore()
 
 
 state = GatewayState()
 
 
-async def auth_context(authorization: str | None = Header(default=None)) -> AuthContext:
-    context = await state.auth.authenticate(authorization)
+async def auth_context(
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> AuthContext:
+    client_host = request.client.host if request.client else None
+    context = await state.auth.authenticate(authorization, client_host)
     rate = await state.rate_limiter.check(context.subject)
     if not rate.allowed:
         raise HTTPException(status_code=429, detail="rate limit exceeded")
@@ -75,39 +82,60 @@ def create_app() -> FastAPI:
 
         with TemporaryDirectory(prefix="spatial_ingest_") as temp_dir:
             paths: list[Path] = []
+            original_uris: dict[Path, str] = {}
             for index, file in enumerate(files):
                 filename = Path(file.filename or f"upload_{index}").name
                 target = Path(temp_dir) / filename
-                target.write_bytes(await file.read())
+                await _stream_upload_to_disk(file, target)
                 paths.append(target)
+                original_uris[target] = state.object_store.put_file(target, "originals")
 
-            return state.batch_normalizer.normalize(paths, decision)
+            return state.batch_normalizer.normalize(paths, decision, original_uris=original_uris)
 
     @app.post("/v1/ingest/streams/connect", response_model=UnifiedSpatialIngestionSchema)
     async def connect_stream(
         request: StreamConnectRequest,
-        _: AuthContext = Depends(auth_context),
+        auth: AuthContext = Depends(auth_context),
     ) -> UnifiedSpatialIngestionSchema:
         decision = state.router.classify_stream(request.transport, request.stream_id)
         if decision.input_type.value == "unknown":
             raise HTTPException(status_code=415, detail={"routing_decision": decision.__dict__})
 
-        payload = state.live_streams.open_stream(request.stream_id)
+        try:
+            payload = state.live_streams.open_stream(
+                request.stream_id,
+                owner_subject=auth.subject,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+
         payload.compute_priority_score = decision.priority_score
         payload.metadata.update(
             {
                 "transport": request.transport.lower(),
-                "rtsp_url": request.rtsp_url,
-                "webrtc_offer_sdp_received": bool(request.webrtc_offer_sdp),
             }
         )
         return payload
 
     @app.websocket("/v1/ingest/streams/{stream_id}/frames")
     async def stream_frames(websocket: WebSocket, stream_id: str) -> None:
+        authorization = websocket.headers.get("authorization") or websocket.query_params.get("token")
+        client_host = websocket.client.host if websocket.client else None
+        auth = await state.auth.authenticate(authorization, client_host)
+        rate = await state.rate_limiter.check(auth.subject)
+        if not rate.allowed:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        if not state.live_streams.has_stream(stream_id):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        if not state.live_streams.is_owner(stream_id, auth.subject):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
         await websocket.accept()
-        if stream_id not in state.live_streams._streams:
-            state.live_streams.open_stream(stream_id)
 
         try:
             while True:
@@ -121,7 +149,17 @@ def create_app() -> FastAPI:
                     }
                 )
         except WebSocketDisconnect:
+            state.live_streams.close_stream(stream_id, auth.subject)
             return
 
     return app
 
+
+async def _stream_upload_to_disk(file: UploadFile, target: Path) -> None:
+    total = 0
+    with target.open("wb") as output:
+        while chunk := await file.read(1024 * 1024):
+            total += len(chunk)
+            if total > MAX_UPLOAD_FILE_BYTES:
+                raise HTTPException(status_code=413, detail="uploaded file too large")
+            output.write(chunk)
