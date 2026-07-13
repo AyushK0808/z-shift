@@ -9,7 +9,12 @@ from spatial_ingestion.ingestion_gateway.api import create_app
 from spatial_ingestion.batch_normalization.normalizer import BatchNormalizer
 from spatial_ingestion.live_stream.manager import LiveStreamManager
 from spatial_ingestion.media_classifier.router import MediaClassifierRouter, MediaItemDescriptor
-from spatial_ingestion.metadata.schema import SourceType, Track, UnifiedSpatialIngestionSchema
+from spatial_ingestion.metadata.schema import (
+    FrameReference,
+    SourceType,
+    Track,
+    UnifiedSpatialIngestionSchema,
+)
 from spatial_ingestion.sync.multi_source import MultiSourceSyncer
 from spatial_ingestion.test_harness.media_factory import (
     create_live_frame,
@@ -76,6 +81,24 @@ def test_video_folder_sync_map(tmp_path: Path) -> None:
     assert payload.sync_group_id is not None
     assert payload.sync_map
     assert all(len(entry.aligned_frames) == 2 for entry in payload.sync_map)
+
+
+def test_syncer_estimates_constant_timestamp_offset() -> None:
+    syncer = MultiSourceSyncer()
+    group_id = UnifiedSpatialIngestionSchema.new_sync_group_id()
+    cam_a = [
+        FrameReference(frame_id=f"a{i}", index=i, timestamp_ms=i * 500.0, motion_score=score)
+        for i, score in enumerate([0.01, 0.2, 0.04, 0.3])
+    ]
+    cam_b = [
+        FrameReference(frame_id=f"b{i}", index=i, timestamp_ms=(i * 500.0) + 500.0, motion_score=score)
+        for i, score in enumerate([0.01, 0.2, 0.04, 0.3])
+    ]
+
+    sync_map = syncer.build_sync_map({"cam_a": cam_a, "cam_b": cam_b}, group_id)
+
+    assert sync_map
+    assert sync_map[0].offsets_ms["cam_b"] == -500.0
 
 
 def test_classifier_rejects_unknown_mixed_payload() -> None:
