@@ -1,4 +1,3 @@
-from spatial_ingestion.generation_handoff import GenerationHandoffBuilder, GenerationMode
 from spatial_ingestion.metadata.schema import (
     FrameReference,
     SourceType,
@@ -6,6 +5,8 @@ from spatial_ingestion.metadata.schema import (
     Track,
     UnifiedSpatialIngestionSchema,
 )
+from spatial_ingestion.reconstruction.jobs import ReconstructionJobBuilder
+from spatial_ingestion.reconstruction.models import ReconstructionMode
 
 
 def test_single_image_maps_to_single_view() -> None:
@@ -27,11 +28,12 @@ def test_single_image_maps_to_single_view() -> None:
         ],
     )
 
-    handoff = GenerationHandoffBuilder().build(payload)
-
-    assert handoff.mode == GenerationMode.SINGLE_VIEW
-    assert handoff.supports_reconstruction is True
-    assert [frame.frame_id for frame in handoff.primary_frames] == ["frame_1"]
+    try:
+        ReconstructionJobBuilder().build(payload)
+    except ValueError as exc:
+        assert "single_view" in str(exc)
+    else:
+        raise AssertionError("expected single-view to be rejected")
 
 
 def test_image_folder_maps_to_multi_view_in_source_order() -> None:
@@ -60,10 +62,10 @@ def test_image_folder_maps_to_multi_view_in_source_order() -> None:
         ],
     )
 
-    handoff = GenerationHandoffBuilder().build(payload)
+    job = ReconstructionJobBuilder().build(payload)
 
-    assert handoff.mode == GenerationMode.MULTI_VIEW
-    assert [frame.frame_id for frame in handoff.primary_frames] == ["frame_a", "frame_b"]
+    assert job.mode == ReconstructionMode.MULTI_VIEW
+    assert [frame.frame_id for frame in job.frames] == ["frame_a", "frame_b"]
 
 
 def test_video_folder_builds_synchronized_view_groups() -> None:
@@ -125,15 +127,15 @@ def test_video_folder_builds_synchronized_view_groups() -> None:
         ],
     )
 
-    handoff = GenerationHandoffBuilder().build(payload)
+    job = ReconstructionJobBuilder().build(payload)
 
-    assert handoff.mode == GenerationMode.SYNCHRONIZED_VIEWS
-    assert len(handoff.sync_view_groups) == 2
-    assert handoff.sync_view_groups[0].frames_by_source["cam_a"].frame_id == "cam_a_0"
-    assert handoff.sync_view_groups[0].frames_by_source["cam_b"].frame_id == "cam_b_0"
+    assert job.mode == ReconstructionMode.SYNCHRONIZED_VIEWS
+    assert len(job.sync_view_groups) == 2
+    assert job.sync_view_groups[0].frames_by_source["cam_a"].frame_id == "cam_a_0"
+    assert job.sync_view_groups[0].frames_by_source["cam_b"].frame_id == "cam_b_0"
 
 
-def test_live_stream_is_marked_not_ready_for_reconstruction() -> None:
+def test_live_stream_is_rejected() -> None:
     payload = UnifiedSpatialIngestionSchema(
         source_type=SourceType.LIVE_STREAM,
         track=Track.LIVE,
@@ -144,8 +146,9 @@ def test_live_stream_is_marked_not_ready_for_reconstruction() -> None:
         live_stream_handle="stream_1",
     )
 
-    handoff = GenerationHandoffBuilder().build(payload)
-
-    assert handoff.mode == GenerationMode.LIVE_STREAM
-    assert handoff.supports_reconstruction is False
-    assert handoff.warnings == ["live stream payloads are not reconstruction-ready in Phase 2"]
+    try:
+        ReconstructionJobBuilder().build(payload)
+    except ValueError as exc:
+        assert "live streams" in str(exc)
+    else:
+        raise AssertionError("expected live stream to be rejected")
