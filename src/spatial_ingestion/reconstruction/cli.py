@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
-from spatial_ingestion.reconstruction.runners.mast3r import main as mast3r_main
+from spatial_ingestion.reconstruction.runners.mast3r import run as mast3r_run
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 
@@ -44,25 +44,18 @@ def main(argv: list[str] | None = None) -> int:
     if len(image_paths) < 2:
         raise ValueError("MASt3R requires a folder containing at least two views of the same subject")
 
-    mast3r_args = [
-        "--output-dir",
-        str(output_path.parent),
-        "--output-path",
-        str(output_path),
-        "--device",
-        args.device,
-        "--model-name",
-        args.model,
-        "--image-size",
-        str(args.image_size),
-        "--pairing-strategy",
-        args.pairing_strategy,
-        *(["--dry-run"] if args.dry_run else []),
-        *[str(path) for path in image_paths],
-    ]
-    if args.tsdf_thresh > 0:
-        mast3r_args.extend(["--tsdf-thresh", str(args.tsdf_thresh)])
-    return mast3r_main(mast3r_args)
+    from spatial_ingestion.reconstruction.runners.mast3r import resolve_device
+    return mast3r_run(
+        image_paths=image_paths,
+        output_dir=output_path.parent,
+        output_path=output_path,
+        model_name=args.model,
+        device=resolve_device(args.device),
+        image_size=args.image_size,
+        pairing_strategy=args.pairing_strategy,
+        tsdf_thresh=args.tsdf_thresh,
+        dry_run=args.dry_run,
+    )
 
 
 def collect_input_images(input_path: Path) -> list[Path]:

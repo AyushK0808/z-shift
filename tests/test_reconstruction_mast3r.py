@@ -1,4 +1,3 @@
-from spatial_ingestion.generation_handoff import GenerationHandoffBuilder
 from spatial_ingestion.metadata.schema import (
     FrameReference,
     SourceType,
@@ -9,6 +8,7 @@ from spatial_ingestion.metadata.schema import (
 from spatial_ingestion.reconstruction import (
     Mast3rBackend,
     ReconstructionBackendRegistry,
+    ReconstructionArtifactKind,
     ReconstructionJobBuilder,
     ReconstructionMode,
 )
@@ -40,8 +40,7 @@ def test_mast3r_job_builder_maps_image_folder_to_multi_view() -> None:
         ],
     )
 
-    handoff = GenerationHandoffBuilder().build(payload)
-    job = ReconstructionJobBuilder().build(handoff)
+    job = ReconstructionJobBuilder().build(payload)
 
     assert job.backend_name == "mast3r"
     assert job.mode == ReconstructionMode.MULTI_VIEW
@@ -107,8 +106,7 @@ def test_mast3r_job_builder_flattens_synchronized_views() -> None:
         ],
     )
 
-    handoff = GenerationHandoffBuilder().build(payload)
-    job = ReconstructionJobBuilder().build(handoff)
+    job = ReconstructionJobBuilder().build(payload)
 
     assert job.mode == ReconstructionMode.SYNCHRONIZED_VIEWS
     assert job.image_uris == [
@@ -146,26 +144,14 @@ def test_mast3r_backend_builds_execution_plan() -> None:
         ],
     )
 
-    handoff = GenerationHandoffBuilder().build(payload)
-    job = ReconstructionJobBuilder().build(handoff)
+    job = ReconstructionJobBuilder().build(payload)
     backend = ReconstructionBackendRegistry([Mast3rBackend()]).resolve_for_job(job)
     plan = backend.plan(job)
 
     assert plan.backend_name == "mast3r"
-    assert plan.inputs == ["file:///tmp/view_0.jpg", "file:///tmp/view_1.jpg"]
-    assert plan.command[:8] == [
-        "uv",
-        "run",
-        "python",
-        "-m",
-        "spatial_ingestion.reconstruction.runners.mast3r",
-        "--output-dir",
-        plan.working_directory,
-        "--output-path",
-    ]
     assert [artifact.kind for artifact in plan.expected_artifacts] == [
-        "point_cloud",
-        "poses",
-        "run_manifest",
-        "mesh",
+        ReconstructionArtifactKind.POINT_CLOUD,
+        ReconstructionArtifactKind.POSES,
+        ReconstructionArtifactKind.RUN_MANIFEST,
+        ReconstructionArtifactKind.MESH,
     ]

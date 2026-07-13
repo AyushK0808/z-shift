@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -10,6 +9,7 @@ from urllib.parse import unquote, urlparse
 import numpy as np
 
 from spatial_ingestion.config import MAST3R_ROOT
+from spatial_ingestion.reconstruction.runners._io import write_json
 
 
 DEFAULT_MODEL_NAME = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
@@ -38,46 +38,66 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-
-    output_dir = Path(args.output_dir).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = (
-        Path(args.output_path).expanduser().resolve()
-        if args.output_path
-        else output_dir / "mesh.obj"
-    )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    image_paths = [resolve_image_input(image) for image in args.images]
-    if len(image_paths) < 2:
-        raise ValueError("MASt3R reconstruction requires at least two images")
-
-    device = resolve_device(args.device)
-    manifest = build_run_manifest(
+    image_paths = [resolve_image_input(img) for img in args.images]
+    return run(
         image_paths=image_paths,
-        output_dir=output_dir,
-        output_path=output_path,
+        output_dir=Path(args.output_dir).resolve(),
+        output_path=Path(args.output_path).expanduser().resolve() if args.output_path else None,
         model_name=args.model_name,
-        device=device,
+        device=resolve_device(args.device),
         image_size=args.image_size,
         pairing_strategy=args.pairing_strategy,
         tsdf_thresh=args.tsdf_thresh,
         dry_run=args.dry_run,
     )
+
+
+def run(
+    *,
+    image_paths: list[Path],
+    output_dir: Path,
+    output_path: Path | None = None,
+    model_name: str = DEFAULT_MODEL_NAME,
+    device: str = "cpu",
+    image_size: int = 512,
+    pairing_strategy: str = "complete",
+    tsdf_thresh: float = 0,
+    dry_run: bool = False,
+) -> int:
+    configure_local_mast3r_imports()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if output_path is None:
+        output_path = output_dir / "mesh.obj"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if len(image_paths) < 2:
+        raise ValueError("MASt3R reconstruction requires at least two images")
+
+    manifest = build_run_manifest(
+        image_paths=image_paths,
+        output_dir=output_dir,
+        output_path=output_path,
+        model_name=model_name,
+        device=device,
+        image_size=image_size,
+        pairing_strategy=pairing_strategy,
+        tsdf_thresh=tsdf_thresh,
+        dry_run=dry_run,
+    )
     write_json(output_dir / "run_manifest.json", manifest)
 
-    if args.dry_run:
+    if dry_run:
         return 0
 
     sparse_scene = run_sparse_alignment(
         image_paths=image_paths,
         output_dir=output_dir,
-        model_name=args.model_name,
+        model_name=model_name,
         device=device,
-        image_size=args.image_size,
-        pairing_strategy=args.pairing_strategy,
+        image_size=image_size,
+        pairing_strategy=pairing_strategy,
     )
-    export_sparse_scene_to_path(sparse_scene, output_path, output_dir, tsdf_thresh=args.tsdf_thresh)
+    export_sparse_scene_to_path(sparse_scene, output_path, output_dir, tsdf_thresh=tsdf_thresh)
     return 0
 
 
@@ -125,11 +145,7 @@ def build_run_manifest(
         "tsdf_thresh": tsdf_thresh,
         "dry_run": dry_run,
         "image_paths": [str(path) for path in image_paths],
-        "artifacts": {
-            "point_cloud": str((output_dir / "point_cloud.ply").resolve()),
-            "poses": str((output_dir / "camera_poses.json").resolve()),
-            "mesh": str(output_path),
-        },
+        "output_path": str(output_path),
     }
 
 
@@ -142,8 +158,6 @@ def run_sparse_alignment(
     image_size: int,
     pairing_strategy: str,
 ) -> Any:
-    configure_local_mast3r_imports()
-
     try:
         import mast3r.utils.path_to_dust3r  # noqa: F401
         from dust3r.image_pairs import make_pairs
@@ -184,10 +198,6 @@ def configure_local_mast3r_imports(root: Path = MAST3R_ROOT) -> None:
             sys.path.insert(0, candidate_str)
 
 
-def export_sparse_scene(scene: Any, output_dir: Path) -> None:
-    export_sparse_scene_to_path(scene, output_dir / "mesh", output_dir)
-
-
 def export_sparse_scene_to_path(
     scene: Any,
     output_path: Path,
@@ -195,8 +205,6 @@ def export_sparse_scene_to_path(
     tsdf_thresh: float = 0,
     min_conf_thr: float = 2.0,
 ) -> None:
-    configure_local_mast3r_imports()
-
     try:
         import trimesh
         from dust3r.utils.device import to_numpy
@@ -207,9 +215,6 @@ def export_sparse_scene_to_path(
 
     rgbimg = scene.imgs
     imgs = to_numpy(rgbimg)
-    focals = to_numpy(scene.get_focals().cpu())
-    cams2world = to_numpy(scene.get_im_poses().cpu())
-
     if tsdf_thresh > 0:
         try:
             tsdf = TSDFPostProcess(scene, TSDF_thresh=tsdf_thresh)
@@ -222,7 +227,6 @@ def export_sparse_scene_to_path(
 
     mask = to_numpy([c > min_conf_thr for c in confs])
 
-    # Build per-view meshes with TSDF-refined points
     meshes = []
     for i in range(len(imgs)):
         pts3d_i = pts3d[i].reshape(imgs[i].shape)
@@ -238,108 +242,10 @@ def export_sparse_scene_to_path(
         vertex_colors=vertex_colors,
     )
 
-    # Export GLB (preserves vertex color)
-    glb_path = output_path.with_suffix('.glb')
-    mesh.export(str(glb_path))
-    print(f"Exported {glb_path}")
-
-    # Export OBJ
-    obj_path = output_path.with_suffix('.obj')
-    mesh.export(str(obj_path))
-    print(f"Exported {obj_path}")
-
-    # JSON metadata
-    poses = to_serializable_array(scene.get_im_poses())
-    focals_list = to_serializable_array(scene.get_focals())
-    principal_points = to_serializable_array(scene.get_principal_points())
-    write_json(
-        output_dir / "camera_poses.json",
-        {
-            "camera_count": len(poses),
-            "poses": poses,
-            "focals": focals_list,
-            "principal_points": principal_points,
-        },
-    )
-
-    # PLY sparse point cloud
-    sparse_points = scene.get_sparse_pts3d()
-    sparse_colors = scene.get_pts3d_colors()
-    write_ply(output_dir / "point_cloud.ply", sparse_points, sparse_colors)
-
-
-def to_serializable_array(value: Any) -> Any:
-    if hasattr(value, "detach"):
-        value = value.detach()
-    if hasattr(value, "cpu"):
-        value = value.cpu()
-    if hasattr(value, "numpy"):
-        value = value.numpy()
-    if isinstance(value, np.ndarray):
-        return value.tolist()
-    if isinstance(value, list):
-        return [to_serializable_array(item) for item in value]
-    return value
-
-
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def write_ply(path: Path, points: Any, colors: Any) -> None:
-    xyz_rows = flatten_rows(points)
-    rgb_rows = flatten_rows(colors)
-    row_count = min(len(xyz_rows), len(rgb_rows))
-
-    lines = [
-        "ply",
-        "format ascii 1.0",
-        f"element vertex {row_count}",
-        "property float x",
-        "property float y",
-        "property float z",
-        "property uchar red",
-        "property uchar green",
-        "property uchar blue",
-        "end_header",
-    ]
-    for xyz, rgb in zip(xyz_rows[:row_count], rgb_rows[:row_count], strict=False):
-        red, green, blue = normalize_rgb(rgb)
-        lines.append(f"{float(xyz[0])} {float(xyz[1])} {float(xyz[2])} {red} {green} {blue}")
-
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def flatten_rows(value: Any) -> list[list[float]]:
-    if hasattr(value, "detach"):
-        value = value.detach()
-    if hasattr(value, "cpu"):
-        value = value.cpu()
-    if hasattr(value, "numpy"):
-        value = value.numpy()
-    if isinstance(value, (list, tuple)):
-        parts = [np.asarray(v, dtype=float) for v in value]
-        if parts and parts[0].ndim == 2:
-            array = np.concatenate(parts, axis=0)
-        elif parts:
-            array = np.concatenate(parts)
-        else:
-            return []
-    else:
-        array = np.asarray(value, dtype=float)
-    if array.ndim == 1:
-        return [array.tolist()]
-    if array.ndim == 2:
-        return array.tolist()
-    if array.ndim >= 3:
-        return array.reshape(-1, array.shape[-1]).tolist()
-    return []
-
-
-def normalize_rgb(values: list[float]) -> tuple[int, int, int]:
-    clipped = np.clip(np.asarray(values[:3], dtype=float), 0.0, 1.0)
-    scaled = np.rint(clipped * 255.0).astype(int)
-    return int(scaled[0]), int(scaled[1]), int(scaled[2])
+    if output_path.suffix not in ('.obj', '.glb'):
+        output_path = output_path.with_suffix('.obj')
+    mesh.export(str(output_path))
+    print(f"Exported {output_path}")
 
 
 if __name__ == "__main__":
