@@ -12,7 +12,7 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Convert a folder of multi-view images to OBJ")
     parser.add_argument("input", help="Folder containing at least two views of the same subject")
-    parser.add_argument("-o", "--output", help="Output OBJ path")
+    parser.add_argument("-o", "--output", help="Output .obj or .glb path")
     parser.add_argument("--device", default="auto", help="cuda, cpu, or auto")
     parser.add_argument(
         "--model",
@@ -78,9 +78,9 @@ def collect_input_images(input_path: Path) -> list[Path]:
 def resolve_output_path(input_path: Path, explicit_output: str | None) -> Path:
     if explicit_output:
         output_path = Path(explicit_output).expanduser().resolve()
-        if output_path.suffix.lower() != ".obj":
-            return output_path / "mesh.obj"
-        return output_path
+        if output_path.suffix.lower() in {".obj", ".glb"}:
+            return output_path
+        return output_path / "mesh.obj"
 
     stem = input_path.stem if input_path.is_file() else input_path.name
     return RECONSTRUCTION_OUTPUT_ROOT / f"{stem}.obj"
