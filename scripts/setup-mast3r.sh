@@ -13,4 +13,5 @@ fi
 echo "Cloning mast3r into $TARGET ..."
 git clone "$REPO" "$TARGET"
 git -C "$TARGET" checkout "$PINNED"
+git -C "$TARGET" submodule update --init --recursive
 echo "Done."
