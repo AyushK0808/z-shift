@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from spatial_ingestion.ingestion_gateway import api as gateway_api
 from spatial_ingestion.ingestion_gateway.api import create_app
 from spatial_ingestion.batch_normalization.normalizer import BatchNormalizer
 from spatial_ingestion.live_stream.manager import LiveStreamManager
@@ -63,6 +64,16 @@ def test_live_stream_buffer_schema() -> None:
     assert payload.is_stream
     assert buffer.latest() is not None
     assert buffer.dropped_frames > 0
+
+
+def test_same_owner_reconnect_reuses_existing_buffer() -> None:
+    manager = LiveStreamManager()
+    manager.open_stream("mock-live", owner_subject="owner")
+    manager.push_frame("mock-live", create_live_frame(0))
+
+    manager.open_stream("mock-live", owner_subject="owner")
+
+    assert manager.get_buffer("mock-live").latest() is not None
 
 
 def test_video_folder_sync_map(tmp_path: Path) -> None:
@@ -146,6 +157,25 @@ def test_upload_endpoint_preserves_original_and_rejects_junk(tmp_path: Path) -> 
     assert bad_response.status_code == 415
 
 
+def test_upload_endpoint_returns_413_for_oversized_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image = create_sample_image(tmp_path / "sample.jpg")
+    monkeypatch.setattr(gateway_api, "MAX_UPLOAD_FILE_BYTES", 4)
+    app = create_app()
+    client = TestClient(app)
+
+    with image.open("rb") as handle:
+        response = client.post(
+            "/v1/ingest/uploads",
+            files=[("files", ("sample.jpg", handle, "image/jpeg"))],
+            headers={"Authorization": "Bearer upload-test"},
+        )
+
+    assert response.status_code == 413
+
+
 def test_websocket_requires_owned_precreated_stream() -> None:
     app = create_app()
     client = TestClient(app)
@@ -172,6 +202,69 @@ def test_websocket_requires_owned_precreated_stream() -> None:
     with pytest.raises(WebSocketDisconnect):
         with client.websocket_connect("/v1/ingest/streams/missing-stream/frames"):
             pass
+
+
+def test_websocket_rejects_cross_token_hijack() -> None:
+    app = create_app()
+    client = TestClient(app)
+
+    connect = client.post(
+        "/v1/ingest/streams/connect",
+        json={"transport": "websocket", "stream_id": "owned-stream"},
+        headers={"Authorization": "Bearer stream-owner"},
+    )
+    assert connect.status_code == 200
+
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(
+            "/v1/ingest/streams/owned-stream/frames",
+            headers={"Authorization": "Bearer intruder"},
+        ):
+            pass
+
+
+def test_websocket_payload_too_large_response() -> None:
+    app = create_app()
+    app.state.gateway_state.live_streams = LiveStreamManager(max_frame_payload_bytes=1)
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer stream-owner"}
+
+    connect = client.post(
+        "/v1/ingest/streams/connect",
+        json={"transport": "websocket", "stream_id": "small-payload-stream"},
+        headers=headers,
+    )
+    assert connect.status_code == 200
+
+    with client.websocket_connect(
+        "/v1/ingest/streams/small-payload-stream/frames",
+        headers=headers,
+    ) as websocket:
+        websocket.send_bytes(b"too large")
+        ack = websocket.receive_json()
+        assert ack["accepted"] is False
+        assert ack["action"] == "payload_too_large"
+
+
+def test_stream_connect_returns_429_for_subject_stream_cap() -> None:
+    app = create_app()
+    app.state.gateway_state.live_streams = LiveStreamManager(max_streams_per_subject=1)
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer capped-owner"}
+
+    first = client.post(
+        "/v1/ingest/streams/connect",
+        json={"transport": "websocket", "stream_id": "stream-one"},
+        headers=headers,
+    )
+    second = client.post(
+        "/v1/ingest/streams/connect",
+        json={"transport": "websocket", "stream_id": "stream-two"},
+        headers=headers,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
 
 
 def test_unified_schema_contract_minimum() -> None:

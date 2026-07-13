@@ -47,7 +47,10 @@ class SyncMapEntry(BaseModel):
     sync_group_id: str
     anchor_timestamp_ms: float
     aligned_frames: dict[str, int]
-    offsets_ms: dict[str, float] = Field(default_factory=dict)
+    offsets_ms: dict[str, float] = Field(
+        default_factory=dict,
+        description="Estimated constant source clock offsets, in milliseconds, applied before frame alignment.",
+    )
 
 
 class UnifiedSpatialIngestionSchema(BaseModel):

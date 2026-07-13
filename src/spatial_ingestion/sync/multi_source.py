@@ -4,6 +4,10 @@ from collections import defaultdict
 
 from spatial_ingestion.metadata.schema import FrameReference, SyncMapEntry
 
+MOTION_MATCH_TOLERANCE = 0.03
+OFFSET_BUCKET_MS = 100.0
+MIN_MOTION_VARIANCE = 0.0005
+
 
 class MultiSourceSyncer:
     """Aligns video-folder frames by estimated cross-source timestamp offsets."""
@@ -89,19 +93,24 @@ class MultiSourceSyncer:
         ]
         if len(anchor_signal) < 2 or len(candidate_signal) < 2:
             return 0.0
+        if (
+            MultiSourceSyncer._signal_variance(anchor_signal) < MIN_MOTION_VARIANCE
+            or MultiSourceSyncer._signal_variance(candidate_signal) < MIN_MOTION_VARIANCE
+        ):
+            return 0.0
 
         raw_offsets = [
             anchor_ts - candidate_ts
             for anchor_ts, anchor_motion in anchor_signal
             for candidate_ts, candidate_motion in candidate_signal
-            if abs(anchor_motion - candidate_motion) <= 0.03
+            if abs(anchor_motion - candidate_motion) <= MOTION_MATCH_TOLERANCE
         ]
         if not raw_offsets:
             return 0.0
 
         buckets: dict[int, list[float]] = {}
         for offset in raw_offsets:
-            bucket = int(round(offset / 100.0))
+            bucket = int(round(offset / OFFSET_BUCKET_MS))
             buckets.setdefault(bucket, []).append(offset)
 
         best_bucket = max(
@@ -113,6 +122,12 @@ class MultiSourceSyncer:
         if len(values) % 2:
             return round(values[midpoint], 3)
         return round((values[midpoint - 1] + values[midpoint]) / 2.0, 3)
+
+    @staticmethod
+    def _signal_variance(signal: list[tuple[float, float]]) -> float:
+        values = [motion for _, motion in signal]
+        mean = sum(values) / len(values)
+        return sum((value - mean) ** 2 for value in values) / len(values)
 
     @staticmethod
     def _dedupe_entries(entries: list[SyncMapEntry]) -> list[SyncMapEntry]:
