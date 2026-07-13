@@ -36,7 +36,7 @@ def test_build_run_manifest_captures_runtime_configuration(tmp_path: Path) -> No
 
     assert manifest["backend"] == "mast3r"
     assert manifest["device"] == "cpu"
-    assert manifest["artifacts"]["point_cloud"].endswith("point_cloud.ply")
+    assert manifest["output_path"].endswith("mesh.obj")
 
 
 def test_runner_dry_run_writes_manifest(tmp_path: Path) -> None:

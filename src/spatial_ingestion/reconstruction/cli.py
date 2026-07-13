@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
-from spatial_ingestion.reconstruction.runners.mast3r import main as mast3r_main
+from spatial_ingestion.reconstruction.runners.mast3r import run as mast3r_run
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 
@@ -12,7 +12,7 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Convert a folder of multi-view images to OBJ")
     parser.add_argument("input", help="Folder containing at least two views of the same subject")
-    parser.add_argument("-o", "--output", help="Output OBJ path")
+    parser.add_argument("-o", "--output", help="Output .obj or .glb path")
     parser.add_argument("--device", default="auto", help="cuda, cpu, or auto")
     parser.add_argument(
         "--model",
@@ -44,25 +44,18 @@ def main(argv: list[str] | None = None) -> int:
     if len(image_paths) < 2:
         raise ValueError("MASt3R requires a folder containing at least two views of the same subject")
 
-    mast3r_args = [
-        "--output-dir",
-        str(output_path.parent),
-        "--output-path",
-        str(output_path),
-        "--device",
-        args.device,
-        "--model-name",
-        args.model,
-        "--image-size",
-        str(args.image_size),
-        "--pairing-strategy",
-        args.pairing_strategy,
-        *(["--dry-run"] if args.dry_run else []),
-        *[str(path) for path in image_paths],
-    ]
-    if args.tsdf_thresh > 0:
-        mast3r_args.extend(["--tsdf-thresh", str(args.tsdf_thresh)])
-    return mast3r_main(mast3r_args)
+    from spatial_ingestion.reconstruction.runners.mast3r import resolve_device
+    return mast3r_run(
+        image_paths=image_paths,
+        output_dir=output_path.parent,
+        output_path=output_path,
+        model_name=args.model,
+        device=resolve_device(args.device),
+        image_size=args.image_size,
+        pairing_strategy=args.pairing_strategy,
+        tsdf_thresh=args.tsdf_thresh,
+        dry_run=args.dry_run,
+    )
 
 
 def collect_input_images(input_path: Path) -> list[Path]:
@@ -85,9 +78,9 @@ def collect_input_images(input_path: Path) -> list[Path]:
 def resolve_output_path(input_path: Path, explicit_output: str | None) -> Path:
     if explicit_output:
         output_path = Path(explicit_output).expanduser().resolve()
-        if output_path.suffix.lower() != ".obj":
-            return output_path / "mesh.obj"
-        return output_path
+        if output_path.suffix.lower() in {".obj", ".glb"}:
+            return output_path
+        return output_path / "mesh.obj"
 
     stem = input_path.stem if input_path.is_file() else input_path.name
     return RECONSTRUCTION_OUTPUT_ROOT / f"{stem}.obj"

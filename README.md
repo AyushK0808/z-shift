@@ -32,7 +32,7 @@ src/spatial_ingestion/
   reconstruction/             Phase 2 — job builder, backends, MASt3R runner, CLI
   outcomes_engine/            Phase 4 — use-case router + deliverable packaging/export
 scripts/refinement.py         Phase 3 — mesh cleaning / refinement (clean_ai_mesh)
-third_party/mast3r/           upstream MASt3R checkout or submodule
+scripts/setup-mast3r.sh        clones upstream MASt3R into third_party/mast3r
 data/normalized/              Phase 1 normalized media outputs
 data/reconstruction/          Phase 2 reconstruction artifacts
 src/spatial_ingestion/outcomes_engine/deliverables/   Phase 4 packaged deliverables
@@ -40,7 +40,7 @@ src/spatial_ingestion/outcomes_engine/deliverables/   Phase 4 packaged deliverab
 
 `third_party/` is the intended place for upstream reconstruction repos. The runner code
 prefers a local `third_party/mast3r` checkout before falling back to globally installed
-packages.
+packages. Run `bash scripts/setup-mast3r.sh` to clone it at the pinned commit.
 
 ---
 
@@ -302,15 +302,15 @@ deliverable_router(input_type="live_stream", use_case="live")       # Track C ->
 
 ## Team Setup
 
-Recommended setup keeps upstream reconstruction code inside this repo:
+Clone the upstream MASt3R source into `third_party/` (not a submodule):
 
 ```bash
-git submodule update --init --recursive
+bash scripts/setup-mast3r.sh
 uv python install 3.11
 uv sync --dev
 ```
 
-If submodules are not added yet, the expected layout is:
+The expected layout is:
 
 ```bash
 third_party/mast3r/

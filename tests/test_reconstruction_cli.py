@@ -39,7 +39,19 @@ def test_resolve_output_path_defaults_to_obj_in_reconstruction_dir(tmp_path: Pat
     assert target.name == "images.obj"
 
 
-def test_resolve_output_path_accepts_directory_output(tmp_path: Path) -> None:
+def test_resolve_output_path_preserves_explicit_obj(tmp_path: Path) -> None:
+    target = resolve_output_path(tmp_path / "images", str(tmp_path / "mesh.obj"))
+
+    assert target == (tmp_path / "mesh.obj").resolve()
+
+
+def test_resolve_output_path_preserves_explicit_glb(tmp_path: Path) -> None:
+    target = resolve_output_path(tmp_path / "images", str(tmp_path / "mesh.glb"))
+
+    assert target == (tmp_path / "mesh.glb").resolve()
+
+
+def test_resolve_output_path_appends_mesh_obj_for_directory(tmp_path: Path) -> None:
     target = resolve_output_path(tmp_path / "images", str(tmp_path / "out"))
 
     assert target == (tmp_path / "out" / "mesh.obj").resolve()

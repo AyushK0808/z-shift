@@ -6,6 +6,7 @@ from spatial_ingestion.reconstruction.backends.mast3r import Mast3rBackend
 from spatial_ingestion.reconstruction.jobs import ReconstructionJobBuilder
 from spatial_ingestion.reconstruction.models import (
     ReconstructionArtifact,
+    ReconstructionArtifactKind,
     ReconstructionJob,
     ReconstructionMode,
 )
@@ -15,6 +16,7 @@ __all__ = [
     "BackendExecutionPlan",
     "Mast3rBackend",
     "ReconstructionArtifact",
+    "ReconstructionArtifactKind",
     "ReconstructionBackend",
     "ReconstructionBackendRegistry",
     "ReconstructionJob",
