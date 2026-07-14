@@ -7,6 +7,16 @@ that raw reconstruction into a clean, watertight mesh ready for downstream use; 
 routes the finished geometry to a use-case-specific deliverable — an editable interchange
 file, a packaged point cloud, or a real-time stream.
 
+## Implemented Scope
+
+- Static uploads: single image, image folder, single video, video folder.
+- Live ingestion: authenticated WebSocket frame push after `/v1/ingest/streams/connect`.
+- Originals are preserved in the local object-store stub under `data/object_store/`; normalized PNG derivatives are written under `data/normalized/`.
+- Image/video normalization preserves aspect ratio and never pads to a square canvas or stretches frames.
+- Live stream, auth, and rate-limit state are in-memory and single-process for this research prototype.
+
+RTSP and WebRTC are intentionally rejected until real transport handlers are added.
+
 ## Repo Layout
 
 ```text
@@ -57,8 +67,8 @@ structured document. Under the hood it handles the full ingestion path:
     and their EXIF camera intrinsics (make, model, focal length, etc.) are extracted;
     videos are probed with FFmpeg and sampled into frames using a motion-adaptive
     frame-diff strategy.
-  - **Track B — Live** (`live_stream/`) for real-time streams over WebSocket, WebRTC, or
-    RTSP, with a bounded frame buffer and backpressure handling (accept / drop decisions)
+  - **Track B — Live** (`live_stream/`) for real-time streams over WebSocket, with a
+    bounded frame buffer and backpressure handling (accept / drop decisions)
     so a fast producer can't overwhelm the service.
 - **Multi-source sync** (`sync/`) — for video folders, aligns frames across sources by
   nearest timestamp within a tolerance, producing a sync map so multi-camera captures stay
@@ -71,14 +81,14 @@ structured document. Under the hood it handles the full ingestion path:
   score, frame references, and any sync map.
 
 The result is that everything downstream sees one schema, whether the input was a photo, a
-folder of clips, or a live RTSP feed.
+folder of clips, or a live WebSocket frame stream.
 
 ### API surface
 
 - `GET  /health` — liveness probe.
 - `POST /v1/ingest/uploads` — multipart upload of one or more image/video files; returns
   the unified schema for the batch.
-- `POST /v1/ingest/streams/connect` — open a live stream (WebSocket / WebRTC / RTSP) and
+- `POST /v1/ingest/streams/connect` — open a live WebSocket stream and
   get back a stream handle plus the unified schema.
 - `WS   /v1/ingest/streams/{stream_id}/frames` — push encoded frames; each frame gets a
   backpressure decision (accepted, action, dropped-frame count) in reply.

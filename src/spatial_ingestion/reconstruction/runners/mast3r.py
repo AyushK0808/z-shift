@@ -102,14 +102,30 @@ def run(
 
 
 def resolve_image_input(raw: str) -> Path:
+    if _looks_like_windows_drive_path(raw):
+        path = Path(raw).expanduser().resolve()
+        if not path.exists():
+            raise FileNotFoundError(f"Input image not found: {raw}")
+        return path
+
     parsed = urlparse(raw)
     if parsed.scheme in {"", "file"}:
         candidate = unquote(parsed.path if parsed.scheme == "file" else raw)
+        if parsed.scheme == "file" and _looks_like_windows_file_uri_path(candidate):
+            candidate = candidate.lstrip("/")
         path = Path(candidate).expanduser().resolve()
         if not path.exists():
             raise FileNotFoundError(f"Input image not found: {raw}")
         return path
     raise ValueError(f"Unsupported image URI scheme for MASt3R input: {raw}")
+
+
+def _looks_like_windows_drive_path(raw: str) -> bool:
+    return len(raw) >= 3 and raw[1] == ":" and raw[2] in {"\\", "/"} and raw[0].isalpha()
+
+
+def _looks_like_windows_file_uri_path(raw: str) -> bool:
+    return len(raw) >= 4 and raw[0] == "/" and raw[2] == ":" and raw[1].isalpha()
 
 
 def resolve_device(requested: str) -> str:

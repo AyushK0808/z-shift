@@ -44,6 +44,7 @@ class MotionAdaptiveFrameSampler:
 
         try:
             while True:
+                timestamp_ms = capture.get(cv2.CAP_PROP_POS_MSEC)
                 ok, frame = capture.read()
                 if not ok:
                     break
@@ -60,7 +61,8 @@ class MotionAdaptiveFrameSampler:
                 )
 
                 if should_sample:
-                    timestamp_ms = (frame_index / fps) * 1000.0
+                    if timestamp_ms <= 0 and frame_index > 0:
+                        timestamp_ms = (frame_index / fps) * 1000.0
                     samples.append(
                         SampledFrame(
                             image=frame.copy(),
@@ -95,4 +97,3 @@ class MotionAdaptiveFrameSampler:
         if motion_score >= 0.055:
             return self._medium_interval
         return self._low_interval
-

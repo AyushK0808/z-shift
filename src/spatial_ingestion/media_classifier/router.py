@@ -37,15 +37,26 @@ class MediaClassifierRouter:
         if not items:
             return self._decision(SourceType.UNKNOWN, Track.BATCH, 0, "empty payload")
 
-        media_kinds = {self._kind_for_item(item) for item in items}
-        media_kinds.discard(SourceType.UNKNOWN)
+        kinds_by_file = {item.filename: self._kind_for_item(item) for item in items}
+        media_kinds = set(kinds_by_file.values())
+
+        if SourceType.UNKNOWN in media_kinds:
+            unknown_files = [
+                filename
+                for filename, kind in kinds_by_file.items()
+                if kind == SourceType.UNKNOWN
+            ]
+            return self._decision(
+                SourceType.UNKNOWN,
+                Track.BATCH,
+                len(items),
+                f"unsupported file(s): {', '.join(unknown_files)}",
+            )
 
         if media_kinds == {SourceType.SINGLE_IMAGE}:
             source = SourceType.SINGLE_IMAGE if len(items) == 1 else SourceType.IMAGE_FOLDER
         elif media_kinds == {SourceType.SINGLE_VIDEO}:
             source = SourceType.SINGLE_VIDEO if len(items) == 1 else SourceType.VIDEO_FOLDER
-        elif len(media_kinds) > 1:
-            source = SourceType.UNKNOWN
         else:
             source = SourceType.UNKNOWN
 
@@ -58,12 +69,12 @@ class MediaClassifierRouter:
 
     def classify_stream(self, transport: str, stream_id: str | None = None) -> RoutingDecision:
         normalized = transport.lower()
-        if normalized not in {"websocket", "webrtc", "rtsp"}:
+        if normalized != "websocket":
             return self._decision(
                 SourceType.UNKNOWN,
                 Track.LIVE,
                 1,
-                f"unsupported live transport={transport}",
+                f"unsupported live transport={transport}; implemented transport=websocket",
             )
 
         return self._decision(
@@ -97,4 +108,3 @@ class MediaClassifierRouter:
         if mime.startswith(VIDEO_MIME_PREFIX) or ext in VIDEO_EXTENSIONS:
             return SourceType.SINGLE_VIDEO
         return SourceType.UNKNOWN
-
