@@ -153,8 +153,42 @@ def test_mast3r_backend_builds_execution_plan() -> None:
 
     assert plan.backend_name == "mast3r"
     assert [artifact.kind for artifact in plan.expected_artifacts] == [
-        ReconstructionArtifactKind.POINT_CLOUD,
-        ReconstructionArtifactKind.POSES,
         ReconstructionArtifactKind.RUN_MANIFEST,
         ReconstructionArtifactKind.MESH,
     ]
+
+
+def test_mast3r_backend_execute_dry_run(tmp_path: Path) -> None:
+    image_a = tmp_path / "front.jpg"
+    image_b = tmp_path / "side.jpg"
+    image_a.write_bytes(b"front")
+    image_b.write_bytes(b"side")
+
+    job = ReconstructionJob(
+        mode=ReconstructionMode.MULTI_VIEW,
+        backend_name="mast3r",
+        image_uris=[str(image_a), str(image_b)],
+        metadata={"dry_run": True},
+    )
+
+    backend = Mast3rBackend(output_root=tmp_path)
+    exit_code = backend.execute(job)
+
+    assert exit_code == 0
+    assert list(tmp_path.rglob("run_manifest.json"))
+
+
+def test_mast3r_backend_execute_rejects_single_view() -> None:
+    job = ReconstructionJob(
+        mode=ReconstructionMode.SINGLE_VIEW,
+        backend_name="mast3r",
+        image_uris=["file:///tmp/view.jpg"],
+    )
+
+    backend = Mast3rBackend()
+    try:
+        backend.execute(job)
+    except ValueError as exc:
+        assert "does not support" in str(exc)
+    else:
+        raise AssertionError("expected SINGLE_VIEW to be rejected")

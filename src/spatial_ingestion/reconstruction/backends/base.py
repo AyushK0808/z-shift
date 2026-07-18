@@ -23,3 +23,7 @@ class ReconstructionBackend(ABC):
     @abstractmethod
     def plan(self, job: ReconstructionJob) -> BackendExecutionPlan:
         raise NotImplementedError
+
+    @abstractmethod
+    def execute(self, job: ReconstructionJob) -> int:
+        raise NotImplementedError

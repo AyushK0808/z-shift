@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 from uuid import uuid4
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
-from spatial_ingestion.reconstruction.runners.mast3r import run as mast3r_run
+from spatial_ingestion.reconstruction.models import ReconstructionJob, ReconstructionMode
+from spatial_ingestion.reconstruction.registry import ReconstructionBackendRegistry
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+
+logger = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,6 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--image-size", type=int, default=512, help="MASt3R image size")
     parser.add_argument("--tsdf-thresh", type=float, default=0,
                         help="TSDF fusion threshold (0=disabled, 0.1-0.5 recommended, expensive)")
+    parser.add_argument("--min-conf-thr", type=float, default=2.0,
+                        help="Minimum confidence threshold for point filtering")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for reproducibility")
     parser.add_argument("--dry-run", action="store_true", help="Validate routing without running models")
     return parser
 
@@ -39,24 +47,34 @@ def main(argv: list[str] | None = None) -> int:
 
     input_path = Path(args.input).expanduser().resolve()
     image_paths = collect_input_images(input_path)
-    output_path = resolve_output_path(input_path, args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     if len(image_paths) < 2:
         raise ValueError("MASt3R requires a folder containing at least two views of the same subject")
 
     from spatial_ingestion.reconstruction.runners.mast3r import resolve_device
-    return mast3r_run(
-        image_paths=image_paths,
-        output_dir=output_path.parent,
-        output_path=output_path,
-        model_name=args.model,
-        device=resolve_device(args.device),
-        image_size=args.image_size,
-        pairing_strategy=args.pairing_strategy,
-        tsdf_thresh=args.tsdf_thresh,
-        dry_run=args.dry_run,
+
+    metadata: dict[str, object] = {
+        "model_name": args.model,
+        "device": resolve_device(args.device),
+        "image_size": args.image_size,
+        "pairing_strategy": args.pairing_strategy,
+        "tsdf_thresh": args.tsdf_thresh,
+        "min_conf_thr": args.min_conf_thr,
+        "seed": args.seed,
+        "dry_run": args.dry_run,
+    }
+    if args.output:
+        metadata["output_path"] = str(Path(args.output).expanduser().resolve())
+
+    job = ReconstructionJob(
+        mode=ReconstructionMode.MULTI_VIEW,
+        backend_name="mast3r",
+        image_uris=[str(p) for p in image_paths],
+        metadata=metadata,
     )
+
+    backend = ReconstructionBackendRegistry().resolve_for_job(job)
+    return backend.execute(job)
 
 
 def collect_input_images(input_path: Path) -> list[Path]:
