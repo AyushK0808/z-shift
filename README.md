@@ -1,11 +1,11 @@
 # Spatial Ingestion
 
 A 2D-to-3D generation pipeline. **Phase 1** ingests and normalizes heterogeneous 2D
-media into a single unified schema; **Phase 2** takes that normalized output across a
-generation-handoff boundary and reconstructs 3D geometry with MASt3R; **Phase 3** refines
-that raw reconstruction into a clean, watertight mesh ready for downstream use; **Phase 4**
-routes the finished geometry to a use-case-specific deliverable — an editable interchange
-file, a packaged point cloud, or a real-time stream.
+media into a single unified schema; **Phase 2** converts that normalized output into
+reconstruction jobs and produces 3D geometry with MASt3R; **Phase 3** refines that raw
+reconstruction into a clean, watertight mesh ready for downstream use; **Phase 4** routes
+the finished geometry to a use-case-specific deliverable — an editable interchange file, a
+packaged point cloud, or a real-time stream.
 
 ## Implemented Scope
 
@@ -28,8 +28,7 @@ src/spatial_ingestion/
   sync/                       Phase 1 — multi-source timestamp alignment
   resource_tagging/           Phase 1 — compute-priority scoring
   metadata/                   Phase 1 — UnifiedSpatialIngestionSchema
-  generation_handoff/         Phase 2 — normalized payload -> generation-ready view
-  reconstruction/             Phase 2 — job builder, backends, MASt3R runner, CLI
+  reconstruction/             Phase 2 — job builder, backends, runners, CLI
   outcomes_engine/            Phase 4 — use-case router + deliverable packaging/export
 scripts/refinement.py         Phase 3 — mesh cleaning / refinement (clean_ai_mesh)
 scripts/setup-mast3r.sh        clones upstream MASt3R into third_party/mast3r
@@ -105,32 +104,53 @@ uv run uvicorn spatial_ingestion.main:app --reload
 
 ## Phase 2 — Generation Handoff & Reconstruction
 
-Phase 2 consumes Phase 1's normalized output and produces 3D geometry. It is split into a
-handoff boundary and a reconstruction stage.
+Phase 2 consumes Phase 1's normalized output and produces 3D geometry.
 
-### Generation handoff (`generation_handoff/`)
+### Reconstruction job builder (`reconstruction/jobs.py`)
 
-The `GenerationHandoffBuilder` turns a `UnifiedSpatialIngestionSchema` into a
-generation-ready `GenerationHandoff`. It:
+The `ReconstructionJobBuilder` converts a `UnifiedSpatialIngestionSchema` into a
+`ReconstructionJob`. It:
 
 - Orders and rewrites normalized frames into `HandoffFrame`s (each carrying its normalized
-  asset URI, index, source, timestamp, motion score, and resolution).
-- Maps each source type to a `GenerationMode` (single-view, multi-view, video-sequence,
-  synchronized-views, or live-stream).
+  asset URI, index, source, timestamp, motion score, resolution, and camera intrinsics).
+- Maps each source type to a `ReconstructionMode` (multi-view, video-sequence, or
+  synchronized-views). Single-view and live-stream modes are rejected.
+- Caps frames at `MAX_RECONSTRUCTION_FRAMES` (default 40), selecting the highest-motion
+  frames when the limit is exceeded. For multi-view jobs with more than
+  `SWIN_PAIRING_THRESHOLD` frames (default 20), automatically switches to `swin` pairing.
 - Rebuilds per-timestamp `SyncViewGroup`s for video-folder captures from the Phase 1 sync
   map.
-- Flags whether the payload is reconstruction-ready. Live-stream payloads are explicitly
-  **not** reconstruction-ready in Phase 2 and are returned with a warning.
+- Threads camera intrinsics from Phase 1 through to the reconstruction runner.
 
-### Reconstruction (`reconstruction/`)
+### Backend abstraction (`reconstruction/backends/`)
 
-- **Job builder** (`jobs.py`) — the `ReconstructionJobBuilder` converts a reconstruction-ready
-  handoff into a `ReconstructionJob`. Multi-view and synchronized-view modes are supported;
-  single-view, video-sequence, and live-stream modes are intentionally rejected for now.
-- **Backend abstraction** (`backends/`) — a `ReconstructionBackend` interface (`supports` /
-  `plan`) produces a `BackendExecutionPlan`. The default multi-view backend is `mast3r`.
-- **MASt3R runner** (`runners/mast3r.py`) — aligns the views, exports camera poses and a
-  point cloud, then exports the dense point-map mesh as OBJ.
+A `ReconstructionBackend` interface (`supports` / `plan` / `execute`) routes jobs to the
+right solver. The default multi-view backend is `mast3r`:
+
+- `supports(job)` — returns `True` for `MULTI_VIEW`, `VIDEO_SEQUENCE`, and
+  `SYNCHRONIZED_VIEWS` modes.
+- `plan(job)` — produces a `BackendExecutionPlan` declaring the expected artifacts
+  (`run_manifest.json`, `mesh.obj`/`.glb`).
+- `execute(job)` — resolves the images from URIs, calls the runner with parameters from
+  `job.metadata`, and logs a warning for any expected artifact that was not produced.
+
+The CLI builds a `ReconstructionJob` from CLI args, resolves the backend via
+`ReconstructionBackendRegistry`, and calls `backend.execute()`.
+
+### MASt3R runner (`reconstruction/runners/mast3r.py`)
+
+The runner aligns views, fuses a dense point map, and exports a mesh:
+
+1. **Reproducible seeding** — when `--seed` is provided, seeds Python / NumPy / PyTorch RNGs
+   and records torch/CUDA/numpy versions in the manifest.
+2. **Pairing** — uses `complete` or `swin` scene-graph pairing. For `SYNCHRONIZED_VIEWS`
+   jobs, `sync_view_groups` drive cross-camera pairs within each sync group, falling back to
+   the configured strategy if no sync pairs are generated.
+3. **Sparse alignment** — runs `sparse_global_alignment` through MASt3R's pipeline.
+4. **TSDF fusion** — optionally fuses depth with a configurable threshold. On failure
+   (memory or runtime), falls back to dense point-map export and records `tsdf_fallback:
+   true` in the manifest.
+5. **Export** — writes a mesh (OBJ or GLB) with configurable `min_conf_thr` point filtering.
 
 ### Reconstruction CLI
 
@@ -138,15 +158,11 @@ Reconstruction is MASt3R-only. It requires a folder containing at least two imag
 same subject from different views. Single-image reconstruction is intentionally not
 supported.
 
-The direct image-to-3D command is:
-
 ```bash
-uv python install 3.11
-uv sync --dev
 uv run zshift-image-to-3d path/to/folder/of/images
 ```
 
-Use `-o` to control the final `.obj` path:
+Use `-o` to control the output path:
 
 ```bash
 uv run zshift-image-to-3d path/to/folder -o ./output/object.obj
@@ -161,16 +177,20 @@ Useful flags:
 - `--image-size` — MASt3R image size (default `512`).
 - `--tsdf-thresh` — TSDF fusion threshold; `0` disables it, `0.1`–`0.5` recommended but
   expensive.
-- `--dry-run` — validate routing without running the models.
+- `--min-conf-thr` — minimum confidence threshold for point filtering (default `2.0`).
+- `--seed` — random seed for reproducible outputs.
+- `--dry-run` — validate routing and write the manifest without running the models.
 
 ### Outputs
 
-Reconstruction artifacts are written under `data/reconstruction/`:
+Every run gets a unique 12-character hex job-id directory under `data/reconstruction/` to
+prevent clobbering. Inside each job directory:
 
-- `run_manifest.json`
-- `camera_poses.json`
-- `point_cloud.ply`
-- `mesh.obj`
+- `run_manifest.json` — model name, device, image size, pairing strategy, seed, TSDF config,
+  `min_conf_thr`, `tsdf_fallback` flag, and reproducibility metadata (torch/CUDA/numpy
+  versions). Written before the model runs in dry-run mode, or after export otherwise.
+- `mesh.obj` (or `.glb`) — the fused output mesh.
+- `cache/` — MASt3R internal alignment cache (reused between runs on the same frames).
 
 ---
 
