@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import numpy as np
 
@@ -79,3 +80,19 @@ def write_ply(path: Path, points: Any, colors: Any) -> None:
         lines.append(f"{float(xyz[0])} {float(xyz[1])} {float(xyz[2])} {red} {green} {blue}")
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def uri_to_path(uri: str) -> Path:
+    parsed = urlparse(uri)
+    if parsed.scheme in {"", "file"}:
+        candidate = unquote(parsed.path if parsed.scheme == "file" else uri)
+        return Path(candidate).expanduser().resolve()
+    return Path(uri).expanduser().resolve()
+
+
+def uri_to_path_or_none(uri: str) -> Path | None:
+    parsed = urlparse(uri)
+    if parsed.scheme in {"", "file"}:
+        candidate = unquote(parsed.path if parsed.scheme == "file" else uri)
+        return Path(candidate)
+    return Path(uri)

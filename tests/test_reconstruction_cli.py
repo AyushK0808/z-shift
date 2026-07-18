@@ -30,28 +30,35 @@ def test_cli_dry_run_accepts_a_folder_with_multiple_views(tmp_path: Path) -> Non
     output = tmp_path / "output.obj"
 
     assert main([str(tmp_path), "--dry-run", "-o", str(output)]) == 0
-    assert (tmp_path / "run_manifest.json").is_file()
+    assert any(f.name.startswith("run_manifest") for f in tmp_path.iterdir() if f.is_file())
 
 
 def test_resolve_output_path_defaults_to_obj_in_reconstruction_dir(tmp_path: Path) -> None:
     target = resolve_output_path(tmp_path / "images", None)
 
     assert target.name == "images.obj"
+    assert target.parent.name.startswith("images_")
 
 
 def test_resolve_output_path_preserves_explicit_obj(tmp_path: Path) -> None:
     target = resolve_output_path(tmp_path / "images", str(tmp_path / "mesh.obj"))
 
-    assert target == (tmp_path / "mesh.obj").resolve()
+    assert target.name == "mesh.obj"
+    assert target.parent.parent == (tmp_path / "mesh.obj").resolve().parent
+    assert target.parent.name.startswith("mesh_")
 
 
 def test_resolve_output_path_preserves_explicit_glb(tmp_path: Path) -> None:
     target = resolve_output_path(tmp_path / "images", str(tmp_path / "mesh.glb"))
 
-    assert target == (tmp_path / "mesh.glb").resolve()
+    assert target.name == "mesh.glb"
+    assert target.parent.parent == (tmp_path / "mesh.glb").resolve().parent
+    assert target.parent.name.startswith("mesh_")
 
 
 def test_resolve_output_path_appends_mesh_obj_for_directory(tmp_path: Path) -> None:
     target = resolve_output_path(tmp_path / "images", str(tmp_path / "out"))
 
-    assert target == (tmp_path / "out" / "mesh.obj").resolve()
+    assert target.suffix == ".obj"
+    assert target.parent == (tmp_path / "out").resolve()
+    assert target.stem.startswith("mesh_")

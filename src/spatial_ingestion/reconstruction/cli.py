@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from uuid import uuid4
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
 from spatial_ingestion.reconstruction.runners.mast3r import run as mast3r_run
@@ -76,11 +77,14 @@ def collect_input_images(input_path: Path) -> list[Path]:
 
 
 def resolve_output_path(input_path: Path, explicit_output: str | None) -> Path:
+    job_id = uuid4().hex[:12]
+
     if explicit_output:
         output_path = Path(explicit_output).expanduser().resolve()
         if output_path.suffix.lower() in {".obj", ".glb"}:
-            return output_path
-        return output_path / "mesh.obj"
+            stem = output_path.stem
+            return output_path.parent / f"{stem}_{job_id}" / output_path.name
+        return output_path / f"mesh_{job_id}.obj"
 
     stem = input_path.stem if input_path.is_file() else input_path.name
-    return RECONSTRUCTION_OUTPUT_ROOT / f"{stem}.obj"
+    return RECONSTRUCTION_OUTPUT_ROOT / f"{stem}_{job_id}" / f"{stem}.obj"

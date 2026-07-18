@@ -56,7 +56,14 @@ class Mast3rBackend(ReconstructionBackend):
 
     @staticmethod
     def _job_stem(job: ReconstructionJob) -> str:
-        if job.frames:
-            joined = "_".join(frame.source_id or frame.frame_id for frame in job.frames[:3])
-            return joined[:120]
-        return "reconstruction_job"
+        if not job.frames:
+            return "reconstruction_job"
+        frame_ids = sorted(f.frame_id for f in job.frames)
+        joined = "_".join(frame_ids)
+        h = hashlib.sha256(joined.encode()).hexdigest()[:12]
+        prefixes = sorted(set(f.source_id or f.frame_id for f in job.frames[:3]))
+        return f"{'_'.join(prefixes)}_{h}"[:120]
+
+
+def _artifact_path_from_uri(uri: str) -> Path | None:
+    return uri_to_path_or_none(uri)
