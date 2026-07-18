@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 from typing import Any
@@ -9,8 +10,10 @@ from urllib.parse import unquote, urlparse
 import numpy as np
 
 from spatial_ingestion.config import MAST3R_ROOT
-from spatial_ingestion.reconstruction.runners._io import write_json
+from spatial_ingestion.reconstruction.models import SyncViewGroup
+from spatial_ingestion.reconstruction.runners._io import uri_to_path, write_json
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL_NAME = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 
@@ -31,6 +34,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--tsdf-thresh", type=float, default=0,
                         help="TSDF fusion threshold (0=disabled, 0.1-0.5 recommended, expensive)")
+    parser.add_argument("--min-conf-thr", type=float, default=2.0,
+                        help="Minimum confidence threshold for point filtering")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for reproducibility")
     parser.add_argument("--dry-run", action="store_true", help="Write manifest only")
     return parser
 
@@ -48,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
         image_size=args.image_size,
         pairing_strategy=args.pairing_strategy,
         tsdf_thresh=args.tsdf_thresh,
+        min_conf_thr=args.min_conf_thr,
+        seed=args.seed,
         dry_run=args.dry_run,
     )
 
@@ -62,6 +71,9 @@ def run(
     image_size: int = 512,
     pairing_strategy: str = "complete",
     tsdf_thresh: float = 0,
+    min_conf_thr: float = 2.0,
+    seed: int | None = None,
+    sync_view_groups: list[SyncViewGroup] | None = None,
     dry_run: bool = False,
 ) -> int:
     configure_local_mast3r_imports()
@@ -69,6 +81,9 @@ def run(
     if output_path is None:
         output_path = output_dir / "mesh.obj"
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if seed is not None:
+        _set_seed(seed)
 
     if len(image_paths) < 2:
         raise ValueError("MASt3R reconstruction requires at least two images")
@@ -82,11 +97,13 @@ def run(
         image_size=image_size,
         pairing_strategy=pairing_strategy,
         tsdf_thresh=tsdf_thresh,
+        min_conf_thr=min_conf_thr,
+        seed=seed,
         dry_run=dry_run,
     )
-    write_json(output_dir / "run_manifest.json", manifest)
 
     if dry_run:
+        write_json(output_dir / "run_manifest.json", manifest)
         return 0
 
     sparse_scene = run_sparse_alignment(
@@ -96,8 +113,14 @@ def run(
         device=device,
         image_size=image_size,
         pairing_strategy=pairing_strategy,
+        sync_view_groups=sync_view_groups,
     )
-    export_sparse_scene_to_path(sparse_scene, output_path, output_dir, tsdf_thresh=tsdf_thresh)
+    tsdf_fell_back = export_sparse_scene_to_path(
+        sparse_scene, output_path, output_dir,
+        tsdf_thresh=tsdf_thresh, min_conf_thr=min_conf_thr,
+    )
+    manifest["tsdf_fallback"] = tsdf_fell_back
+    write_json(output_dir / "run_manifest.json", manifest)
     return 0
 
 
@@ -140,6 +163,37 @@ def resolve_device(requested: str) -> str:
     return "cuda" if torch.cuda.is_available() else "cpu"
 
 
+def _set_seed(seed: int) -> None:
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    try:
+        import torch
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    except ImportError:
+        pass
+
+
+def _reproducibility_metadata() -> dict[str, Any]:
+    meta: dict[str, Any] = {}
+    try:
+        import torch
+        meta["torch_version"] = torch.__version__
+        meta["cuda_available"] = torch.cuda.is_available()
+        if torch.cuda.is_available():
+            meta["cuda_version"] = torch.version.cuda
+            meta["cuda_device"] = torch.cuda.get_device_name(0)
+    except ImportError:
+        meta["torch_version"] = None
+    try:
+        meta["numpy_version"] = np.__version__
+    except Exception:
+        pass
+    return meta
+
+
 def build_run_manifest(
     *,
     image_paths: list[Path],
@@ -150,19 +204,57 @@ def build_run_manifest(
     image_size: int,
     pairing_strategy: str,
     tsdf_thresh: float = 0,
+    min_conf_thr: float = 2.0,
+    seed: int | None = None,
     dry_run: bool,
 ) -> dict[str, Any]:
-    return {
+    manifest: dict[str, Any] = {
         "backend": "mast3r",
         "model_name": model_name,
         "device": device,
         "image_size": image_size,
         "pairing_strategy": pairing_strategy,
         "tsdf_thresh": tsdf_thresh,
+        "min_conf_thr": min_conf_thr,
+        "seed": seed,
         "dry_run": dry_run,
         "image_paths": [str(path) for path in image_paths],
         "output_path": str(output_path),
     }
+    manifest["reproducibility"] = _reproducibility_metadata()
+    return manifest
+
+
+def _build_sync_pairs(
+    image_paths: list[Path],
+    sync_view_groups: list[SyncViewGroup],
+) -> list[tuple[int, int]]:
+    """Build cross-camera pairs within each sync group."""
+    stem_to_idx = {p.stem: i for i, p in enumerate(image_paths)}
+
+    pairs: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+
+    for group in sync_view_groups:
+        cameras = sorted(group.frames_by_source.keys())
+        indices: list[int] = []
+        for source_id in cameras:
+            handoff = group.frames_by_source[source_id]
+            path_stem = uri_to_path(handoff.uri).stem
+            idx = stem_to_idx.get(path_stem)
+            if idx is not None:
+                indices.append(idx)
+
+        for i in range(len(indices)):
+            for j in range(i + 1, len(indices)):
+                a, b = indices[i], indices[j]
+                if (a, b) not in seen:
+                    pairs.append((a, b))
+                    pairs.append((b, a))
+                    seen.add((a, b))
+                    seen.add((b, a))
+
+    return pairs
 
 
 def run_sparse_alignment(
@@ -173,6 +265,7 @@ def run_sparse_alignment(
     device: str,
     image_size: int,
     pairing_strategy: str,
+    sync_view_groups: list[SyncViewGroup] | None = None,
 ) -> Any:
     try:
         import mast3r.utils.path_to_dust3r  # noqa: F401
@@ -188,7 +281,15 @@ def run_sparse_alignment(
 
     model = AsymmetricMASt3R.from_pretrained(model_name).to(device)
     images = load_images([str(path) for path in image_paths], size=image_size)
-    pairs = make_pairs(images, scene_graph=pairing_strategy, symmetrize=True)
+
+    if sync_view_groups:
+        pairs = _build_sync_pairs(image_paths, sync_view_groups)
+        if not pairs:
+            logger.warning("Sync-aware pairing produced no pairs, falling back to %s", pairing_strategy)
+            pairs = make_pairs(images, scene_graph=pairing_strategy, symmetrize=True)
+    else:
+        pairs = make_pairs(images, scene_graph=pairing_strategy, symmetrize=True)
+
     cache_path = str((output_dir / "cache").resolve())
     return sparse_global_alignment(
         [str(path) for path in image_paths],
@@ -220,7 +321,8 @@ def export_sparse_scene_to_path(
     output_dir: Path,
     tsdf_thresh: float = 0,
     min_conf_thr: float = 2.0,
-) -> None:
+) -> bool:
+    """Export scene to mesh. Returns True if TSDF fell back to non-TSDF mode."""
     try:
         import trimesh
         from dust3r.utils.device import to_numpy
@@ -229,6 +331,7 @@ def export_sparse_scene_to_path(
     except ImportError as exc:
         raise RuntimeError("MASt3R mesh export dependencies are not installed.") from exc
 
+    tsdf_fell_back = False
     rgbimg = scene.imgs
     imgs = to_numpy(rgbimg)
     if tsdf_thresh > 0:
@@ -236,7 +339,8 @@ def export_sparse_scene_to_path(
             tsdf = TSDFPostProcess(scene, TSDF_thresh=tsdf_thresh)
             pts3d, _, confs = to_numpy(tsdf.get_dense_pts3d(clean_depth=True))
         except (MemoryError, RuntimeError) as exc:
-            print(f"TSDF fusion failed ({exc}), falling back to non-TSDF mode")
+            logger.warning("TSDF fusion failed (%s), falling back to non-TSDF mode", exc)
+            tsdf_fell_back = True
             pts3d, _, confs = to_numpy(scene.get_dense_pts3d(clean_depth=True))
     else:
         pts3d, _, confs = to_numpy(scene.get_dense_pts3d(clean_depth=True))
@@ -261,7 +365,8 @@ def export_sparse_scene_to_path(
     if output_path.suffix not in ('.obj', '.glb'):
         output_path = output_path.with_suffix('.obj')
     mesh.export(str(output_path))
-    print(f"Exported {output_path}")
+    logger.info("Exported %s", output_path)
+    return tsdf_fell_back
 
 
 if __name__ == "__main__":
