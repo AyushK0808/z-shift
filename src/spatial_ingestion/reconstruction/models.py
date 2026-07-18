@@ -4,6 +4,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from spatial_ingestion.metadata.schema import CameraIntrinsics
+
 
 class GenerationMode(str, Enum):
     SINGLE_VIEW = "single_view"
@@ -21,6 +23,7 @@ class HandoffFrame(BaseModel):
     timestamp_ms: float | None = None
     motion_score: float | None = None
     resolution: tuple[int, int] | None = None
+    camera_intrinsics: CameraIntrinsics | None = None
 
 
 class SyncViewGroup(BaseModel):

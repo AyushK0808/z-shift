@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from spatial_ingestion.metadata.schema import (
     FrameReference,
     SourceType,
@@ -12,6 +14,7 @@ from spatial_ingestion.reconstruction import (
     ReconstructionJobBuilder,
     ReconstructionMode,
 )
+from spatial_ingestion.reconstruction.models import ReconstructionJob
 
 
 def test_mast3r_job_builder_maps_image_folder_to_multi_view() -> None:

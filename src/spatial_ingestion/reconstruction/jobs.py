@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from spatial_ingestion.config import DEFAULT_MULTI_VIEW_BACKEND
+from spatial_ingestion.config import DEFAULT_MULTI_VIEW_BACKEND, MAX_RECONSTRUCTION_FRAMES, SWIN_PAIRING_THRESHOLD
 from spatial_ingestion.metadata.schema import FrameReference, SourceType, UnifiedSpatialIngestionSchema
 from spatial_ingestion.reconstruction.models import (
     GenerationMode,
@@ -20,26 +20,44 @@ class ReconstructionJobBuilder:
             raise ValueError("live streams cannot be converted into reconstruction jobs")
 
         mode = self._mode_for_source(payload.source_type)
-        if mode in (GenerationMode.SINGLE_VIEW, GenerationMode.VIDEO_SEQUENCE):
+        if mode == GenerationMode.SINGLE_VIEW:
             raise ValueError(f"{mode.value} reconstruction is not implemented yet")
 
         if mode == GenerationMode.MULTI_VIEW:
             frames = self._ordered_frames(payload.frames)
-            handoff_frames = [_to_handoff_frame(f) for f in frames]
+            handoff_frames = self._cap_frames([_to_handoff_frame(f) for f in frames])
+            metadata: dict[str, object] = {
+                "source_type": payload.source_type.value,
+                "track": payload.track.value,
+            }
+            if len(payload.frames) > SWIN_PAIRING_THRESHOLD:
+                metadata["pairing_strategy"] = "swin"
             return ReconstructionJob(
                 mode=ReconstructionMode.MULTI_VIEW,
+                backend_name=self._multi_view_backend,
+                image_uris=[f.uri for f in handoff_frames],
+                frames=handoff_frames,
+                metadata=metadata,
+            )
+
+        if mode == GenerationMode.VIDEO_SEQUENCE:
+            frames = self._ordered_frames(payload.frames)
+            handoff_frames = self._cap_frames([_to_handoff_frame(f) for f in frames])
+            return ReconstructionJob(
+                mode=ReconstructionMode.VIDEO_SEQUENCE,
                 backend_name=self._multi_view_backend,
                 image_uris=[f.uri for f in handoff_frames],
                 frames=handoff_frames,
                 metadata={
                     "source_type": payload.source_type.value,
                     "track": payload.track.value,
+                    "pairing_strategy": "swin",
                 },
             )
 
         if mode == GenerationMode.SYNCHRONIZED_VIEWS:
             sync_groups = _build_sync_view_groups(payload)
-            sync_frames = _flatten_sync_groups(sync_groups)
+            sync_frames = self._cap_frames(_flatten_sync_groups(sync_groups))
             return ReconstructionJob(
                 mode=ReconstructionMode.SYNCHRONIZED_VIEWS,
                 backend_name=self._multi_view_backend,
@@ -72,6 +90,17 @@ class ReconstructionJobBuilder:
     def _ordered_frames(frames: list[FrameReference]) -> list[FrameReference]:
         return sorted(frames, key=lambda f: (f.source_id or "", f.index, f.frame_id))
 
+    @staticmethod
+    def _cap_frames(frames: list[HandoffFrame]) -> list[HandoffFrame]:
+        if len(frames) <= MAX_RECONSTRUCTION_FRAMES:
+            return frames
+        sorted_frames = sorted(
+            frames,
+            key=lambda f: (f.motion_score if f.motion_score is not None else float("-inf"), f.index),
+            reverse=True,
+        )
+        return sorted_frames[:MAX_RECONSTRUCTION_FRAMES]
+
 
 def _to_handoff_frame(frame: FrameReference) -> HandoffFrame:
     if not frame.uri:
@@ -85,6 +114,7 @@ def _to_handoff_frame(frame: FrameReference) -> HandoffFrame:
         timestamp_ms=frame.timestamp_ms,
         motion_score=frame.motion_score,
         resolution=frame.resolution,
+        camera_intrinsics=frame.camera_intrinsics,
     )
 
 

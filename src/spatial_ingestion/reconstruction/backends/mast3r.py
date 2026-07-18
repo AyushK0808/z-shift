@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import hashlib
+import logging
 from pathlib import Path
+from typing import Any
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
 from spatial_ingestion.reconstruction.backends.base import BackendExecutionPlan, ReconstructionBackend
 from spatial_ingestion.reconstruction.models import ReconstructionArtifact, ReconstructionArtifactKind, ReconstructionJob, ReconstructionMode
+from spatial_ingestion.reconstruction.runners._io import uri_to_path, uri_to_path_or_none
+
+logger = logging.getLogger(__name__)
 
 
 class Mast3rBackend(ReconstructionBackend):
@@ -16,6 +22,7 @@ class Mast3rBackend(ReconstructionBackend):
     def supports(self, job: ReconstructionJob) -> bool:
         return job.mode in {
             ReconstructionMode.MULTI_VIEW,
+            ReconstructionMode.VIDEO_SEQUENCE,
             ReconstructionMode.SYNCHRONIZED_VIEWS,
         }
 
@@ -27,14 +34,6 @@ class Mast3rBackend(ReconstructionBackend):
         warnings = list(job.warnings)
 
         expected_artifacts = [
-            ReconstructionArtifact(
-                kind=ReconstructionArtifactKind.POINT_CLOUD,
-                uri=(output_dir / "point_cloud.ply").as_uri(),
-            ),
-            ReconstructionArtifact(
-                kind=ReconstructionArtifactKind.POSES,
-                uri=(output_dir / "camera_poses.json").as_uri(),
-            ),
             ReconstructionArtifact(
                 kind=ReconstructionArtifactKind.RUN_MANIFEST,
                 uri=(output_dir / "run_manifest.json").as_uri(),
