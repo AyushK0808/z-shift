@@ -257,35 +257,41 @@ track:
 
 - **Track A — Editing** (`use_case="editing"`) — exports a Blender-ready `.glb` interchange
   file via `export_blender_ready`, for jobs that will be edited in a DCC tool.
-- **Track B — Viewing** (`use_case="viewing"` with a `video` or `folder` input) — packages
-  the point cloud / Gaussian-splat data into a `.ply` via `package_4d_gaussian`, for
-  web-based viewing of dynamic 3D scenes.
-- **Track C — Live** (`use_case="live"` or a `live_stream` input) — establishes a real-time
-  delivery layer (WebRTC / WebSocket) instead of writing a file.
+- **Track B — Viewing** (`use_case="viewing"` with a `single_video`, `video_folder`, or
+  `image_folder` input) — packages point/splat-center data into a `.ply` via
+  `export_point_cloud`, for web-based viewing of dynamic 3D scenes. (Renamed from
+  `package_4d_gaussian`: it currently exports a plain colored point cloud — no covariances,
+  spherical-harmonic coefficients, opacity, or time dimension — so the old name overstated
+  what it produces.)
+- **Track C — Live** (`use_case="live"` with a `live_stream` input) — intended to establish a
+  real-time delivery layer (WebRTC / WebSocket). **Not implemented**: calling it raises
+  `TrackNotImplementedError` rather than claiming a stream was established.
 
-Any other combination is rejected as an invalid routing request.
+`input_type` is validated against the shared `SourceType` enum
+(`spatial_ingestion.metadata.schema.SourceType`), and each use case is only valid for a
+specific subset of source types (e.g. `editing` is not valid for `live_stream`). Any other
+combination raises `InvalidRoutingError` — the router no longer prints an error and returns
+`None`.
 
-Packaged deliverables are written under
-`src/spatial_ingestion/outcomes_engine/deliverables/`:
+Packaged deliverables are written under `data/deliverables/` at the repo root (previously
+under `src/spatial_ingestion/outcomes_engine/deliverables/`, which wasn't gitignored):
 
 - `blender_ready/<job_id>_model.glb`
-- `4d_gaussians/<job_id>_splat.ply`
+- `point_clouds/<job_id>_points.ply`
 
 ### Run
 
-The current module is a proof of concept: it mocks the Phase 3 handoff with in-memory
-geometry (`get_phase3_cleaned_mesh`, `get_phase3_point_cloud`) so the routing and packaging
-paths can be exercised without running the upstream models. It requires `trimesh`, which is
-not yet declared in the project dependencies — install it into the environment first:
+The router still mocks the Phase 3 handoff with in-memory geometry
+(`get_phase3_cleaned_mesh`, `get_phase3_point_cloud`) so routing and packaging can be
+exercised without running the upstream models; de-mocking is blocked on the pipeline
+executor (see ROADMAP §1·X1). `trimesh` is already a declared project dependency
+(`pyproject.toml`) — no extra install step needed.
+
+Run the demo script, which fires a request through each track and prints the resulting
+`DeliverableResult` (or the raised error):
 
 ```bash
-uv pip install trimesh
-```
-
-Then run the proof-of-concept, which fires one request through each track:
-
-```bash
-uv run python src/spatial_ingestion/outcomes_engine/engine.py
+uv run python examples/demo_outcomes_engine.py
 ```
 
 Or drive the router directly from Python:
@@ -293,9 +299,9 @@ Or drive the router directly from Python:
 ```python
 from spatial_ingestion.outcomes_engine.engine import deliverable_router
 
-deliverable_router(input_type="single_image", use_case="editing")   # Track A -> .glb
-deliverable_router(input_type="video", use_case="viewing")          # Track B -> .ply
-deliverable_router(input_type="live_stream", use_case="live")       # Track C -> stream
+deliverable_router(input_type="single_image", use_case="editing")    # Track A -> .glb, returns DeliverableResult
+deliverable_router(input_type="video_folder", use_case="viewing")    # Track B -> .ply, returns DeliverableResult
+deliverable_router(input_type="live_stream", use_case="live")        # Track C -> raises TrackNotImplementedError
 ```
 
 ---
