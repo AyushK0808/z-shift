@@ -11,7 +11,6 @@ class LatencyAwareResourceTagger:
         source_type: SourceType,
         track: Track,
         file_count: int = 1,
-        estimated_frames: int | None = None,
     ) -> float:
         if track == Track.LIVE:
             return 1.0
@@ -26,8 +25,4 @@ class LatencyAwareResourceTagger:
 
         if file_count > 1:
             base -= min(0.15, (file_count - 1) * 0.02)
-        if estimated_frames and estimated_frames > 300:
-            base -= min(0.10, (estimated_frames - 300) / 6000)
-
         return round(max(0.05, min(0.95, base)), 3)
-

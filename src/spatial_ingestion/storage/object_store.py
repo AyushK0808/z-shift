@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+from urllib.parse import unquote, urlparse
 from pathlib import Path
 from uuid import uuid4
 
@@ -22,3 +23,17 @@ class ObjectStore:
         shutil.copy2(source_path, target)
         return target.as_uri()
 
+    def delete_uri(self, uri: str) -> None:
+        parsed = urlparse(uri)
+        if parsed.scheme != "file":
+            return
+        path = Path(unquote(parsed.path.lstrip("/")))
+        if not path.is_absolute():
+            path = Path(parsed.path)
+        try:
+            resolved = path.resolve()
+            root = self._root.resolve()
+            if root in resolved.parents or resolved == root:
+                resolved.unlink(missing_ok=True)
+        except OSError:
+            return
