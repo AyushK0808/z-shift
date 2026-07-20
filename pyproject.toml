@@ -31,3 +31,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[project.scripts]
+spatial-ingestion-refine = "spatial_ingestion.refinement.cli:main"

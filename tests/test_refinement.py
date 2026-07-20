@@ -4,7 +4,7 @@ import numpy as np
 import pyvista as pv
 import pytest
 
-from spatial_ingestion.refinement import MeshCleaningConfig, MeshValidationError, clean_mesh
+from spatial_ingestion.refinement import MeshCleaningConfig, MeshValidationError, clean_ai_mesh, clean_mesh
 
 
 def _make_colored_sphere_with_hole() -> pv.PolyData:
@@ -41,6 +41,15 @@ def test_object_mode_closes_holes_and_preserves_colors() -> None:
     assert result["open_edge_count"] == 0
     assert "rgb" in output.point_data
     assert output.point_data["rgb"].shape[1] == 3
+
+
+def test_clean_mesh_defaults_and_alias_remain_compatible() -> None:
+    mesh = _make_colored_sphere_with_hole()
+
+    result = clean_mesh(mesh)
+
+    assert clean_ai_mesh is clean_mesh
+    assert result["mode"] == "object"
 
 
 def test_room_mode_keeps_major_sheet_and_drops_small_debris() -> None:

@@ -198,7 +198,7 @@ def count_topology_issues(mesh: pv.PolyData) -> Dict[str, int]:
     }
 
 
-def clean_mesh(mesh, config , **overrides: Any) :
+def clean_mesh(mesh, config: Optional[MeshCleaningConfig] = None, **overrides: Any):
     """Clean an AI-generated mesh and return diagnostics plus the processed result."""
     if config is not None and overrides:
         raise ValueError("Pass either config or keyword overrides, not both")
@@ -272,3 +272,6 @@ def clean_mesh(mesh, config , **overrides: Any) :
         "non_manifold_edge_count": topology["non_manifold_edge_count"],
         "warnings": warnings,
     }
+
+
+clean_ai_mesh = clean_mesh

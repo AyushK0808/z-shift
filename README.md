@@ -17,3 +17,11 @@ uv run pytest
 ```
 
 The harness creates a synthetic image, synthetic video, and mock live stream, then verifies routing and unified schema output for each.
+
+## Refinement
+
+```bash
+uv run spatial-ingestion-refine --refine path/to/input.obj --output path/to/output.obj
+```
+
+`clean_mesh` defaults to object mode when no config is supplied, and `clean_ai_mesh` remains available as a compatibility alias. The refinement stage is a cleanup pass, not a geometric fusion step, so watertight output depends on the input mesh and settings.
