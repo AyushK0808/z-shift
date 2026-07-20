@@ -338,7 +338,28 @@ uv run python scripts/test_harness.py
 uv run pytest
 ```
 
-The harness creates a synthetic image, synthetic video, and mock live stream, then verifies
-routing and unified schema output for each. The `tests/` suite covers Phase 1 ingestion
-(`test_phase1.py`), the generation handoff (`test_generation_handoff.py`), and the Phase 2
-reconstruction CLI, runner, and MASt3R integration.
+The harness creates a synthetic image, synthetic video, and mock live stream, then verifies routing and unified schema output for each. The `tests/` suite covers Phase 1 ingestion (`test_phase1.py`), the generation handoff (`test_generation_handoff.py`), and the Phase 2 reconstruction CLI, runner, and MASt3R integration.
+
+## Phase 3 — Refinement
+
+The mesh refinement stage cleans AI-generated 3D reconstructions through component filtering, hole filling, smoothing, and optional decimation.
+
+### CLI
+
+```bash
+uv run spatial-ingestion-refine --refine path/to/input.obj --output path/to/output.obj
+```
+
+### Python API
+
+```python
+from spatial_ingestion.refinement import clean_mesh, MeshCleaningConfig
+import pyvista as pv
+
+mesh = pv.read("input.obj")
+config = MeshCleaningConfig(mode="object")  # or "room"
+result = clean_mesh(mesh, config)
+cleaned = result["mesh"]
+```
+
+`clean_mesh` defaults to object mode when no config is supplied. For backward compatibility, `clean_ai_mesh` is available as an alias. The refinement stage is a cleanup pass, not a geometric fusion step; watertight output depends on the input mesh and settings.

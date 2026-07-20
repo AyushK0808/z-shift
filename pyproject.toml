@@ -16,6 +16,7 @@ dependencies = [
   "opencv-python-headless>=4.9.0",
   "numpy<2",
   "exifread>=3.0.0",
+  "pyvista>=0.44.0",
   "torch>=2.4.0",
   "torchvision>=0.19.0",
   "scipy>=1.13.0",
@@ -32,6 +33,7 @@ dependencies = [
 
 [project.scripts]
 zshift-image-to-3d = "spatial_ingestion.reconstruction.cli:main"
+spatial-ingestion-refine = "spatial_ingestion.refinement.cli:main"
 
 [dependency-groups]
 dev = [
