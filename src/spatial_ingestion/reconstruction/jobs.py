@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from spatial_ingestion.config import DEFAULT_MULTI_VIEW_BACKEND, MAX_RECONSTRUCTION_FRAMES, SWIN_PAIRING_THRESHOLD
+from spatial_ingestion.config import MAX_RECONSTRUCTION_FRAMES, SWIN_PAIRING_THRESHOLD
 from spatial_ingestion.metadata.schema import FrameReference, SourceType, UnifiedSpatialIngestionSchema
 from spatial_ingestion.reconstruction.models import (
     GenerationMode,
@@ -12,8 +12,8 @@ from spatial_ingestion.reconstruction.models import (
 
 
 class ReconstructionJobBuilder:
-    def __init__(self, multi_view_backend: str = DEFAULT_MULTI_VIEW_BACKEND) -> None:
-        self._multi_view_backend = multi_view_backend
+    def __init__(self) -> None:
+        pass
 
     def build(self, payload: UnifiedSpatialIngestionSchema) -> ReconstructionJob:
         if payload.source_type == SourceType.LIVE_STREAM:
@@ -46,7 +46,6 @@ class ReconstructionJobBuilder:
             metadata["sync_group_id"] = payload.sync_group_id
             return ReconstructionJob(
                 mode=rec_mode,
-                backend_name=self._multi_view_backend,
                 image_uris=[f.uri for f in sync_frames],
                 frames=sync_frames,
                 sync_view_groups=sync_groups,
@@ -62,7 +61,6 @@ class ReconstructionJobBuilder:
             metadata["pairing_strategy"] = "swin"
         return ReconstructionJob(
             mode=rec_mode,
-            backend_name=self._multi_view_backend,
             image_uris=[f.uri for f in handoff_frames],
             frames=handoff_frames,
             metadata=metadata,

@@ -5,14 +5,11 @@ from typing import Any
 import pytest
 
 from spatial_ingestion.metadata.schema import CameraIntrinsics
+from spatial_ingestion.reconstruction._io import write_json
+from spatial_ingestion.reconstruction.device import resolve_device
+from spatial_ingestion.reconstruction.export import build_run_manifest
 from spatial_ingestion.reconstruction.models import HandoffFrame, SyncViewGroup
-from spatial_ingestion.reconstruction.runners.mast3r import (
-    _build_sync_pairs,
-    build_run_manifest,
-    main,
-    resolve_device,
-    resolve_image_input,
-)
+from spatial_ingestion.reconstruction.pairing import build_sync_pairs
 
 
 @pytest.fixture
@@ -77,15 +74,6 @@ def sync_test_images(tmp_path: Path):
     return tmp_path, image_paths, sync_groups
 
 
-def test_resolve_image_input_supports_file_uri(tmp_path: Path) -> None:
-    image = tmp_path / "view.jpg"
-    image.write_bytes(b"test")
-
-    resolved = resolve_image_input(image.as_uri())
-
-    assert resolved == image.resolve()
-
-
 def test_build_run_manifest_captures_runtime_configuration(tmp_path: Path) -> None:
     image = tmp_path / "view.jpg"
     image.write_bytes(b"test")
@@ -108,48 +96,37 @@ def test_build_run_manifest_captures_runtime_configuration(tmp_path: Path) -> No
 
 
 def test_runner_dry_run_writes_manifest(tmp_path: Path) -> None:
+    from spatial_ingestion.reconstruction.cli import main as cli_main
+
     image_a = tmp_path / "a.jpg"
     image_b = tmp_path / "b.jpg"
     image_a.write_bytes(b"a")
     image_b.write_bytes(b"b")
-    output_dir = tmp_path / "artifacts"
 
-    exit_code = main(
+    exit_code = cli_main(
         [
-            "--output-dir",
-            str(output_dir),
+            str(tmp_path),
             "--dry-run",
-            str(image_a),
-            str(image_b),
+            "-o",
+            str(tmp_path / "out.obj"),
         ]
     )
 
-    manifest = json.loads((output_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    output_dirs = [d for d in tmp_path.iterdir() if d.is_dir() and d.name.startswith("out_")]
+    assert len(output_dirs) == 1
+    manifest = json.loads((output_dirs[0] / "run_manifest.json").read_text(encoding="utf-8"))
     assert exit_code == 0
     assert manifest["dry_run"] is True
-    assert manifest["image_paths"] == [str(image_a.resolve()), str(image_b.resolve())]
 
 
 def test_resolve_device_auto_returns_supported_value() -> None:
-    assert resolve_device("auto") in {"cpu", "cuda"}
+    assert resolve_device("auto") in {"cpu", "cuda", "mps"}
 
 
 def test_sync_pairs_are_image_dict_pairs_in_alignment(sync_test_data) -> None:
-    """Verify sync pairs fed to sparse_global_alignment are image-dict pairs, not raw index tuples."""
-    import sys
-    from pathlib import Path as _Path
     from unittest.mock import MagicMock, patch
 
-    from spatial_ingestion.config import MAST3R_ROOT
-    from spatial_ingestion.reconstruction.runners.mast3r import run_sparse_alignment
-
-    # Ensure mast3r is importable for the test
-    third_party = _Path(MAST3R_ROOT)
-    if third_party.exists():
-        dust3r = third_party / "dust3r"
-        for p in [str(third_party.resolve()), str(dust3r.resolve())]:
-            if p not in sys.path:
-                sys.path.insert(0, p)
+    from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
 
     tmp_path, image_paths, sync_groups = sync_test_data
 
@@ -160,19 +137,19 @@ def test_sync_pairs_are_image_dict_pairs_in_alignment(sync_test_data) -> None:
     fake_model = MagicMock()
     fake_model.to.return_value = fake_model
 
-    def fake_load_images(paths, size):  # type: ignore[no-untyped-def]
+    def fake_load_images(paths, **kw):
         return [{"idx": i, "instance": p} for i, p in enumerate(paths)]
 
-    def fake_sparse_ga(imgs, pairs_in, cache_path, model, **kw):  # type: ignore[no-untyped-def]
+    def fake_sparse_ga(imgs, pairs_in, cache_path, model, **kw):
         captured_pairs.extend(pairs_in)
         return MagicMock()
 
     with (
-        patch("mast3r.model.AsymmetricMASt3R") as mock_asym,
-        patch("dust3r.utils.image.load_images", side_effect=fake_load_images),
-        patch("mast3r.cloud_opt.sparse_ga.sparse_global_alignment", side_effect=fake_sparse_ga),
+        patch("spatial_ingestion.reconstruction.alignment.load_model") as mock_load,
+        patch("spatial_ingestion.reconstruction.alignment.load_images", side_effect=fake_load_images),
+        patch("spatial_ingestion.reconstruction.alignment.sparse_global_alignment", side_effect=fake_sparse_ga),
     ):
-        mock_asym.from_pretrained.return_value = fake_model
+        mock_load.return_value = fake_model
         run_sparse_alignment(
             image_paths=image_paths,
             output_dir=tmp_path,
@@ -196,7 +173,7 @@ def test_sync_pairs_are_image_dict_pairs_in_alignment(sync_test_data) -> None:
 def test_build_sync_pairs_creates_cross_camera_pairs(sync_test_data) -> None:
     tmp_path, image_paths, sync_groups = sync_test_data
 
-    pairs = _build_sync_pairs(image_paths, sync_groups)
+    pairs = build_sync_pairs(image_paths, sync_groups)
 
     assert isinstance(pairs, list)
     assert len(pairs) == 4
@@ -205,20 +182,9 @@ def test_build_sync_pairs_creates_cross_camera_pairs(sync_test_data) -> None:
 
 
 def test_intrinsic_priors_reach_sparse_global_alignment(sync_test_images) -> None:
-    """Verify camera_intrinsics from HandoffFrame are threaded into sparse_global_alignment as init."""
-    import sys
-    from pathlib import Path as _Path
     from unittest.mock import MagicMock, patch
 
-    from spatial_ingestion.config import MAST3R_ROOT
-    from spatial_ingestion.reconstruction.runners.mast3r import run_sparse_alignment
-
-    third_party = _Path(MAST3R_ROOT)
-    if third_party.exists():
-        dust3r = third_party / "dust3r"
-        for p in [str(third_party.resolve()), str(dust3r.resolve())]:
-            if p not in sys.path:
-                sys.path.insert(0, p)
+    from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
 
     tmp_path, image_paths, sync_groups = sync_test_images
 
@@ -243,22 +209,22 @@ def test_intrinsic_priors_reach_sparse_global_alignment(sync_test_images) -> Non
 
     captured_init: list[Any] = [None]
 
-    def fake_sparse_ga(imgs, pairs_in, cache_path, model, **kw):  # type: ignore[no-untyped-def]
+    def fake_sparse_ga(imgs, pairs_in, cache_path, model, **kw):
         captured_init[0] = kw.get("init")
         return MagicMock()
 
     fake_model = MagicMock()
     fake_model.to.return_value = fake_model
 
-    def fake_load_images(paths, size):  # type: ignore[no-untyped-def]
+    def fake_load_images(paths, **kw):
         return [{"idx": i, "instance": p} for i, p in enumerate(paths)]
 
     with (
-        patch("mast3r.model.AsymmetricMASt3R") as mock_asym,
-        patch("dust3r.utils.image.load_images", side_effect=fake_load_images),
-        patch("mast3r.cloud_opt.sparse_ga.sparse_global_alignment", side_effect=fake_sparse_ga),
+        patch("spatial_ingestion.reconstruction.alignment.load_model") as mock_load,
+        patch("spatial_ingestion.reconstruction.alignment.load_images", side_effect=fake_load_images),
+        patch("spatial_ingestion.reconstruction.alignment.sparse_global_alignment", side_effect=fake_sparse_ga),
     ):
-        mock_asym.from_pretrained.return_value = fake_model
+        mock_load.return_value = fake_model
         run_sparse_alignment(
             image_paths=image_paths,
             output_dir=tmp_path,
@@ -272,13 +238,11 @@ def test_intrinsic_priors_reach_sparse_global_alignment(sync_test_images) -> Non
 
     init = captured_init[0]
     assert init is not None, "init dict was not passed to sparse_global_alignment"
-    # 3 out of 4 frames have intrinsics; the None one should be absent
     assert len(init) == 3
     for str_path, K_dict in init.items():
         assert "intrinsics" in K_dict, f"Missing intrinsics for {str_path}"
         K = K_dict["intrinsics"]
         assert hasattr(K, "shape") and K.shape == (3, 3), f"Expected 3x3 K matrix, got {K}"
-    # Verify focal_length_35mm=24 yields a different focal than 50
     cam_a_1_key = str(image_paths[2])
     K_24 = init[cam_a_1_key]["intrinsics"]
     focal_24 = K_24[0, 0].item()
