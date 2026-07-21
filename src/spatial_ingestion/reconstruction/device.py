@@ -4,6 +4,8 @@ import logging
 
 import numpy as np
 
+from spatial_ingestion.reconstruction.config import MAST3R_COMMIT
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,4 +72,5 @@ def reproducibility_metadata() -> dict[str, object]:
         meta["numpy_version"] = np.__version__
     except AttributeError:
         pass
+    meta["mast3r_commit"] = MAST3R_COMMIT
     return meta
