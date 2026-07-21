@@ -7,6 +7,17 @@ from pydantic import BaseModel, Field
 from spatial_ingestion.metadata.schema import CameraIntrinsics
 
 
+class Mast3rRunParams(BaseModel):
+    model_name: str = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
+    device: str = "auto"
+    image_size: int = 512
+    pairing_strategy: str = "complete"
+    tsdf_thresh: float = 0
+    min_conf_thr: float = 2.0
+    seed: int | None = None
+    dry_run: bool = False
+
+
 class GenerationMode(str, Enum):
     SINGLE_VIEW = "single_view"
     MULTI_VIEW = "multi_view"
@@ -58,5 +69,6 @@ class ReconstructionJob(BaseModel):
     image_uris: list[str]
     frames: list[HandoffFrame] = Field(default_factory=list)
     sync_view_groups: list[SyncViewGroup] = Field(default_factory=list)
+    output_path: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)

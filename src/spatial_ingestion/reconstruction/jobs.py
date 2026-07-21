@@ -23,55 +23,50 @@ class ReconstructionJobBuilder:
         if mode == GenerationMode.SINGLE_VIEW:
             raise ValueError(f"{mode.value} reconstruction is not implemented yet")
 
-        if mode == GenerationMode.MULTI_VIEW:
-            frames = self._ordered_frames(payload.frames)
-            handoff_frames = self._cap_frames([_to_handoff_frame(f) for f in frames])
-            metadata: dict[str, object] = {
-                "source_type": payload.source_type.value,
-                "track": payload.track.value,
-            }
-            if len(payload.frames) > SWIN_PAIRING_THRESHOLD:
-                metadata["pairing_strategy"] = "swin"
-            return ReconstructionJob(
-                mode=ReconstructionMode.MULTI_VIEW,
-                backend_name=self._multi_view_backend,
-                image_uris=[f.uri for f in handoff_frames],
-                frames=handoff_frames,
-                metadata=metadata,
-            )
+        base_metadata: dict[str, object] = {
+            "source_type": payload.source_type.value,
+            "track": payload.track.value,
+            "resolution": payload.resolution,
+            "frame_count": payload.frame_count,
+            "compute_priority_score": payload.compute_priority_score,
+        }
 
-        if mode == GenerationMode.VIDEO_SEQUENCE:
-            frames = self._ordered_frames(payload.frames)
-            handoff_frames = self._cap_frames([_to_handoff_frame(f) for f in frames])
-            return ReconstructionJob(
-                mode=ReconstructionMode.VIDEO_SEQUENCE,
-                backend_name=self._multi_view_backend,
-                image_uris=[f.uri for f in handoff_frames],
-                frames=handoff_frames,
-                metadata={
-                    "source_type": payload.source_type.value,
-                    "track": payload.track.value,
-                    "pairing_strategy": "swin",
-                },
-            )
+        _MODE_MAP = {
+            GenerationMode.MULTI_VIEW: (ReconstructionMode.MULTI_VIEW, None),
+            GenerationMode.VIDEO_SEQUENCE: (ReconstructionMode.VIDEO_SEQUENCE, "swin"),
+            GenerationMode.SYNCHRONIZED_VIEWS: (ReconstructionMode.SYNCHRONIZED_VIEWS, None),
+        }
+        rec_mode, pairing_default = _MODE_MAP[mode]
 
         if mode == GenerationMode.SYNCHRONIZED_VIEWS:
             sync_groups = _build_sync_view_groups(payload)
-            sync_frames = self._cap_frames(_flatten_sync_groups(sync_groups))
+            sync_groups = self._cap_sync_groups(sync_groups)
+            sync_frames = _flatten_sync_groups(sync_groups)
+            metadata = dict(base_metadata)
+            metadata["sync_group_id"] = payload.sync_group_id
             return ReconstructionJob(
-                mode=ReconstructionMode.SYNCHRONIZED_VIEWS,
+                mode=rec_mode,
                 backend_name=self._multi_view_backend,
                 image_uris=[f.uri for f in sync_frames],
                 frames=sync_frames,
                 sync_view_groups=sync_groups,
-                metadata={
-                    "source_type": payload.source_type.value,
-                    "track": payload.track.value,
-                    "sync_group_id": payload.sync_group_id,
-                },
+                metadata=metadata,
             )
 
-        raise ValueError(f"Unsupported source type: {payload.source_type}")
+        frames = self._ordered_frames(payload.frames)
+        handoff_frames = self._cap_frames([_to_handoff_frame(f) for f in frames])
+        metadata = dict(base_metadata)
+        if pairing_default:
+            metadata["pairing_strategy"] = pairing_default
+        elif len(payload.frames) > SWIN_PAIRING_THRESHOLD:
+            metadata["pairing_strategy"] = "swin"
+        return ReconstructionJob(
+            mode=rec_mode,
+            backend_name=self._multi_view_backend,
+            image_uris=[f.uri for f in handoff_frames],
+            frames=handoff_frames,
+            metadata=metadata,
+        )
 
     @staticmethod
     def _mode_for_source(source_type: SourceType) -> GenerationMode:
@@ -101,6 +96,21 @@ class ReconstructionJobBuilder:
         )
         return sorted_frames[:MAX_RECONSTRUCTION_FRAMES]
 
+    @staticmethod
+    def _cap_sync_groups(groups: list[SyncViewGroup]) -> list[SyncViewGroup]:
+        if not groups:
+            return groups
+        avg_cameras = sum(len(g.frames_by_source) for g in groups) / len(groups)
+        max_groups = max(1, int(MAX_RECONSTRUCTION_FRAMES / avg_cameras))
+        if len(groups) <= max_groups:
+            return groups
+        scored = sorted(
+            groups,
+            key=_group_motion_score,
+            reverse=True,
+        )
+        return scored[:max_groups]
+
 
 def _to_handoff_frame(frame: FrameReference) -> HandoffFrame:
     if not frame.uri:
@@ -119,16 +129,29 @@ def _to_handoff_frame(frame: FrameReference) -> HandoffFrame:
 
 
 def _flatten_sync_groups(sync_view_groups: list[SyncViewGroup]) -> list[HandoffFrame]:
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     frames: list[HandoffFrame] = []
     for group in sync_view_groups:
         for source_id in sorted(group.frames_by_source):
             frame = group.frames_by_source[source_id]
-            if frame.frame_id in seen:
+            key = (source_id or "", frame.frame_id)
+            if key in seen:
                 continue
-            seen.add(frame.frame_id)
+            seen.add(key)
             frames.append(frame)
     return frames
+
+
+def _group_motion_score(group: SyncViewGroup) -> tuple[float, int]:
+    best = float("-inf")
+    best_index = 0
+    for source_id in sorted(group.frames_by_source):
+        frame = group.frames_by_source[source_id]
+        score = frame.motion_score if frame.motion_score is not None else float("-inf")
+        if score > best or (score == best and frame.index > best_index):
+            best = score
+            best_index = frame.index
+    return (best, best_index)
 
 
 def _build_sync_view_groups(payload: UnifiedSpatialIngestionSchema) -> list[SyncViewGroup]:

@@ -91,8 +91,7 @@ def uri_to_path(uri: str) -> Path:
 
 
 def uri_to_path_or_none(uri: str) -> Path | None:
-    parsed = urlparse(uri)
-    if parsed.scheme in {"", "file"}:
-        candidate = unquote(parsed.path if parsed.scheme == "file" else uri)
-        return Path(candidate)
-    return Path(uri)
+    try:
+        return uri_to_path(uri)
+    except (ValueError, FileNotFoundError):
+        return None

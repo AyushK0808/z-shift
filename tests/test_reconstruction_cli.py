@@ -30,7 +30,9 @@ def test_cli_dry_run_accepts_a_folder_with_multiple_views(tmp_path: Path) -> Non
     output = tmp_path / "output.obj"
 
     assert main([str(tmp_path), "--dry-run", "-o", str(output)]) == 0
-    assert any(f.name.startswith("run_manifest") for f in tmp_path.iterdir() if f.is_file())
+    job_dirs = [d for d in tmp_path.iterdir() if d.is_dir() and d.name.startswith("output_")]
+    assert len(job_dirs) == 1
+    assert (job_dirs[0] / "run_manifest.json").exists()
 
 
 def test_resolve_output_path_defaults_to_obj_in_reconstruction_dir(tmp_path: Path) -> None:

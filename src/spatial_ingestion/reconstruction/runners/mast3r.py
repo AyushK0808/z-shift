@@ -10,7 +10,8 @@ from urllib.parse import unquote, urlparse
 import numpy as np
 
 from spatial_ingestion.config import MAST3R_ROOT
-from spatial_ingestion.reconstruction.models import SyncViewGroup
+from spatial_ingestion.metadata.schema import CameraIntrinsics
+from spatial_ingestion.reconstruction.models import HandoffFrame, SyncViewGroup
 from spatial_ingestion.reconstruction.runners._io import uri_to_path, write_json
 
 logger = logging.getLogger(__name__)
@@ -75,12 +76,15 @@ def run(
     seed: int | None = None,
     sync_view_groups: list[SyncViewGroup] | None = None,
     dry_run: bool = False,
+    frames: list[HandoffFrame] | None = None,
 ) -> int:
     configure_local_mast3r_imports()
     output_dir.mkdir(parents=True, exist_ok=True)
     if output_path is None:
         output_path = output_dir / "mesh.obj"
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    device = resolve_device(device)
 
     if seed is not None:
         _set_seed(seed)
@@ -100,6 +104,7 @@ def run(
         min_conf_thr=min_conf_thr,
         seed=seed,
         dry_run=dry_run,
+        sync_view_groups=sync_view_groups,
     )
 
     if dry_run:
@@ -114,6 +119,7 @@ def run(
         image_size=image_size,
         pairing_strategy=pairing_strategy,
         sync_view_groups=sync_view_groups,
+        frames=frames,
     )
     tsdf_fell_back = export_sparse_scene_to_path(
         sparse_scene, output_path, output_dir,
@@ -126,7 +132,8 @@ def run(
 
 def resolve_image_input(raw: str) -> Path:
     if _looks_like_windows_drive_path(raw):
-        path = Path(raw).expanduser().resolve()
+        candidate = unquote(raw)
+        path = Path(candidate).expanduser().resolve()
         if not path.exists():
             raise FileNotFoundError(f"Input image not found: {raw}")
         return path
@@ -189,7 +196,7 @@ def _reproducibility_metadata() -> dict[str, Any]:
         meta["torch_version"] = None
     try:
         meta["numpy_version"] = np.__version__
-    except Exception:
+    except AttributeError:
         pass
     return meta
 
@@ -207,6 +214,7 @@ def build_run_manifest(
     min_conf_thr: float = 2.0,
     seed: int | None = None,
     dry_run: bool,
+    sync_view_groups: list[SyncViewGroup] | None = None,
 ) -> dict[str, Any]:
     manifest: dict[str, Any] = {
         "backend": "mast3r",
@@ -219,8 +227,12 @@ def build_run_manifest(
         "seed": seed,
         "dry_run": dry_run,
         "image_paths": [str(path) for path in image_paths],
+        "output_dir": str(output_dir),
         "output_path": str(output_path),
     }
+    if sync_view_groups:
+        manifest["sync_pairing_enabled"] = True
+        manifest["sync_group_count"] = len(sync_view_groups)
     manifest["reproducibility"] = _reproducibility_metadata()
     return manifest
 
@@ -230,7 +242,12 @@ def _build_sync_pairs(
     sync_view_groups: list[SyncViewGroup],
 ) -> list[tuple[int, int]]:
     """Build cross-camera pairs within each sync group."""
-    stem_to_idx = {p.stem: i for i, p in enumerate(image_paths)}
+    stem_to_idx: dict[str, int] = {}
+    for i, p in enumerate(image_paths):
+        s = p.stem
+        if s in stem_to_idx:
+            logger.warning("Duplicate stem '%s' at index %d conflicts with index %d", s, i, stem_to_idx[s])
+        stem_to_idx.setdefault(s, i)
 
     pairs: list[tuple[int, int]] = []
     seen: set[tuple[int, int]] = set()
@@ -257,6 +274,27 @@ def _build_sync_pairs(
     return pairs
 
 
+def _intrinsics_to_k_matrix(intrinsics: CameraIntrinsics, img_path: Path) -> Any | None:
+    """Convert EXIF-derived CameraIntrinsics into a 3x3 K-matrix prior for MASt3R."""
+    if intrinsics.focal_length_35mm is None:
+        return None
+    try:
+        from PIL import Image
+        with Image.open(img_path) as pil_img:
+            w, h = pil_img.size
+    except Exception:
+        return None
+    # 35 mm film frame is 36 × 24 mm
+    focal_px = intrinsics.focal_length_35mm / 36.0 * max(w, h)
+    cx, cy = w / 2, h / 2
+    import torch
+    K = torch.eye(3)
+    K[0, 0] = K[1, 1] = focal_px
+    K[0, 2] = cx
+    K[1, 2] = cy
+    return K
+
+
 def run_sparse_alignment(
     *,
     image_paths: list[Path],
@@ -266,6 +304,7 @@ def run_sparse_alignment(
     image_size: int,
     pairing_strategy: str,
     sync_view_groups: list[SyncViewGroup] | None = None,
+    frames: list[HandoffFrame] | None = None,
 ) -> Any:
     try:
         import mast3r.utils.path_to_dust3r  # noqa: F401
@@ -283,20 +322,31 @@ def run_sparse_alignment(
     images = load_images([str(path) for path in image_paths], size=image_size)
 
     if sync_view_groups:
-        pairs = _build_sync_pairs(image_paths, sync_view_groups)
-        if not pairs:
+        idx_pairs = _build_sync_pairs(image_paths, sync_view_groups)
+        if idx_pairs:
+            pairs = [(images[a], images[b]) for a, b in idx_pairs]
+        else:
             logger.warning("Sync-aware pairing produced no pairs, falling back to %s", pairing_strategy)
             pairs = make_pairs(images, scene_graph=pairing_strategy, symmetrize=True)
     else:
         pairs = make_pairs(images, scene_graph=pairing_strategy, symmetrize=True)
 
     cache_path = str((output_dir / "cache").resolve())
+    str_paths = [str(path) for path in image_paths]
+    init: dict[str, dict[str, Any]] = {}
+    if frames:
+        for img_path, frame in zip(image_paths, frames):
+            if frame.camera_intrinsics:
+                K = _intrinsics_to_k_matrix(frame.camera_intrinsics, img_path)
+                if K is not None:
+                    init[str(img_path)] = {"intrinsics": K}
     return sparse_global_alignment(
-        [str(path) for path in image_paths],
+        str_paths,
         pairs,
         cache_path=cache_path,
         model=model,
         device=device,
+        init=init,
     )
 
 
@@ -354,8 +404,7 @@ def export_sparse_scene_to_path(
         meshes.append(pts3d_to_trimesh(imgs[i], pts3d_i, msk_i))
 
     combined = cat_meshes(meshes)
-    vertex_colors = np.concatenate([img.reshape(-1, 3) for img in imgs])
-    vertex_colors = (np.clip(vertex_colors, 0, 1) * 255).astype(np.uint8)
+    vertex_colors = (np.clip(combined['colors'], 0, 1) * 255).astype(np.uint8)
     mesh = trimesh.Trimesh(
         vertices=combined['vertices'],
         faces=combined['faces'],

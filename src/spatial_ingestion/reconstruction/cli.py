@@ -53,6 +53,8 @@ def main(argv: list[str] | None = None) -> int:
 
     from spatial_ingestion.reconstruction.runners.mast3r import resolve_device
 
+    output_path = resolve_output_path(input_path, args.output)
+
     metadata: dict[str, object] = {
         "model_name": args.model,
         "device": resolve_device(args.device),
@@ -63,13 +65,12 @@ def main(argv: list[str] | None = None) -> int:
         "seed": args.seed,
         "dry_run": args.dry_run,
     }
-    if args.output:
-        metadata["output_path"] = str(Path(args.output).expanduser().resolve())
 
     job = ReconstructionJob(
         mode=ReconstructionMode.MULTI_VIEW,
         backend_name="mast3r",
         image_uris=[str(p) for p in image_paths],
+        output_path=str(output_path),
         metadata=metadata,
     )
 

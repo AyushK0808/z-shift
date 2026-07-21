@@ -9,7 +9,7 @@ from spatial_ingestion.refinement import MeshCleaningConfig, MeshValidationError
 
 def _make_colored_sphere_with_hole() -> pv.PolyData:
     sphere = pv.Sphere(theta_resolution=32, phi_resolution=32)
-    holey = sphere.clip(normal=(0.0, 0.0, 1.0), origin=(0.0, 0.0, 0.45)).extract_surface()
+    holey = sphere.clip(normal=(0.0, 0.0, 1.0), origin=(0.0, 0.0, 0.45)).extract_surface(algorithm=None)
     colors = np.zeros((holey.n_points, 3), dtype=np.uint8)
     colors[:, 0] = np.linspace(40, 220, holey.n_points, dtype=np.uint8)
     colors[:, 1] = 80
@@ -22,13 +22,13 @@ def _make_colored_sphere_with_hole() -> pv.PolyData:
 def _make_disjoint_sheets() -> pv.PolyData:
     first = pv.Plane(i_resolution=4, j_resolution=4, direction=(0, 0, 1), center=(0.0, 0.0, 0.0))
     second = pv.Plane(i_resolution=4, j_resolution=4, direction=(0, 0, 1), center=(3.0, 0.0, 0.0))
-    return first.merge(second, merge_points=False).extract_surface()
+    return first.merge(second, merge_points=False).extract_surface(algorithm=None)
 
 
 def _make_room_like_mesh() -> pv.PolyData:
     wall = pv.Plane(i_resolution=8, j_resolution=8, direction=(0, 0, 1), center=(0.0, 0.0, 0.0))
-    debris = pv.Cube(center=(4.0, 0.0, 0.0), x_length=0.05, y_length=0.05, z_length=0.05).extract_surface()
-    return wall.merge(debris, merge_points=False).extract_surface()
+    debris = pv.Cube(center=(4.0, 0.0, 0.0), x_length=0.05, y_length=0.05, z_length=0.05).extract_surface(algorithm=None)
+    return wall.merge(debris, merge_points=False).extract_surface(algorithm=None)
 
 
 def test_object_mode_closes_holes_and_preserves_colors() -> None:
