@@ -62,17 +62,20 @@ def _samples_to_mesh(
 
     mask = [c > min_conf_thr for c in confs]
     meshes = []
+    per_view_vertex_colors: list[np.ndarray] = []
     for i in range(len(imgs)):
         pts3d_i = pts3d[i].reshape(imgs[i].shape)
         msk_i = mask[i] & np.isfinite(pts3d_i.sum(axis=-1))
         meshes.append(pts3d_to_trimesh(imgs[i], pts3d_i, msk_i))
+        per_view_vertex_colors.append(imgs[i].reshape(-1, 3))
 
     combined = cat_meshes(meshes)
-    vertex_colors = (np.clip(combined["colors"], 0, 1) * 255).astype(np.uint8)
+    vertex_colors = np.concatenate(per_view_vertex_colors)
+    vertex_colors_uint8 = (np.clip(vertex_colors, 0, 1) * 255).astype(np.uint8)
     return trimesh.Trimesh(
         vertices=combined["vertices"],
         faces=combined["faces"],
-        vertex_colors=vertex_colors,
+        vertex_colors=vertex_colors_uint8,
     )
 
 
@@ -102,8 +105,7 @@ def export_scene_to_mesh(
     else:
         pts3d, _, confs = to_numpy(scene.get_dense_pts3d(clean_depth=True))
 
-    conf_mask = [c > min_conf_thr for c in confs]
-    mesh = _samples_to_mesh(imgs, pts3d, conf_mask, min_conf_thr)
+    mesh = _samples_to_mesh(imgs, pts3d, confs, min_conf_thr)
 
     fmt = output_path.suffix.lower()
     if fmt not in _SUPPORTED_FORMATS:
