@@ -21,14 +21,6 @@ except ImportError:
     dust3r_load_images = None  # type: ignore[assignment]
     _DUST3R_LOAD_AVAILABLE = False
 
-try:
-    from dust3r.inference import inference as dust3r_inference
-    _DUST3R_INFERENCE_AVAILABLE = True
-except ImportError:
-    dust3r_inference = None  # type: ignore[assignment]
-    _DUST3R_INFERENCE_AVAILABLE = False
-
-
 def load_model(model_name: str, device: str) -> object:
     cached = _model_cache.get(model_name)
     if cached is not None:
@@ -54,18 +46,3 @@ def load_images(image_paths: list[Path], image_size: int = 512) -> list[dict]:
         )
 
     return dust3r_load_images([str(p) for p in image_paths], size=image_size)
-
-
-def predict_pair(
-    model: object,
-    img1: dict,
-    img2: dict,
-    device: str,
-) -> tuple[dict, dict, dict, dict]:
-    if not _DUST3R_INFERENCE_AVAILABLE:
-        raise RuntimeError("MASt3R (dust3r) is not installed.")
-
-    output = dust3r_inference([(img1, img2)], model, device, batch_size=1, verbose=False)
-    view1, pred1 = output["view1"], output["pred1"]
-    view2, pred2 = output["view2"], output["pred2"]
-    return view1, pred1, view2, pred2

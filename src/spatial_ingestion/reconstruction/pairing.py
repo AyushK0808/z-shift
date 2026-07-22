@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 def build_pairs(
     images: list[dict],
     strategy: str = "complete",
-    window_size: int = 7,
 ) -> list[tuple[dict, dict]]:
     try:
         from dust3r.image_pairs import make_pairs

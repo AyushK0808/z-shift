@@ -51,7 +51,7 @@ def build_run_manifest(
     return manifest
 
 
-def _samples_to_mesh(
+def _dense_points_to_mesh(
     imgs: list[np.ndarray],
     pts3d: list[np.ndarray],
     confs: list[np.ndarray],
@@ -105,7 +105,7 @@ def export_scene_to_mesh(
     else:
         pts3d, _, confs = to_numpy(scene.get_dense_pts3d(clean_depth=True))
 
-    mesh = _samples_to_mesh(imgs, pts3d, confs, min_conf_thr)
+    mesh = _dense_points_to_mesh(imgs, pts3d, confs, min_conf_thr)
 
     fmt = output_path.suffix.lower()
     if fmt not in _SUPPORTED_FORMATS:
@@ -118,7 +118,7 @@ def export_scene_to_mesh(
         fmt = ".obj"
 
     if fmt == ".ply":
-        mesh.export(str(output_path), encoding="ascii")
+        mesh.export(str(output_path))
     else:
         mesh.export(str(output_path))
 

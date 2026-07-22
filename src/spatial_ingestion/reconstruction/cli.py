@@ -6,7 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
-from spatial_ingestion.reconstruction.models import ReconstructionJob, ReconstructionMode
+from spatial_ingestion.reconstruction.models import Mast3rRunParams, ReconstructionJob, ReconstructionMode
 from spatial_ingestion.reconstruction.pipeline import run as pipeline_run
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
@@ -58,22 +58,21 @@ def main(argv: list[str] | None = None) -> int:
 
     output_path = str(resolve_output_path(input_path, args.output))
 
-    metadata: dict[str, object] = {
-        "model_name": args.model,
-        "device": args.device,
-        "image_size": args.image_size,
-        "pairing_strategy": args.pairing_strategy,
-        "tsdf_thresh": args.tsdf_thresh,
-        "min_conf_thr": args.min_conf_thr,
-        "seed": args.seed,
-        "dry_run": args.dry_run,
-    }
-
     job = ReconstructionJob(
         mode=ReconstructionMode.MULTI_VIEW,
+        label=input_path.name,
         image_uris=[str(p) for p in image_paths],
         output_path=str(output_path),
-        metadata=metadata,
+        metadata=Mast3rRunParams(
+            model_name=args.model,
+            device=args.device,
+            image_size=args.image_size,
+            pairing_strategy=args.pairing_strategy,
+            tsdf_thresh=args.tsdf_thresh,
+            min_conf_thr=args.min_conf_thr,
+            seed=args.seed,
+            dry_run=args.dry_run,
+        ).model_dump(),
     )
 
     return pipeline_run(job)

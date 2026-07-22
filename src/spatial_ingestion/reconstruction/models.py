@@ -55,6 +55,7 @@ class ReconstructionJob(BaseModel):
     mode: ReconstructionMode
     image_uris: list[str]
     job_id: str = Field(default_factory=lambda: uuid4().hex[:12])
+    label: str = ""
     backend_name: str = "mast3r"
     frames: list[HandoffFrame] = Field(default_factory=list)
     sync_view_groups: list[SyncViewGroup] = Field(default_factory=list)
