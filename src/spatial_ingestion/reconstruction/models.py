@@ -41,6 +41,7 @@ class SyncViewGroup(BaseModel):
 
 
 class Mast3rRunParams(BaseModel):
+    model_config = {"protected_namespaces": ()}
     model_name: str = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
     device: str = "auto"
     image_size: int = 512
