@@ -3,17 +3,18 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from pathlib import Path
-
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
 from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
 from spatial_ingestion.reconstruction.config import (
     DEFAULT_DEVICE,
     DEFAULT_IMAGE_SIZE,
+    DEFAULT_MATCHING_CONF_THR,
     DEFAULT_MIN_CONF_THR,
     DEFAULT_MODEL_NAME,
     DEFAULT_PAIRING_STRATEGY,
+    DEFAULT_SHARED_INTRINSICS,
     DEFAULT_TSDF_THRESH,
+    DEFAULT_VERBOSE,
 )
 from spatial_ingestion.reconstruction._io import write_json
 from spatial_ingestion.reconstruction.device import resolve_device, set_seed
@@ -57,10 +58,8 @@ def run(job: ReconstructionJob) -> int:
     sparse_scene = run_sparse_alignment(
         image_paths=image_paths,
         output_dir=output_dir,
-        model_name=params.model_name,
+        params=params,
         device=device,
-        image_size=params.image_size,
-        pairing_strategy=params.pairing_strategy,
         sync_view_groups=job.sync_view_groups or None,
         frames=job.frames or None,
     )
@@ -86,6 +85,9 @@ def _resolve_params(job: ReconstructionJob) -> Mast3rRunParams:
         pairing_strategy=md.get("pairing_strategy", DEFAULT_PAIRING_STRATEGY),
         tsdf_thresh=md.get("tsdf_thresh", DEFAULT_TSDF_THRESH),
         min_conf_thr=md.get("min_conf_thr", DEFAULT_MIN_CONF_THR),
+        matching_conf_thr=md.get("matching_conf_thr", DEFAULT_MATCHING_CONF_THR),
+        shared_intrinsics=md.get("shared_intrinsics", DEFAULT_SHARED_INTRINSICS),
+        verbose=md.get("verbose", DEFAULT_VERBOSE),
         seed=md.get("seed", None),
         dry_run=md.get("dry_run", False),
     )

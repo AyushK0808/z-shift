@@ -6,11 +6,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
+from spatial_ingestion.reconstruction.config import DEFAULT_MODEL_NAME
 from spatial_ingestion.reconstruction.models import Mast3rRunParams, ReconstructionJob, ReconstructionMode
 from spatial_ingestion.reconstruction.pipeline import run as pipeline_run
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
-DEFAULT_MODEL = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif"}
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +25,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output path (.obj, .glb, .ply). .glb and .ply have proper vertex color support.",
     )
     parser.add_argument("--device", default="auto", help="cuda, cpu, mps, or auto")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="MASt3R model id or local checkpoint path")
+    parser.add_argument("--model", default=DEFAULT_MODEL_NAME, help="MASt3R model id or local checkpoint path")
     parser.add_argument(
         "--pairing-strategy",
         default="complete",
-        choices=["complete", "swin"],
+        choices=["complete", "swin", "logwin", "oneref"],
         help="MASt3R pairing strategy",
     )
     parser.add_argument("--image-size", type=int, default=512, help="MASt3R image size")
@@ -41,6 +41,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--min-conf-thr", type=float, default=1.5,
         help="Minimum confidence threshold for point filtering",
     )
+    parser.add_argument(
+        "--matching-conf-thr", type=float, default=5.0,
+        help="Confidence threshold for matching pairs",
+    )
+    parser.add_argument(
+        "--shared-intrinsics", action="store_true",
+        help="Assume all images share the same camera intrinsics",
+    )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose MASt3R output")
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
     parser.add_argument("--dry-run", action="store_true", help="Validate routing without running models")
     return parser
@@ -70,6 +79,9 @@ def main(argv: list[str] | None = None) -> int:
             pairing_strategy=args.pairing_strategy,
             tsdf_thresh=args.tsdf_thresh,
             min_conf_thr=args.min_conf_thr,
+            matching_conf_thr=args.matching_conf_thr,
+            shared_intrinsics=args.shared_intrinsics,
+            verbose=args.verbose,
             seed=args.seed,
             dry_run=args.dry_run,
         ).model_dump(),

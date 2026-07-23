@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from spatial_ingestion.reconstruction.inference import load_images, load_model
-from spatial_ingestion.reconstruction.models import HandoffFrame, SyncViewGroup
+from spatial_ingestion.reconstruction.models import HandoffFrame, Mast3rRunParams, SyncViewGroup
 from spatial_ingestion.reconstruction.pairing import (
     build_pairs,
     build_sync_pairs,
@@ -23,10 +23,8 @@ def run_sparse_alignment(
     *,
     image_paths: list[Path],
     output_dir: Path,
-    model_name: str,
+    params: Mast3rRunParams,
     device: str,
-    image_size: int = 512,
-    pairing_strategy: str = "complete",
     sync_view_groups: list[SyncViewGroup] | None = None,
     frames: list[HandoffFrame] | None = None,
 ) -> object:
@@ -36,8 +34,8 @@ def run_sparse_alignment(
             "pip install -e third_party/mast3r && pip install -e third_party/mast3r/dust3r"
         )
 
-    model = load_model(model_name, device)
-    images = load_images(image_paths, image_size=image_size)
+    model = load_model(params.model_name, device)
+    images = load_images(image_paths, image_size=params.image_size)
 
     if sync_view_groups:
         idx_pairs = build_sync_pairs(image_paths, sync_view_groups)
@@ -46,11 +44,11 @@ def run_sparse_alignment(
         else:
             logger.warning(
                 "Sync-aware pairing produced no pairs, falling back to %s",
-                pairing_strategy,
+                params.pairing_strategy,
             )
-            pairs = build_pairs(images, strategy=pairing_strategy)
+            pairs = build_pairs(images, strategy=params.pairing_strategy)
     else:
-        pairs = build_pairs(images, strategy=pairing_strategy)
+        pairs = build_pairs(images, strategy=params.pairing_strategy)
 
     cache_path = str((output_dir / "cache").resolve())
     str_paths = [str(path) for path in image_paths]
@@ -69,4 +67,7 @@ def run_sparse_alignment(
         model=model,
         device=device,
         init=init,
+        matching_conf_thr=params.matching_conf_thr,
+        shared_intrinsics=params.shared_intrinsics,
+        verbose=params.verbose,
     )

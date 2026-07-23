@@ -32,6 +32,13 @@ def load_model(model_name: str, device: str) -> object:
             "pip install -e third_party/mast3r"
         )
 
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.backends.cuda.matmul.allow_tf32 = True
+    except (ImportError, AttributeError):
+        pass
+
     model = AsymmetricMASt3R.from_pretrained(model_name).to(device)
     model.eval()
     _model_cache[model_name] = model

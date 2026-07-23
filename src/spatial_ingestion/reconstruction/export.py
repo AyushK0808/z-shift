@@ -6,7 +6,6 @@ from typing import Any
 
 import numpy as np
 
-from spatial_ingestion.reconstruction._io import write_json
 from spatial_ingestion.reconstruction.device import reproducibility_metadata
 from spatial_ingestion.reconstruction.models import SyncViewGroup
 

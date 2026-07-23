@@ -48,6 +48,9 @@ class Mast3rRunParams(BaseModel):
     pairing_strategy: str = "complete"
     tsdf_thresh: float = 0
     min_conf_thr: float = 1.5
+    matching_conf_thr: float = 5.0
+    shared_intrinsics: bool = False
+    verbose: bool = False
     seed: int | None = None
     dry_run: bool = False
 

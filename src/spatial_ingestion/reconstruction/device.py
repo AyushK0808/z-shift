@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-import logging
-
 import numpy as np
 
 from spatial_ingestion.reconstruction.config import MAST3R_COMMIT
-
-logger = logging.getLogger(__name__)
 
 
 def resolve_device(requested: str = "auto") -> str:
@@ -25,22 +21,6 @@ def resolve_device(requested: str = "auto") -> str:
         return "mps"
 
     return "cpu"
-
-
-def memory_summary(device: str) -> str:
-    try:
-        import torch
-    except ImportError:
-        return "unknown"
-
-    if device == "cuda" and torch.cuda.is_available():
-        i = torch.cuda.current_device()
-        free, total = torch.cuda.mem_get_info(i)
-        free_gb = free / 1024**3
-        total_gb = total / 1024**3
-        return f"{total_gb:.1f}GB total, {free_gb:.1f}GB free"
-
-    return "n/a"
 
 
 def set_seed(seed: int) -> None:

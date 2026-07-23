@@ -5,7 +5,6 @@ from typing import Any
 import pytest
 
 from spatial_ingestion.metadata.schema import CameraIntrinsics
-from spatial_ingestion.reconstruction._io import write_json
 from spatial_ingestion.reconstruction.device import resolve_device
 from spatial_ingestion.reconstruction.export import build_run_manifest
 from spatial_ingestion.reconstruction.models import HandoffFrame, SyncViewGroup
@@ -127,6 +126,7 @@ def test_sync_pairs_are_image_dict_pairs_in_alignment(sync_test_data) -> None:
     from unittest.mock import MagicMock, patch
 
     from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
+    from spatial_ingestion.reconstruction.models import Mast3rRunParams
 
     tmp_path, image_paths, sync_groups = sync_test_data
 
@@ -153,10 +153,8 @@ def test_sync_pairs_are_image_dict_pairs_in_alignment(sync_test_data) -> None:
         run_sparse_alignment(
             image_paths=image_paths,
             output_dir=tmp_path,
-            model_name="fake/model",
+            params=Mast3rRunParams(model_name="fake/model", image_size=512, pairing_strategy="complete"),
             device="cpu",
-            image_size=512,
-            pairing_strategy="complete",
             sync_view_groups=sync_groups,
         )
 
@@ -185,6 +183,7 @@ def test_intrinsic_priors_reach_sparse_global_alignment(sync_test_images) -> Non
     from unittest.mock import MagicMock, patch
 
     from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
+    from spatial_ingestion.reconstruction.models import Mast3rRunParams
 
     tmp_path, image_paths, sync_groups = sync_test_images
 
@@ -228,10 +227,8 @@ def test_intrinsic_priors_reach_sparse_global_alignment(sync_test_images) -> Non
         run_sparse_alignment(
             image_paths=image_paths,
             output_dir=tmp_path,
-            model_name="fake/model",
+            params=Mast3rRunParams(model_name="fake/model", image_size=512, pairing_strategy="complete"),
             device="cpu",
-            image_size=512,
-            pairing_strategy="complete",
             sync_view_groups=sync_groups,
             frames=frames,
         )

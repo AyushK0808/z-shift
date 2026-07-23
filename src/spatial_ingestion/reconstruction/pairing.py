@@ -6,7 +6,7 @@ from pathlib import Path
 import torch
 
 from spatial_ingestion.metadata.schema import CameraIntrinsics
-from spatial_ingestion.reconstruction.models import HandoffFrame, SyncViewGroup
+from spatial_ingestion.reconstruction.models import SyncViewGroup
 from spatial_ingestion.reconstruction._io import uri_to_path
 
 logger = logging.getLogger(__name__)
@@ -17,9 +17,9 @@ def build_pairs(
     strategy: str = "complete",
 ) -> list[tuple[dict, dict]]:
     try:
-        from dust3r.image_pairs import make_pairs
+        from mast3r.image_pairs import make_pairs
     except ImportError as exc:
-        raise RuntimeError("MASt3R (dust3r) is not installed.") from exc
+        raise RuntimeError("MASt3R is not installed.") from exc
 
     pairs = make_pairs(images, scene_graph=strategy, symmetrize=True)
     return pairs
