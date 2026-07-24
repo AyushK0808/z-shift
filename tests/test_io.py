@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from spatial_ingestion.reconstruction.runners._io import (
+from spatial_ingestion.reconstruction._io import (
     flatten_rows,
     scale_rgb_to_byte,
     to_array,

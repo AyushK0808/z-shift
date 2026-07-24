@@ -44,6 +44,20 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.ruff.lint]
+ignore = ["E402"]
+
+[tool.ty.environment]
+python-version = "3.11"
+python-platform = "Linux"
+extra-paths = ["third_party/mast3r"]
+
+[tool.ty.src]
+include = ["src", "tests"]
+
+[tool.ty.analysis]
+allowed-unresolved-imports = ["mast3r.**", "dust3r.**"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

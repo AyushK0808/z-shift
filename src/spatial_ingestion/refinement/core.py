@@ -87,7 +87,7 @@ def get_component_pieces(mesh: pv.DataSet) -> List[pv.PolyData]:
         raise MeshProcessingError("split_bodies() returned no components")
     pieces: List[pv.PolyData] = []
     for body in bodies:
-        surface = body.extract_surface()
+        surface = body.extract_surface(algorithm=None)
         if surface.n_cells > 0:
             pieces.append(surface)
     return pieces
@@ -97,7 +97,7 @@ def merge_components(pieces: Sequence[pv.PolyData]) -> pv.PolyData:
     merged = pieces[0].copy(deep=True)
     for piece in pieces[1:]:
         merged = merged.merge(piece, merge_points=False)
-    surface = merged.extract_surface()
+    surface = merged.extract_surface(algorithm=None)
     if surface.n_cells == 0:
         raise MeshProcessingError("Component fusion produced an empty surface")
     return surface
@@ -255,9 +255,11 @@ def clean_mesh(mesh, config: Optional[MeshCleaningConfig] = None, **overrides: A
         is_watertight,
     )
 
-    open_edge_count = topology["boundary_edge_count"] if topology["boundary_edge_count"] is not None else None
+    open_edge_count: int | None = topology["boundary_edge_count"]
     if cfg.verify_watertight:
-        open_edge_count = topology["boundary_edge_count"] + topology["non_manifold_edge_count"]
+        be = topology["boundary_edge_count"] or 0
+        nme = topology["non_manifold_edge_count"] or 0
+        open_edge_count = be + nme
 
     return {
         "mesh": final_mesh,

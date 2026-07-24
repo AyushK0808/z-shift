@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from spatial_ingestion.metadata.schema import (
     FrameReference,
     SourceType,
@@ -6,12 +8,10 @@ from spatial_ingestion.metadata.schema import (
     UnifiedSpatialIngestionSchema,
 )
 from spatial_ingestion.reconstruction import (
-    Mast3rBackend,
-    ReconstructionBackendRegistry,
-    ReconstructionArtifactKind,
     ReconstructionJobBuilder,
     ReconstructionMode,
 )
+from spatial_ingestion.reconstruction.models import ReconstructionJob
 
 
 def test_mast3r_job_builder_maps_image_folder_to_multi_view() -> None:
@@ -118,40 +118,39 @@ def test_mast3r_job_builder_flattens_synchronized_views() -> None:
     assert len(job.sync_view_groups) == 2
 
 
-def test_mast3r_backend_builds_execution_plan() -> None:
-    payload = UnifiedSpatialIngestionSchema(
-        source_type=SourceType.IMAGE_FOLDER,
-        track=Track.BATCH,
-        resolution=(1024, 1024),
-        frame_count=2,
-        is_stream=False,
-        compute_priority_score=0.5,
-        frames=[
-            FrameReference(
-                frame_id="view_0",
-                uri="file:///tmp/view_0.jpg",
-                index=0,
-                source_id="front",
-                resolution=(1024, 1024),
-            ),
-            FrameReference(
-                frame_id="view_1",
-                uri="file:///tmp/view_1.jpg",
-                index=1,
-                source_id="side",
-                resolution=(1024, 1024),
-            ),
-        ],
+def test_pipeline_dry_run(tmp_path: Path) -> None:
+    from spatial_ingestion.reconstruction.pipeline import run as pipeline_run
+
+    image_a = tmp_path / "front.jpg"
+    image_b = tmp_path / "side.jpg"
+    image_a.write_bytes(b"front")
+    image_b.write_bytes(b"side")
+
+    output_path = tmp_path / "artifacts" / "mesh.obj"
+    job = ReconstructionJob(
+        mode=ReconstructionMode.MULTI_VIEW,
+        image_uris=[str(image_a), str(image_b)],
+        output_path=str(output_path),
+        metadata={"dry_run": True},
     )
 
-    job = ReconstructionJobBuilder().build(payload)
-    backend = ReconstructionBackendRegistry([Mast3rBackend()]).resolve_for_job(job)
-    plan = backend.plan(job)
+    exit_code = pipeline_run(job)
 
-    assert plan.backend_name == "mast3r"
-    assert [artifact.kind for artifact in plan.expected_artifacts] == [
-        ReconstructionArtifactKind.POINT_CLOUD,
-        ReconstructionArtifactKind.POSES,
-        ReconstructionArtifactKind.RUN_MANIFEST,
-        ReconstructionArtifactKind.MESH,
-    ]
+    assert exit_code == 0
+    assert (tmp_path / "artifacts" / "run_manifest.json").exists()
+
+
+def test_pipeline_rejects_single_view() -> None:
+    from spatial_ingestion.reconstruction.pipeline import run as pipeline_run
+
+    job = ReconstructionJob(
+        mode=ReconstructionMode.SINGLE_VIEW,
+        image_uris=["file:///tmp/view.jpg"],
+    )
+
+    try:
+        pipeline_run(job)
+    except ValueError as exc:
+        assert "at least two images" in str(exc)
+    else:
+        raise AssertionError("expected single-view to be rejected")
