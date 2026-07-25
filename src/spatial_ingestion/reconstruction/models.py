@@ -41,6 +41,9 @@ class ReconstructionArtifactKind(str, Enum):
     POSES = "poses"
     RUN_MANIFEST = "run_manifest"
     MESH = "mesh"
+    RIGGED_MESH = "rigged_mesh"
+    SKELETON = "skeleton"
+    SKINNING_WEIGHTS = "skinning_weights"
 
 
 class ReconstructionArtifact(BaseModel):
