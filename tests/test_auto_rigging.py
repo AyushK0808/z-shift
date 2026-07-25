@@ -8,6 +8,7 @@ from spatial_ingestion.auto_rigging import (
     ArticulationType,
     AutoRigConfig,
     AutoRiggingPipeline,
+    GltfSkinPayloadBuilder,
 )
 from spatial_ingestion.auto_rigging.cli import main as auto_rig_main
 from spatial_ingestion.auto_rigging.export import RigMetadataExporter
@@ -103,6 +104,24 @@ def test_auto_rigging_cli_runs_on_mesh_file(tmp_path: Path, capsys: pytest.Captu
     captured = capsys.readouterr()
     assert exit_code == 0
     assert '"articulation_type": "biped"' in captured.out
+
+
+def test_gltf_skin_payload_builder_packs_four_influences() -> None:
+    mesh = trimesh.creation.icosphere(subdivisions=1, radius=1.0)
+    result = AutoRiggingPipeline().rig_mesh(
+        mesh,
+        config=AutoRigConfig(articulation_type=ArticulationType.BIPED),
+        export_metadata=False,
+    )
+
+    payload = GltfSkinPayloadBuilder().build(result.rigged_mesh)
+
+    assert payload.joint_names == result.rigged_mesh.skinning.joint_names
+    assert len(payload.joints_0) == result.rigged_mesh.vertex_count
+    assert len(payload.weights_0) == result.rigged_mesh.vertex_count
+    assert all(len(row) == 4 for row in payload.joints_0)
+    assert all(len(row) == 4 for row in payload.weights_0)
+    assert all(sum(row) == pytest.approx(1.0) for row in payload.weights_0)
 
 
 def _path_from_file_uri(uri: str) -> Path:

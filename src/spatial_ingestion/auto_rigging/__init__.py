@@ -9,6 +9,7 @@ from spatial_ingestion.auto_rigging.models import (
     SkinningWeights,
 )
 from spatial_ingestion.auto_rigging.pipeline import AutoRiggingPipeline
+from spatial_ingestion.auto_rigging.gltf import GltfSkinPayload, GltfSkinPayloadBuilder
 
 __all__ = [
     "ArticulationType",
@@ -16,9 +17,10 @@ __all__ = [
     "AutoRigResult",
     "AutoRiggingPipeline",
     "Bone",
+    "GltfSkinPayload",
+    "GltfSkinPayloadBuilder",
     "Joint",
     "RiggedMesh",
     "Skeleton",
     "SkinningWeights",
 ]
-
