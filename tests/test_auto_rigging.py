@@ -9,6 +9,7 @@ from spatial_ingestion.auto_rigging import (
     AutoRigConfig,
     AutoRiggingPipeline,
 )
+from spatial_ingestion.auto_rigging.cli import main as auto_rig_main
 from spatial_ingestion.auto_rigging.export import RigMetadataExporter
 from spatial_ingestion.auto_rigging.skeleton.templates import TemplateSkeletonFitter
 from spatial_ingestion.auto_rigging.skinning.inverse_distance import InverseDistanceSkinner
@@ -91,6 +92,17 @@ def test_reconstruction_artifact_kinds_include_phase5_outputs() -> None:
     assert ReconstructionArtifactKind.RIGGED_MESH.value == "rigged_mesh"
     assert ReconstructionArtifactKind.SKELETON.value == "skeleton"
     assert ReconstructionArtifactKind.SKINNING_WEIGHTS.value == "skinning_weights"
+
+
+def test_auto_rigging_cli_runs_on_mesh_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    mesh_path = tmp_path / "mesh.obj"
+    trimesh.creation.box().export(mesh_path)
+
+    exit_code = auto_rig_main([str(mesh_path), "--articulation", "biped", "--no-export"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert '"articulation_type": "biped"' in captured.out
 
 
 def _path_from_file_uri(uri: str) -> Path:
