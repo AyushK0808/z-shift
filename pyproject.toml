@@ -34,6 +34,7 @@ dependencies = [
 [project.scripts]
 zshift-image-to-3d = "spatial_ingestion.reconstruction.cli:main"
 spatial-ingestion-refine = "spatial_ingestion.refinement.cli:main"
+zshift-final-pipeline = "spatial_ingestion.final_pipeline.cli:main"
 
 [dependency-groups]
 dev = [
@@ -61,3 +62,6 @@ allowed-unresolved-imports = ["mast3r.**", "dust3r.**"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+  "real_pipeline: runs the real Phase 2 MASt3R reconstruction and Phase 3 refinement on user-provided images",
+]
