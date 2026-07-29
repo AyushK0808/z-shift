@@ -44,11 +44,12 @@ class MultiSourceSyncer:
                 nearest = min(
                     frames,
                     key=lambda frame: abs(
-                        ((frame.timestamp_ms or 0.0) + source_offsets.get(source, 0.0))
-                        - anchor_ts
+                        ((frame.timestamp_ms or 0.0) + source_offsets.get(source, 0.0)) - anchor_ts
                     ),
                 )
-                adjusted_offset = ((nearest.timestamp_ms or 0.0) + source_offsets.get(source, 0.0)) - anchor_ts
+                adjusted_offset = (
+                    (nearest.timestamp_ms or 0.0) + source_offsets.get(source, 0.0)
+                ) - anchor_ts
                 if abs(adjusted_offset) <= tolerance_ms:
                     aligned_frames[source] = nearest.index
                     offsets_ms[source] = round(source_offsets.get(source, 0.0), 3)
@@ -84,12 +85,10 @@ class MultiSourceSyncer:
         candidate_frames: list[FrameReference],
     ) -> float:
         anchor_signal = [
-            (frame.timestamp_ms or 0.0, frame.motion_score or 0.0)
-            for frame in anchor_frames
+            (frame.timestamp_ms or 0.0, frame.motion_score or 0.0) for frame in anchor_frames
         ]
         candidate_signal = [
-            (frame.timestamp_ms or 0.0, frame.motion_score or 0.0)
-            for frame in candidate_frames
+            (frame.timestamp_ms or 0.0, frame.motion_score or 0.0) for frame in candidate_frames
         ]
         if len(anchor_signal) < 2 or len(candidate_signal) < 2:
             return 0.0
@@ -115,7 +114,10 @@ class MultiSourceSyncer:
 
         best_bucket = max(
             buckets,
-            key=lambda bucket: (len(buckets[bucket]), -abs(sum(buckets[bucket]) / len(buckets[bucket]))),
+            key=lambda bucket: (
+                len(buckets[bucket]),
+                -abs(sum(buckets[bucket]) / len(buckets[bucket])),
+            ),
         )
         values = sorted(buckets[best_bucket])
         midpoint = len(values) // 2
@@ -135,8 +137,7 @@ class MultiSourceSyncer:
         deduped: list[SyncMapEntry] = []
         for entry in entries:
             conflict = any(
-                frame_index in seen[source]
-                for source, frame_index in entry.aligned_frames.items()
+                frame_index in seen[source] for source, frame_index in entry.aligned_frames.items()
             )
             if conflict:
                 continue

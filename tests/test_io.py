@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from spatial_ingestion.reconstruction.runners._io import (
+from spatial_ingestion.reconstruction._io import (
     flatten_rows,
     scale_rgb_to_byte,
     to_array,
@@ -80,7 +80,11 @@ def test_write_ply_writes_correct_header(tmp_path: Path) -> None:
     assert "element vertex 2" in content
     assert "end_header" in content
     lines = content.strip().split("\n")
-    data_lines = [line for line in lines if not line.startswith(("ply", "format", "element", "property", "end_header"))]
+    data_lines = [
+        line
+        for line in lines
+        if not line.startswith(("ply", "format", "element", "property", "end_header"))
+    ]
     assert len(data_lines) == 2
     assert "128 128 128" in data_lines[0]
     assert "255 0 0" in data_lines[1]

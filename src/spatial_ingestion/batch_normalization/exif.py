@@ -58,4 +58,3 @@ class ExifExtractor:
             return str(value)
         except Exception:
             return None
-

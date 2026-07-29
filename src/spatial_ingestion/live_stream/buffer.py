@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import cv2
@@ -60,7 +60,7 @@ class LiveStreamBuffer:
             LiveFrame(
                 frame_id=f"live_{uuid4().hex}",
                 image=image,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
                 sequence=self._sequence,
             )
         )

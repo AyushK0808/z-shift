@@ -42,9 +42,7 @@ class MediaClassifierRouter:
 
         if SourceType.UNKNOWN in media_kinds:
             unknown_files = [
-                filename
-                for filename, kind in kinds_by_file.items()
-                if kind == SourceType.UNKNOWN
+                filename for filename, kind in kinds_by_file.items() if kind == SourceType.UNKNOWN
             ]
             return self._decision(
                 SourceType.UNKNOWN,

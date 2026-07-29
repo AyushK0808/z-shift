@@ -6,9 +6,9 @@ from uuid import uuid4
 import cv2
 import numpy as np
 
+from spatial_ingestion.batch_normalization.video_sampler import MotionAdaptiveFrameSampler
 from spatial_ingestion.config import DEFAULT_IMAGE_SIZE, NORMALIZED_OUTPUT_ROOT
 from spatial_ingestion.metadata.schema import FrameReference
-from spatial_ingestion.batch_normalization.video_sampler import MotionAdaptiveFrameSampler
 
 
 class VideoProcessor:

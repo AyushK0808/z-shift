@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Sequence
+from typing import Any, Literal
 
 import numpy as np
 import pyvista as pv
@@ -23,11 +24,11 @@ class MeshCleaningConfig:
     mode: Mode = "object"
     smoothing_iters: int = 15
     pass_band: float = 0.1
-    hole_size: Optional[float] = None
+    hole_size: float | None = None
     min_cell_count: int = 500
     feature_angle: float = 45.0
     merge_tolerance: float = 1e-5
-    decimate_target_reduction: Optional[float] = None
+    decimate_target_reduction: float | None = None
     verify_watertight: bool = True
 
     def __post_init__(self):
@@ -39,7 +40,9 @@ class MeshCleaningConfig:
             raise ValueError("min_cell_count must be >= 0")
         if self.hole_size is not None and self.hole_size <= 0:
             raise ValueError("hole_size must be positive when specified")
-        if self.decimate_target_reduction is not None and not (0.0 < self.decimate_target_reduction < 1.0):
+        if self.decimate_target_reduction is not None and not (
+            0.0 < self.decimate_target_reduction < 1.0
+        ):
             raise ValueError("decimate_target_reduction must be between 0 and 1")
 
 
@@ -81,13 +84,13 @@ def get_default_hole_size(mesh: pv.DataSet) -> float:
     return diagonal * 0.5
 
 
-def get_component_pieces(mesh: pv.DataSet) -> List[pv.PolyData]:
+def get_component_pieces(mesh: pv.DataSet) -> list[pv.PolyData]:
     bodies = mesh.split_bodies()
     if len(bodies) == 0:
         raise MeshProcessingError("split_bodies() returned no components")
-    pieces: List[pv.PolyData] = []
+    pieces: list[pv.PolyData] = []
     for body in bodies:
-        surface = body.extract_surface()
+        surface = body.extract_surface(algorithm=None)
         if surface.n_cells > 0:
             pieces.append(surface)
     return pieces
@@ -97,7 +100,7 @@ def merge_components(pieces: Sequence[pv.PolyData]) -> pv.PolyData:
     merged = pieces[0].copy(deep=True)
     for piece in pieces[1:]:
         merged = merged.merge(piece, merge_points=False)
-    surface = merged.extract_surface()
+    surface = merged.extract_surface(algorithm=None)
     if surface.n_cells == 0:
         raise MeshProcessingError("Component fusion produced an empty surface")
     return surface
@@ -116,13 +119,14 @@ def filter_room_components(mesh: pv.DataSet, min_cell_count: int) -> pv.PolyData
         largest_found = max((body.n_cells for body in pieces), default=0)
         raise MeshValidationError(
             f"No component exceeded min_cell_count={min_cell_count} "
-            f"(largest component had {largest_found} cells); lower the threshold or check the input mesh"
+            f"(largest component had {largest_found} cells); "
+            "lower the threshold or check the input mesh"
         )
 
     return merge_components(valid_pieces)
 
 
-def fill_mesh_holes(mesh: pv.PolyData, hole_size: Optional[float]) -> pv.PolyData:
+def fill_mesh_holes(mesh: pv.PolyData, hole_size: float | None) -> pv.PolyData:
     if hole_size is None and is_sheet_like(mesh):
         return mesh
 
@@ -133,7 +137,9 @@ def fill_mesh_holes(mesh: pv.PolyData, hole_size: Optional[float]) -> pv.PolyDat
     return filled
 
 
-def smooth_mesh(mesh: pv.PolyData, mode: Mode, iterations: int, pass_band: float, feature_angle: float) -> pv.PolyData:
+def smooth_mesh(
+    mesh: pv.PolyData, mode: Mode, iterations: int, pass_band: float, feature_angle: float
+) -> pv.PolyData:
     if iterations == 0:
         return mesh
     if mode == "object":
@@ -168,7 +174,9 @@ def preserve_data_arrays(source: pv.DataSet, target: pv.DataSet) -> pv.DataSet:
     return transferred
 
 
-def finalize_mesh(mesh: pv.PolyData, merge_tolerance: float, decimate_target_reduction: Optional[float]) -> pv.PolyData:
+def finalize_mesh(
+    mesh: pv.PolyData, merge_tolerance: float, decimate_target_reduction: float | None
+) -> pv.PolyData:
     mesh = mesh.clean(tolerance=merge_tolerance)
     mesh = mesh.triangulate()
 
@@ -179,7 +187,7 @@ def finalize_mesh(mesh: pv.PolyData, merge_tolerance: float, decimate_target_red
     return mesh
 
 
-def count_topology_issues(mesh: pv.PolyData) -> Dict[str, int]:
+def count_topology_issues(mesh: pv.PolyData) -> dict[str, int]:
     boundary = mesh.extract_feature_edges(
         boundary_edges=True,
         feature_edges=False,
@@ -198,16 +206,18 @@ def count_topology_issues(mesh: pv.PolyData) -> Dict[str, int]:
     }
 
 
-def clean_mesh(mesh, config: Optional[MeshCleaningConfig] = None, **overrides: Any):
+def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any):
     """Clean an AI-generated mesh and return diagnostics plus the processed result."""
     if config is not None and overrides:
         raise ValueError("Pass either config or keyword overrides, not both")
 
     cfg = config or MeshCleaningConfig(**overrides)
     mesh = validate_mesh_input(mesh)
-    warnings: List[str] = []
+    warnings: list[str] = []
 
-    logger.info("Cleaning mesh: mode=%s, in_points=%d, in_cells=%d", cfg.mode, mesh.n_points, mesh.n_cells)
+    logger.info(
+        "Cleaning mesh: mode=%s, in_points=%d, in_cells=%d", cfg.mode, mesh.n_points, mesh.n_cells
+    )
 
     if cfg.mode == "object":
         filtered = run_step("component_filter", keep_object_components, mesh)
@@ -228,7 +238,9 @@ def clean_mesh(mesh, config: Optional[MeshCleaningConfig] = None, **overrides: A
         cfg.feature_angle,
     )
 
-    final_mesh = run_step("finalize", finalize_mesh, smoothed, cfg.merge_tolerance, cfg.decimate_target_reduction)
+    final_mesh = run_step(
+        "finalize", finalize_mesh, smoothed, cfg.merge_tolerance, cfg.decimate_target_reduction
+    )
     if data_source.point_data or data_source.cell_data:
         final_mesh = run_step("transfer_data", preserve_data_arrays, data_source, final_mesh)
 
@@ -236,7 +248,9 @@ def clean_mesh(mesh, config: Optional[MeshCleaningConfig] = None, **overrides: A
     is_watertight = None
     if cfg.verify_watertight:
         topology = run_step("watertight_check", count_topology_issues, final_mesh)
-        is_watertight = topology["boundary_edge_count"] == 0 and topology["non_manifold_edge_count"] == 0
+        is_watertight = (
+            topology["boundary_edge_count"] == 0 and topology["non_manifold_edge_count"] == 0
+        )
         issue_count = topology["boundary_edge_count"] + topology["non_manifold_edge_count"]
         if not is_watertight:
             warnings.append(
@@ -255,9 +269,11 @@ def clean_mesh(mesh, config: Optional[MeshCleaningConfig] = None, **overrides: A
         is_watertight,
     )
 
-    open_edge_count = topology["boundary_edge_count"] if topology["boundary_edge_count"] is not None else None
+    open_edge_count: int | None = topology["boundary_edge_count"]
     if cfg.verify_watertight:
-        open_edge_count = topology["boundary_edge_count"] + topology["non_manifold_edge_count"]
+        be = topology["boundary_edge_count"] or 0
+        nme = topology["non_manifold_edge_count"] or 0
+        open_edge_count = be + nme
 
     return {
         "mesh": final_mesh,

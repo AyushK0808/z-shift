@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import pyvista as pv
 
@@ -18,7 +18,9 @@ def _default_output_path(input_path: Path) -> Path:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Clean a mesh file with the refinement pipeline.")
-    parser.add_argument("--refine", dest="input_path", type=Path, required=True, help="Input mesh file to clean.")
+    parser.add_argument(
+        "--refine", dest="input_path", type=Path, required=True, help="Input mesh file to clean."
+    )
     parser.add_argument("--output", type=Path, help="Where to write the cleaned mesh.")
     parser.add_argument("--mode", choices=("object", "room"), default="object")
     parser.add_argument("--smoothing-iters", type=int, default=15)
@@ -32,7 +34,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def refine_mesh(input_path: Path, output_path: Path | None = None, config: MeshCleaningConfig | None = None) -> dict:
+def refine_mesh(
+    input_path: Path, output_path: Path | None = None, config: MeshCleaningConfig | None = None
+) -> dict:
     mesh = pv.read(str(input_path))
     result = clean_mesh(mesh, config)
     cleaned_mesh = result["mesh"]

@@ -5,9 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from spatial_ingestion.batch_normalization.normalizer import BatchNormalizer
 from spatial_ingestion.ingestion_gateway import api as gateway_api
 from spatial_ingestion.ingestion_gateway.api import create_app
-from spatial_ingestion.batch_normalization.normalizer import BatchNormalizer
 from spatial_ingestion.live_stream.manager import LiveStreamManager
 from spatial_ingestion.media_classifier.router import MediaClassifierRouter, MediaItemDescriptor
 from spatial_ingestion.metadata.schema import (
@@ -102,7 +102,9 @@ def test_syncer_estimates_constant_timestamp_offset() -> None:
         for i, score in enumerate([0.01, 0.2, 0.04, 0.3])
     ]
     cam_b = [
-        FrameReference(frame_id=f"b{i}", index=i, timestamp_ms=(i * 500.0) + 500.0, motion_score=score)
+        FrameReference(
+            frame_id=f"b{i}", index=i, timestamp_ms=(i * 500.0) + 500.0, motion_score=score
+        )
         for i, score in enumerate([0.01, 0.2, 0.04, 0.3])
     ]
 
@@ -199,9 +201,11 @@ def test_websocket_requires_owned_precreated_stream() -> None:
         ack = websocket.receive_json()
         assert ack["accepted"] is True
 
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect("/v1/ingest/streams/missing-stream/frames"):
-            pass
+    with (
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect("/v1/ingest/streams/missing-stream/frames"),
+    ):
+        pass
 
 
 def test_websocket_rejects_cross_token_hijack() -> None:
@@ -215,12 +219,14 @@ def test_websocket_rejects_cross_token_hijack() -> None:
     )
     assert connect.status_code == 200
 
-    with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect(
+    with (
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect(
             "/v1/ingest/streams/owned-stream/frames",
             headers={"Authorization": "Bearer intruder"},
-        ):
-            pass
+        ),
+    ):
+        pass
 
 
 def test_websocket_payload_too_large_response() -> None:

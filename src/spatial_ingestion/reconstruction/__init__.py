@@ -1,27 +1,25 @@
-from spatial_ingestion.reconstruction.backends.base import (
-    BackendExecutionPlan,
-    ReconstructionBackend,
-)
-from spatial_ingestion.reconstruction.backends.mast3r import Mast3rBackend
 from spatial_ingestion.reconstruction.jobs import ReconstructionJobBuilder
 from spatial_ingestion.reconstruction.models import (
+    GenerationMode,
+    HandoffFrame,
     Mast3rRunParams,
     ReconstructionArtifact,
     ReconstructionArtifactKind,
     ReconstructionJob,
     ReconstructionMode,
+    SyncViewGroup,
 )
-from spatial_ingestion.reconstruction.registry import ReconstructionBackendRegistry
+from spatial_ingestion.reconstruction.pipeline import run as run_pipeline
 
 __all__ = [
-    "BackendExecutionPlan",
+    "GenerationMode",
+    "HandoffFrame",
     "Mast3rRunParams",
-    "Mast3rBackend",
     "ReconstructionArtifact",
     "ReconstructionArtifactKind",
-    "ReconstructionBackend",
-    "ReconstructionBackendRegistry",
     "ReconstructionJob",
     "ReconstructionJobBuilder",
     "ReconstructionMode",
+    "SyncViewGroup",
+    "run_pipeline",
 ]

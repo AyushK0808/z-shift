@@ -1,2 +1,1 @@
 """Multi-source synchronization logic."""
-

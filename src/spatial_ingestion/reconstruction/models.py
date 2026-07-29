@@ -16,6 +16,13 @@ class GenerationMode(str, Enum):
     LIVE_STREAM = "live_stream"
 
 
+class ReconstructionMode(str, Enum):
+    SINGLE_VIEW = "single_view"
+    MULTI_VIEW = "multi_view"
+    VIDEO_SEQUENCE = "video_sequence"
+    SYNCHRONIZED_VIEWS = "synchronized_views"
+
+
 class HandoffFrame(BaseModel):
     frame_id: str
     uri: str
@@ -31,13 +38,6 @@ class SyncViewGroup(BaseModel):
     anchor_timestamp_ms: float
     frames_by_source: dict[str, HandoffFrame]
     offsets_ms: dict[str, float] = Field(default_factory=dict)
-
-
-class ReconstructionMode(str, Enum):
-    SINGLE_VIEW = "single_view"
-    MULTI_VIEW = "multi_view"
-    VIDEO_SEQUENCE = "video_sequence"
-    SYNCHRONIZED_VIEWS = "synchronized_views"
 
 
 class ReconstructionArtifactKind(str, Enum):
