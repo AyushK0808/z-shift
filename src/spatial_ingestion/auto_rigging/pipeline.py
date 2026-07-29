@@ -48,11 +48,23 @@ class AutoRiggingPipeline:
                 "articulation_type": cfg.articulation_type.value,
                 "skinning_method": "inverse_distance_to_joints",
                 "skeleton_method": "template_bbox_fit",
+                "template_axis_convention": "Y-up height, X forward/width, Z lateral/depth",
             },
         )
-        result = AutoRigResult(rigged_mesh=rigged_mesh)
+        result = AutoRigResult(
+            rigged_mesh=rigged_mesh,
+            warnings=[
+                "Template skeleton fitting assumes a world-axis-aligned, Y-up mesh; "
+                "joints may be misplaced for arbitrary orientations."
+            ],
+        )
         if export_metadata:
-            return self._exporter.export_result(result)
+            exporter = (
+                RigMetadataExporter(cfg.output_dir)
+                if cfg.output_dir is not None
+                else self._exporter
+            )
+            return exporter.export_result(result)
         return result
 
     def rig_mesh_file(
@@ -86,4 +98,3 @@ class AutoRiggingPipeline:
         normalized.apply_translation(-normalized.bounding_box.centroid)
         normalized.apply_scale(1.0 / scale)
         return normalized
-

@@ -32,6 +32,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Return rig data without writing skeleton/weight JSON files",
     )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Directory for skeleton and skinning-weight metadata exports",
+    )
     return parser
 
 
@@ -41,6 +46,7 @@ def main(argv: list[str] | None = None) -> int:
         articulation_type=ArticulationType(args.articulation),
         max_skinning_influences=args.max_influences,
         normalize_mesh=not args.no_normalize,
+        output_dir=args.output_dir,
     )
     result = AutoRiggingPipeline().rig_mesh_file(
         Path(args.mesh),
@@ -53,4 +59,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

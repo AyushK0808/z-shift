@@ -35,6 +35,11 @@ class GltfSkinPayloadBuilder:
         weights_0: list[tuple[float, float, float, float]] = []
         for row in raw_weights:
             selected = self._top_four(row)
+            if not selected:
+                raise ValueError(
+                    "skinning weight rows must contain at least one positive influence; "
+                    "refusing to silently bind an empty row to joint 0"
+                )
             joint_indices = [index for index, _ in selected]
             packed_weights = self._normalize([weight for _, weight in selected])
             joints_0.append(self._pad_ints(joint_indices))
@@ -59,7 +64,7 @@ class GltfSkinPayloadBuilder:
     def _normalize(values: list[float]) -> list[float]:
         total = sum(values)
         if total <= 0:
-            return [1.0]
+            raise ValueError("cannot normalize an empty or zero-sum influence row")
         return [value / total for value in values]
 
     @staticmethod
@@ -71,4 +76,3 @@ class GltfSkinPayloadBuilder:
     def _pad_floats(values: list[float]) -> tuple[float, float, float, float]:
         padded = (values + [0.0, 0.0, 0.0, 0.0])[:4]
         return (padded[0], padded[1], padded[2], padded[3])
-

@@ -12,6 +12,10 @@ class TemplateSkeletonFitter:
     This is the Phase 5 MVP baseline: predictable, deterministic, and good
     enough to validate downstream skinning/export contracts before adding
     learned rigging backends.
+
+    Known limitation: templates assume a world-axis-aligned mesh with Y as the
+    vertical axis. Inputs with a different up-axis or arbitrary rotation should
+    be reoriented before this baseline fitter is used.
     """
 
     def fit(self, mesh: trimesh.Trimesh, articulation_type: ArticulationType) -> Skeleton:
@@ -143,4 +147,3 @@ class TemplateSkeletonFitter:
             self._bone("body", "tail"),
         ]
         return Skeleton(articulation_type=ArticulationType.WINGED, joints=joints, bones=bones, root_joint="body")
-
