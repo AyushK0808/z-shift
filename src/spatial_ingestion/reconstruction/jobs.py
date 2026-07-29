@@ -85,6 +85,7 @@ def _to_handoff_frame(frame: FrameReference) -> HandoffFrame:
         timestamp_ms=frame.timestamp_ms,
         motion_score=frame.motion_score,
         resolution=frame.resolution,
+        camera_intrinsics=frame.camera_intrinsics,
     )
 
 
