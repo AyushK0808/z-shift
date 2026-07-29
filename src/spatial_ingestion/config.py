@@ -7,6 +7,7 @@ LOCAL_STORAGE_ROOT = BASE_DIR / "data" / "object_store"
 NORMALIZED_OUTPUT_ROOT = BASE_DIR / "data" / "normalized"
 RECONSTRUCTION_OUTPUT_ROOT = BASE_DIR / "data" / "reconstruction"
 CHECKPOINT_ROOT = BASE_DIR / "data" / "checkpoints"
+AUTO_RIGGING_OUTPUT_ROOT = BASE_DIR / "data" / "auto_rigging"
 DEFAULT_IMAGE_SIZE = (1024, 1024)
 LIVE_BUFFER_SIZE = 64
 MAX_UPLOAD_FILE_BYTES = 512 * 1024 * 1024
