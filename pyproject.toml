@@ -34,6 +34,7 @@ dependencies = [
 [project.scripts]
 zshift-image-to-3d = "spatial_ingestion.reconstruction.cli:main"
 spatial-ingestion-refine = "spatial_ingestion.refinement.cli:main"
+zshift-auto-rig = "spatial_ingestion.auto_rigging.cli:main"
 
 [dependency-groups]
 dev = [
