@@ -17,7 +17,6 @@ import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import trimesh
@@ -67,7 +66,7 @@ class DeliverableResult:
     track: str  # "A" (editing/blender), "B" (viewing/point-cloud), "C" (live)
     input_type: str
     use_case: str
-    output_path: Optional[str]
+    output_path: str | None
     message: str
 
 
@@ -213,8 +212,7 @@ def deliverable_router(
         # Honesty item: no WebRTC/WebSocket delivery layer exists yet. Raise
         # instead of claiming a stream was established.
         raise TrackNotImplementedError(
-            f"[{job_id}] Track C (real-time WebRTC/WebSocket delivery) is not "
-            "implemented yet."
+            f"[{job_id}] Track C (real-time WebRTC/WebSocket delivery) is not implemented yet."
         )
 
     raise InvalidRoutingError(

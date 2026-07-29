@@ -53,4 +53,3 @@ def run_harness() -> None:
         print(f"image: {image_payload.model_dump_json(indent=2)}")
         print(f"video_frames: {video_payload.frame_count}")
         print(f"live_handle: {live_payload.live_stream_handle}")
-

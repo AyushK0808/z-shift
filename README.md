@@ -351,6 +351,34 @@ MASt3R and its bundled DUSt3R source are licensed under CC BY-NC-SA 4.0. Confirm
 is compatible with the intended use before distributing or deploying the reconstruction
 feature.
 
+## Linting & Type Checking
+
+[ruff](https://docs.astral.sh/ruff/) handles linting (replacing flake8/isort/bandit) and
+formatting. [ty](https://github.com/astral-sh/ty) handles static type checking. Both are
+configured in `pyproject.toml` under `[tool.ruff]` and `[tool.ty]`.
+
+```bash
+uv run ruff check .          # lint
+uv run ruff format .         # auto-format
+uv run ty check              # type-check
+```
+
+Both run automatically on commit via [pre-commit](https://pre-commit.com/). Install the
+git hook once per clone:
+
+```bash
+uv run pre-commit install
+```
+
+After that, `git commit` runs ruff (with autofix) and ty on the changed files; a failing
+hook aborts the commit until it's fixed. To run the hooks on the whole repo on demand:
+
+```bash
+uv run pre-commit run --all-files
+```
+
+CI runs the same two checks (`.github/workflows/lint.yml`) on every push and pull request.
+
 ## Test Harness
 
 ```bash

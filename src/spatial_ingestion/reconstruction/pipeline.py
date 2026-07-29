@@ -3,19 +3,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from pathlib import Path
-
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
-from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
-from spatial_ingestion.reconstruction.config import (
-    DEFAULT_DEVICE,
-    DEFAULT_IMAGE_SIZE,
-    DEFAULT_MIN_CONF_THR,
-    DEFAULT_MODEL_NAME,
-    DEFAULT_PAIRING_STRATEGY,
-    DEFAULT_TSDF_THRESH,
-)
 from spatial_ingestion.reconstruction._io import write_json
+from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
 from spatial_ingestion.reconstruction.device import resolve_device, set_seed
 from spatial_ingestion.reconstruction.export import (
     build_run_manifest,
@@ -65,7 +55,9 @@ def run(job: ReconstructionJob) -> int:
         frames=job.frames or None,
     )
     tsdf_fell_back = export_scene_to_mesh(
-        sparse_scene, output_path, output_dir,
+        sparse_scene,
+        output_path,
+        output_dir,
         tsdf_thresh=params.tsdf_thresh,
         min_conf_thr=params.min_conf_thr,
     )
@@ -78,17 +70,7 @@ def run(job: ReconstructionJob) -> int:
 
 
 def _resolve_params(job: ReconstructionJob) -> Mast3rRunParams:
-    md = job.metadata or {}
-    return Mast3rRunParams(
-        model_name=md.get("model_name", DEFAULT_MODEL_NAME),
-        device=md.get("device", DEFAULT_DEVICE),
-        image_size=md.get("image_size", DEFAULT_IMAGE_SIZE),
-        pairing_strategy=md.get("pairing_strategy", DEFAULT_PAIRING_STRATEGY),
-        tsdf_thresh=md.get("tsdf_thresh", DEFAULT_TSDF_THRESH),
-        min_conf_thr=md.get("min_conf_thr", DEFAULT_MIN_CONF_THR),
-        seed=md.get("seed", None),
-        dry_run=md.get("dry_run", False),
-    )
+    return Mast3rRunParams.model_validate(job.metadata or {})
 
 
 def _resolve_output_paths(job: ReconstructionJob) -> tuple[Path, Path]:

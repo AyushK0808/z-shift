@@ -1,11 +1,3 @@
-from pathlib import Path
-
-from spatial_ingestion.config import (
-    MAX_RECONSTRUCTION_FRAMES,
-    RECONSTRUCTION_OUTPUT_ROOT,
-    SWIN_PAIRING_THRESHOLD,
-)
-
 DEFAULT_MODEL_NAME = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
 DEFAULT_IMAGE_SIZE = 512
 DEFAULT_PAIRING_STRATEGY = "complete"

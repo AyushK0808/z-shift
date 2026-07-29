@@ -6,7 +6,6 @@ from typing import Any
 
 import numpy as np
 
-from spatial_ingestion.reconstruction._io import write_json
 from spatial_ingestion.reconstruction.device import reproducibility_metadata
 from spatial_ingestion.reconstruction.models import SyncViewGroup
 
@@ -110,8 +109,7 @@ def export_scene_to_mesh(
     fmt = output_path.suffix.lower()
     if fmt not in _SUPPORTED_FORMATS:
         logger.warning(
-            "Unsupported format '%s', falling back to .obj. "
-            "Supported: .obj, .glb, .ply",
+            "Unsupported format '%s', falling back to .obj. Supported: .obj, .glb, .ply",
             fmt,
         )
         output_path = output_path.with_suffix(".obj")
@@ -122,5 +120,7 @@ def export_scene_to_mesh(
     else:
         mesh.export(str(output_path))
 
-    logger.info("Exported %s (vertex colors: %s)", output_path, mesh.visual.vertex_colors is not None)
+    logger.info(
+        "Exported %s (vertex colors: %s)", output_path, mesh.visual.vertex_colors is not None
+    )
     return tsdf_fell_back
