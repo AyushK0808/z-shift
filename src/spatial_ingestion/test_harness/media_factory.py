@@ -21,7 +21,7 @@ def create_sample_video(path: Path, fps: int = 12, frames: int = 48) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     writer = cv2.VideoWriter(
         str(path),
-        cv2.VideoWriter_fourcc(*"mp4v"),
+        cv2.VideoWriter_fourcc(*"mp4v"),  # ty: ignore[unresolved-attribute]
         fps,
         (320, 240),
     )
@@ -50,4 +50,3 @@ def create_live_frame(index: int) -> np.ndarray:
     frame[:, :] = (12, 24, 48)
     cv2.circle(frame, (30 + index * 12, 60), 18, (220, 120, 70), -1)
     return frame
-

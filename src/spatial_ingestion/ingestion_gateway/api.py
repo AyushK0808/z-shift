@@ -100,10 +100,7 @@ def create_app() -> FastAPI:
                     raise HTTPException(status_code=413, detail=str(exc)) from exc
                 paths.append(target)
 
-            original_uris = {
-                path: state.object_store.put_file(path, "originals")
-                for path in paths
-            }
+            original_uris = {path: state.object_store.put_file(path, "originals") for path in paths}
             try:
                 return state.batch_normalizer.normalize(
                     paths,
@@ -147,7 +144,9 @@ def create_app() -> FastAPI:
     @app.websocket("/v1/ingest/streams/{stream_id}/frames")
     async def stream_frames(websocket: WebSocket, stream_id: str) -> None:
         state = _gateway_state(websocket)
-        authorization = websocket.headers.get("authorization") or websocket.query_params.get("token")
+        authorization = websocket.headers.get("authorization") or websocket.query_params.get(
+            "token"
+        )
         client_host = websocket.client.host if websocket.client else None
         auth = await state.auth.authenticate(authorization, client_host)
         rate = await state.rate_limiter.check(auth.subject)

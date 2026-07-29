@@ -39,7 +39,7 @@ class MotionAdaptiveFrameSampler:
         min_frame_gap = max(1, int(round(fps * self._min_seconds_between)))
         samples: list[SampledFrame] = []
         previous_gray: np.ndarray | None = None
-        last_sample_index = -10**9
+        last_sample_index = -(10**9)
         frame_index = 0
 
         try:
@@ -52,12 +52,9 @@ class MotionAdaptiveFrameSampler:
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 motion_score = self._motion_score(previous_gray, gray)
                 dynamic_interval = self._interval_for_motion(motion_score)
-                should_sample = (
-                    frame_index == 0
-                    or (
-                        frame_index - last_sample_index >= min_frame_gap
-                        and frame_index - last_sample_index >= dynamic_interval
-                    )
+                should_sample = frame_index == 0 or (
+                    frame_index - last_sample_index >= min_frame_gap
+                    and frame_index - last_sample_index >= dynamic_interval
                 )
 
                 if should_sample:

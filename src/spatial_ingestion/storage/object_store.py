@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import shutil
-from urllib.parse import unquote, urlparse
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 from spatial_ingestion.config import LOCAL_STORAGE_ROOT

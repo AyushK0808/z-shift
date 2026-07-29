@@ -1,2 +1,1 @@
 """Latency-aware priority tagging."""
-

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from spatial_ingestion.reconstruction.inference import load_images, load_model
 from spatial_ingestion.reconstruction.models import HandoffFrame, SyncViewGroup
@@ -16,7 +18,7 @@ logger = logging.getLogger(__name__)
 try:
     from mast3r.cloud_opt.sparse_ga import sparse_global_alignment
 except ImportError:
-    sparse_global_alignment = None
+    sparse_global_alignment: Callable[..., Any] | None = None
 
 
 def run_sparse_alignment(

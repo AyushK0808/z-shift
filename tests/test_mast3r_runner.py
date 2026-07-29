@@ -5,7 +5,6 @@ from typing import Any
 import pytest
 
 from spatial_ingestion.metadata.schema import CameraIntrinsics
-from spatial_ingestion.reconstruction._io import write_json
 from spatial_ingestion.reconstruction.device import resolve_device
 from spatial_ingestion.reconstruction.export import build_run_manifest
 from spatial_ingestion.reconstruction.models import HandoffFrame, SyncViewGroup
@@ -27,15 +26,23 @@ def sync_test_data(tmp_path: Path):
         SyncViewGroup(
             anchor_timestamp_ms=0.0,
             frames_by_source={
-                "cam_a": HandoffFrame(frame_id="cam_a_0", uri=cam_a_0.as_uri(), index=0, source_id="cam_a"),
-                "cam_b": HandoffFrame(frame_id="cam_b_0", uri=cam_b_0.as_uri(), index=0, source_id="cam_b"),
+                "cam_a": HandoffFrame(
+                    frame_id="cam_a_0", uri=cam_a_0.as_uri(), index=0, source_id="cam_a"
+                ),
+                "cam_b": HandoffFrame(
+                    frame_id="cam_b_0", uri=cam_b_0.as_uri(), index=0, source_id="cam_b"
+                ),
             },
         ),
         SyncViewGroup(
             anchor_timestamp_ms=100.0,
             frames_by_source={
-                "cam_a": HandoffFrame(frame_id="cam_a_1", uri=cam_a_1.as_uri(), index=1, source_id="cam_a"),
-                "cam_b": HandoffFrame(frame_id="cam_b_1", uri=cam_b_1.as_uri(), index=1, source_id="cam_b"),
+                "cam_a": HandoffFrame(
+                    frame_id="cam_a_1", uri=cam_a_1.as_uri(), index=1, source_id="cam_a"
+                ),
+                "cam_b": HandoffFrame(
+                    frame_id="cam_b_1", uri=cam_b_1.as_uri(), index=1, source_id="cam_b"
+                ),
             },
         ),
     ]
@@ -45,8 +52,9 @@ def sync_test_data(tmp_path: Path):
 @pytest.fixture
 def sync_test_images(tmp_path: Path):
     """Create valid tiny JPEG images for tests that need PIL-readable files."""
-    from PIL import Image
     import numpy as np
+    from PIL import Image
+
     cam_a_0 = tmp_path / "cam_a_0.jpg"
     cam_b_0 = tmp_path / "cam_b_0.jpg"
     cam_a_1 = tmp_path / "cam_a_1.jpg"
@@ -59,15 +67,23 @@ def sync_test_images(tmp_path: Path):
         SyncViewGroup(
             anchor_timestamp_ms=0.0,
             frames_by_source={
-                "cam_a": HandoffFrame(frame_id="cam_a_0", uri=cam_a_0.as_uri(), index=0, source_id="cam_a"),
-                "cam_b": HandoffFrame(frame_id="cam_b_0", uri=cam_b_0.as_uri(), index=0, source_id="cam_b"),
+                "cam_a": HandoffFrame(
+                    frame_id="cam_a_0", uri=cam_a_0.as_uri(), index=0, source_id="cam_a"
+                ),
+                "cam_b": HandoffFrame(
+                    frame_id="cam_b_0", uri=cam_b_0.as_uri(), index=0, source_id="cam_b"
+                ),
             },
         ),
         SyncViewGroup(
             anchor_timestamp_ms=100.0,
             frames_by_source={
-                "cam_a": HandoffFrame(frame_id="cam_a_1", uri=cam_a_1.as_uri(), index=1, source_id="cam_a"),
-                "cam_b": HandoffFrame(frame_id="cam_b_1", uri=cam_b_1.as_uri(), index=1, source_id="cam_b"),
+                "cam_a": HandoffFrame(
+                    frame_id="cam_a_1", uri=cam_a_1.as_uri(), index=1, source_id="cam_a"
+                ),
+                "cam_b": HandoffFrame(
+                    frame_id="cam_b_1", uri=cam_b_1.as_uri(), index=1, source_id="cam_b"
+                ),
             },
         ),
     ]
@@ -146,8 +162,13 @@ def test_sync_pairs_are_image_dict_pairs_in_alignment(sync_test_data) -> None:
 
     with (
         patch("spatial_ingestion.reconstruction.alignment.load_model") as mock_load,
-        patch("spatial_ingestion.reconstruction.alignment.load_images", side_effect=fake_load_images),
-        patch("spatial_ingestion.reconstruction.alignment.sparse_global_alignment", side_effect=fake_sparse_ga),
+        patch(
+            "spatial_ingestion.reconstruction.alignment.load_images", side_effect=fake_load_images
+        ),
+        patch(
+            "spatial_ingestion.reconstruction.alignment.sparse_global_alignment",
+            side_effect=fake_sparse_ga,
+        ),
     ):
         mock_load.return_value = fake_model
         run_sparse_alignment(
@@ -190,19 +211,31 @@ def test_intrinsic_priors_reach_sparse_global_alignment(sync_test_images) -> Non
 
     frames = [
         HandoffFrame(
-            frame_id="cam_a_0", uri=image_paths[0].as_uri(), index=0, source_id="cam_a",
+            frame_id="cam_a_0",
+            uri=image_paths[0].as_uri(),
+            index=0,
+            source_id="cam_a",
             camera_intrinsics=CameraIntrinsics(focal_length_35mm=50.0),
         ),
         HandoffFrame(
-            frame_id="cam_b_0", uri=image_paths[1].as_uri(), index=0, source_id="cam_b",
+            frame_id="cam_b_0",
+            uri=image_paths[1].as_uri(),
+            index=0,
+            source_id="cam_b",
             camera_intrinsics=CameraIntrinsics(focal_length_35mm=50.0),
         ),
         HandoffFrame(
-            frame_id="cam_a_1", uri=image_paths[2].as_uri(), index=1, source_id="cam_a",
+            frame_id="cam_a_1",
+            uri=image_paths[2].as_uri(),
+            index=1,
+            source_id="cam_a",
             camera_intrinsics=CameraIntrinsics(focal_length_35mm=24.0),
         ),
         HandoffFrame(
-            frame_id="cam_b_1", uri=image_paths[3].as_uri(), index=1, source_id="cam_b",
+            frame_id="cam_b_1",
+            uri=image_paths[3].as_uri(),
+            index=1,
+            source_id="cam_b",
             camera_intrinsics=None,
         ),
     ]
@@ -221,8 +254,13 @@ def test_intrinsic_priors_reach_sparse_global_alignment(sync_test_images) -> Non
 
     with (
         patch("spatial_ingestion.reconstruction.alignment.load_model") as mock_load,
-        patch("spatial_ingestion.reconstruction.alignment.load_images", side_effect=fake_load_images),
-        patch("spatial_ingestion.reconstruction.alignment.sparse_global_alignment", side_effect=fake_sparse_ga),
+        patch(
+            "spatial_ingestion.reconstruction.alignment.load_images", side_effect=fake_load_images
+        ),
+        patch(
+            "spatial_ingestion.reconstruction.alignment.sparse_global_alignment",
+            side_effect=fake_sparse_ga,
+        ),
     ):
         mock_load.return_value = fake_model
         run_sparse_alignment(
@@ -248,4 +286,6 @@ def test_intrinsic_priors_reach_sparse_global_alignment(sync_test_images) -> Non
     focal_24 = K_24[0, 0].item()
     for str_path, K_dict in init.items():
         if str_path != cam_a_1_key:
-            assert K_dict["intrinsics"][0, 0].item() != focal_24, "Expected different focal for 24mm vs 50mm priors"
+            assert K_dict["intrinsics"][0, 0].item() != focal_24, (
+                "Expected different focal for 24mm vs 50mm priors"
+            )

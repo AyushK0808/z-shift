@@ -6,8 +6,8 @@ from pathlib import Path
 import torch
 
 from spatial_ingestion.metadata.schema import CameraIntrinsics
-from spatial_ingestion.reconstruction.models import HandoffFrame, SyncViewGroup
 from spatial_ingestion.reconstruction._io import uri_to_path
+from spatial_ingestion.reconstruction.models import SyncViewGroup
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,9 @@ def build_sync_pairs(
         if s in stem_to_idx:
             logger.warning(
                 "Duplicate stem '%s' at index %d conflicts with index %d",
-                s, i, stem_to_idx[s],
+                s,
+                i,
+                stem_to_idx[s],
             )
         stem_to_idx.setdefault(s, i)
 
@@ -69,6 +71,7 @@ def intrinsics_to_k_matrix(intrinsics: CameraIntrinsics, img_path: Path) -> torc
         return None
     try:
         from PIL import Image
+
         with Image.open(img_path) as pil_img:
             w, h = pil_img.size
     except Exception:

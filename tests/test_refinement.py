@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import numpy as np
-import pyvista as pv
 import pytest
+import pyvista as pv
 
-from spatial_ingestion.refinement import MeshCleaningConfig, MeshValidationError, clean_ai_mesh, clean_mesh
+from spatial_ingestion.refinement import (
+    MeshCleaningConfig,
+    MeshValidationError,
+    clean_ai_mesh,
+    clean_mesh,
+)
 
 
 def _make_colored_sphere_with_hole() -> pv.PolyData:
     sphere = pv.Sphere(theta_resolution=32, phi_resolution=32)
-    holey = sphere.clip(normal=(0.0, 0.0, 1.0), origin=(0.0, 0.0, 0.45)).extract_surface(algorithm=None)
+    holey = sphere.clip(normal=(0.0, 0.0, 1.0), origin=(0.0, 0.0, 0.45)).extract_surface(
+        algorithm=None
+    )
     colors = np.zeros((holey.n_points, 3), dtype=np.uint8)
     colors[:, 0] = np.linspace(40, 220, holey.n_points, dtype=np.uint8)
     colors[:, 1] = 80
@@ -27,14 +34,18 @@ def _make_disjoint_sheets() -> pv.PolyData:
 
 def _make_room_like_mesh() -> pv.PolyData:
     wall = pv.Plane(i_resolution=8, j_resolution=8, direction=(0, 0, 1), center=(0.0, 0.0, 0.0))
-    debris = pv.Cube(center=(4.0, 0.0, 0.0), x_length=0.05, y_length=0.05, z_length=0.05).extract_surface(algorithm=None)
+    debris = pv.Cube(
+        center=(4.0, 0.0, 0.0), x_length=0.05, y_length=0.05, z_length=0.05
+    ).extract_surface(algorithm=None)
     return wall.merge(debris, merge_points=False).extract_surface(algorithm=None)
 
 
 def test_object_mode_closes_holes_and_preserves_colors() -> None:
     mesh = _make_colored_sphere_with_hole()
 
-    result = clean_mesh(mesh, MeshCleaningConfig(mode="object", smoothing_iters=0, verify_watertight=True))
+    result = clean_mesh(
+        mesh, MeshCleaningConfig(mode="object", smoothing_iters=0, verify_watertight=True)
+    )
 
     output = result["mesh"]
     assert result["is_watertight"] is True
@@ -66,7 +77,9 @@ def test_room_mode_keeps_major_sheet_and_drops_small_debris() -> None:
 def test_multi_sheet_object_mode_keeps_all_components() -> None:
     mesh = _make_disjoint_sheets()
 
-    result = clean_mesh(mesh, MeshCleaningConfig(mode="object", smoothing_iters=0, verify_watertight=False))
+    result = clean_mesh(
+        mesh, MeshCleaningConfig(mode="object", smoothing_iters=0, verify_watertight=False)
+    )
 
     assert len(result["mesh"].split_bodies()) == 2
 
@@ -84,7 +97,9 @@ def test_decimation_reduces_triangle_count() -> None:
 
     result = clean_mesh(
         mesh,
-        MeshCleaningConfig(mode="object", smoothing_iters=0, decimate_target_reduction=0.5, verify_watertight=False),
+        MeshCleaningConfig(
+            mode="object", smoothing_iters=0, decimate_target_reduction=0.5, verify_watertight=False
+        ),
     )
 
     assert result["output_cell_count"] < mesh.n_cells

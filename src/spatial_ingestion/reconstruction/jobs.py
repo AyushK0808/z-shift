@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from spatial_ingestion.config import MAX_RECONSTRUCTION_FRAMES, SWIN_PAIRING_THRESHOLD
-from spatial_ingestion.metadata.schema import FrameReference, SourceType, UnifiedSpatialIngestionSchema
+from spatial_ingestion.metadata.schema import (
+    FrameReference,
+    SourceType,
+    UnifiedSpatialIngestionSchema,
+)
 from spatial_ingestion.reconstruction.models import (
     GenerationMode,
     HandoffFrame,
@@ -89,7 +93,10 @@ class ReconstructionJobBuilder:
             return frames
         sorted_frames = sorted(
             frames,
-            key=lambda f: (f.motion_score if f.motion_score is not None else float("-inf"), f.index),
+            key=lambda f: (
+                f.motion_score if f.motion_score is not None else float("-inf"),
+                f.index,
+            ),
             reverse=True,
         )
         return sorted_frames[:MAX_RECONSTRUCTION_FRAMES]
