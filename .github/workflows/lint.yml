@@ -29,4 +29,6 @@ jobs:
         run: uv run ruff format --check
 
       - name: ty check
-        run: uv run ty check
+        run: |
+          mkdir -p third_party/mast3r
+          uv run ty check
