@@ -40,4 +40,3 @@ class InverseDistanceSkinner:
             weights=weights.tolist(),
             max_influences=influence_count,
         )
-

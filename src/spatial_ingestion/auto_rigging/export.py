@@ -46,4 +46,3 @@ class RigMetadataExporter:
 def write_debug_rig_json(result: AutoRigResult, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result.model_dump(mode="json"), indent=2), encoding="utf-8")
-

@@ -9,8 +9,8 @@ from spatial_ingestion.auto_rigging import (
     ArticulationType,
     AutoRigConfig,
     AutoRiggingPipeline,
-    Joint,
     GltfSkinPayloadBuilder,
+    Joint,
     RiggedMesh,
     Skeleton,
     SkinningWeights,
@@ -60,9 +60,7 @@ def test_inverse_distance_skinning_rows_are_normalized_and_sparse() -> None:
 
 def test_auto_rigging_pipeline_exports_metadata(tmp_path: Path) -> None:
     mesh = trimesh.creation.icosphere(subdivisions=1, radius=1.0)
-    pipeline = AutoRiggingPipeline(
-        exporter=RigMetadataExporter(output_root=tmp_path / "rigs")
-    )
+    pipeline = AutoRiggingPipeline(exporter=RigMetadataExporter(output_root=tmp_path / "rigs"))
 
     result = pipeline.rig_mesh(
         mesh,
@@ -102,9 +100,7 @@ def test_auto_rigging_config_output_dir_controls_export_location(tmp_path: Path)
 def test_auto_rigging_pipeline_accepts_mesh_file(tmp_path: Path) -> None:
     mesh_path = tmp_path / "mesh.obj"
     trimesh.creation.box().export(mesh_path)
-    pipeline = AutoRiggingPipeline(
-        exporter=RigMetadataExporter(output_root=tmp_path / "rigs")
-    )
+    pipeline = AutoRiggingPipeline(exporter=RigMetadataExporter(output_root=tmp_path / "rigs"))
 
     result = pipeline.rig_mesh_file(
         mesh_path,
@@ -122,7 +118,9 @@ def test_reconstruction_artifact_kinds_include_phase5_outputs() -> None:
     assert ReconstructionArtifactKind.SKINNING_WEIGHTS.value == "skinning_weights"
 
 
-def test_auto_rigging_cli_runs_on_mesh_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_auto_rigging_cli_runs_on_mesh_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     mesh_path = tmp_path / "mesh.obj"
     trimesh.creation.box().export(mesh_path)
 
@@ -133,7 +131,9 @@ def test_auto_rigging_cli_runs_on_mesh_file(tmp_path: Path, capsys: pytest.Captu
     assert '"articulation_type": "biped"' in captured.out
 
 
-def test_auto_rigging_cli_honors_output_dir(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_auto_rigging_cli_honors_output_dir(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     mesh_path = tmp_path / "mesh.obj"
     output_dir = tmp_path / "cli-rigs"
     trimesh.creation.box().export(mesh_path)

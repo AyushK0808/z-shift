@@ -73,7 +73,6 @@ known-first-party = ["spatial_ingestion"]
 [tool.ty.environment]
 python-version = "3.11"
 python-platform = "Linux"
-extra-paths = ["third_party/mast3r"]
 
 [tool.ty.src]
 include = ["src", "tests"]

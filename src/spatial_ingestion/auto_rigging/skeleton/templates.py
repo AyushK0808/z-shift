@@ -65,16 +65,32 @@ class TemplateSkeletonFitter:
         center: np.ndarray,
         size: np.ndarray,
     ) -> Skeleton:
-        y_low, y_high = mins[1], maxs[1]
+        y_low = mins[1]
         x_left = center[0] - size[0] * 0.28
         x_right = center[0] + size[0] * 0.28
         z_mid = center[2]
         joints = [
             self._joint("hips", np.array([center[0], y_low + size[1] * 0.45, z_mid])),
-            self._joint("spine", np.array([center[0], y_low + size[1] * 0.65, z_mid]), "hips"),
-            self._joint("head", np.array([center[0], y_low + size[1] * 0.92, z_mid]), "spine"),
-            self._joint("left_hand", np.array([x_left, y_low + size[1] * 0.62, z_mid]), "spine"),
-            self._joint("right_hand", np.array([x_right, y_low + size[1] * 0.62, z_mid]), "spine"),
+            self._joint(
+                "spine",
+                np.array([center[0], y_low + size[1] * 0.65, z_mid]),
+                "hips",
+            ),
+            self._joint(
+                "head",
+                np.array([center[0], y_low + size[1] * 0.92, z_mid]),
+                "spine",
+            ),
+            self._joint(
+                "left_hand",
+                np.array([x_left, y_low + size[1] * 0.62, z_mid]),
+                "spine",
+            ),
+            self._joint(
+                "right_hand",
+                np.array([x_right, y_low + size[1] * 0.62, z_mid]),
+                "spine",
+            ),
             self._joint("left_foot", np.array([x_left, y_low, z_mid]), "hips"),
             self._joint("right_foot", np.array([x_right, y_low, z_mid]), "hips"),
         ]
@@ -86,7 +102,12 @@ class TemplateSkeletonFitter:
             self._bone("hips", "left_foot"),
             self._bone("hips", "right_foot"),
         ]
-        return Skeleton(articulation_type=ArticulationType.BIPED, joints=joints, bones=bones, root_joint="hips")
+        return Skeleton(
+            articulation_type=ArticulationType.BIPED,
+            joints=joints,
+            bones=bones,
+            root_joint="hips",
+        )
 
     def _quadruped(
         self,
@@ -103,12 +124,32 @@ class TemplateSkeletonFitter:
         y_ground = mins[1]
         joints = [
             self._joint("body", np.array([center[0], y_body, center[2]])),
-            self._joint("neck", np.array([x_front - size[0] * 0.20, y_body + size[1] * 0.15, center[2]]), "body"),
+            self._joint(
+                "neck",
+                np.array([x_front - size[0] * 0.20, y_body + size[1] * 0.15, center[2]]),
+                "body",
+            ),
             self._joint("head", np.array([x_front, y_body + size[1] * 0.20, center[2]]), "neck"),
-            self._joint("front_left_foot", np.array([x_front - size[0] * 0.15, y_ground, z_left]), "body"),
-            self._joint("front_right_foot", np.array([x_front - size[0] * 0.15, y_ground, z_right]), "body"),
-            self._joint("back_left_foot", np.array([x_back + size[0] * 0.15, y_ground, z_left]), "body"),
-            self._joint("back_right_foot", np.array([x_back + size[0] * 0.15, y_ground, z_right]), "body"),
+            self._joint(
+                "front_left_foot",
+                np.array([x_front - size[0] * 0.15, y_ground, z_left]),
+                "body",
+            ),
+            self._joint(
+                "front_right_foot",
+                np.array([x_front - size[0] * 0.15, y_ground, z_right]),
+                "body",
+            ),
+            self._joint(
+                "back_left_foot",
+                np.array([x_back + size[0] * 0.15, y_ground, z_left]),
+                "body",
+            ),
+            self._joint(
+                "back_right_foot",
+                np.array([x_back + size[0] * 0.15, y_ground, z_right]),
+                "body",
+            ),
         ]
         bones = [
             self._bone("body", "neck"),
@@ -146,4 +187,9 @@ class TemplateSkeletonFitter:
             self._bone("body", "right_wing_tip"),
             self._bone("body", "tail"),
         ]
-        return Skeleton(articulation_type=ArticulationType.WINGED, joints=joints, bones=bones, root_joint="body")
+        return Skeleton(
+            articulation_type=ArticulationType.WINGED,
+            joints=joints,
+            bones=bones,
+            root_joint="body",
+        )

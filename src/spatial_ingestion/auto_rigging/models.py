@@ -85,4 +85,3 @@ class AutoRigResult(BaseModel):
     skeleton_uri: str | None = None
     weights_uri: str | None = None
     warnings: list[str] = Field(default_factory=list)
-
