@@ -153,16 +153,17 @@ uv run zshift-final-pipeline ignored-folder --from-schema payload.json -o out/me
 ### Outputs
 
 - Raw mesh: `data/reconstruction/<label>_<job_id>/<label>.glb` + `run_manifest.json`
-  (model, device, pairing, seed, TSDF config, reproducibility metadata) + `cache/`
-  (MASt3R alignment cache, reused between runs on the same frames).
+  (model, device, pairing, seed, TSDF config, reproducibility metadata) +
+  `point_cloud.ply` (dense, confidence-masked point cloud used by `--use-case viewing`) +
+  `cache/` (MASt3R alignment cache, reused between runs on the same frames).
 - Refined mesh + `refinement_manifest.json` next to the raw mesh.
 - Deliverables under `data/deliverables/`: `blender_ready/<JOB>_model.glb` (`editing`),
   `point_clouds/<JOB>_points.ply` (`viewing`).
 
 ### Known limitations
 
-- `--use-case viewing` currently fails: Phase 2 never writes the `point_cloud.ply` artifact
-  the viewing branch requires.
+- `--use-case viewing` packages the Phase 2 `point_cloud.ply` as a `.ply` deliverable under
+  `data/deliverables/point_clouds/`.
 - `--use-case live` raises `TrackNotImplementedError` by design.
 - Phase 3 is CPU-bound and slow on large reconstructions — `split_bodies()` dominates. A
   ~2.6M-triangle mesh takes ~7 minutes even with `--smoothing-iters 0
