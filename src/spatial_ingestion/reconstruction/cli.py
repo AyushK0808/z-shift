@@ -6,7 +6,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
-from spatial_ingestion.reconstruction.models import Mast3rRunParams, ReconstructionJob, ReconstructionMode
+from spatial_ingestion.reconstruction.models import (
+    Mast3rRunParams,
+    ReconstructionJob,
+    ReconstructionMode,
+)
 from spatial_ingestion.reconstruction.pipeline import run as pipeline_run
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
@@ -21,11 +25,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("input", help="Folder containing at least two views of the same subject")
     parser.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         help="Output path (.obj, .glb, .ply). .glb and .ply have proper vertex color support.",
     )
     parser.add_argument("--device", default="auto", help="cuda, cpu, mps, or auto")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="MASt3R model id or local checkpoint path")
+    parser.add_argument(
+        "--model", default=DEFAULT_MODEL, help="MASt3R model id or local checkpoint path"
+    )
     parser.add_argument(
         "--pairing-strategy",
         default="complete",
@@ -34,15 +41,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--image-size", type=int, default=512, help="MASt3R image size")
     parser.add_argument(
-        "--tsdf-thresh", type=float, default=0,
+        "--tsdf-thresh",
+        type=float,
+        default=0,
         help="TSDF fusion threshold (0=disabled, 0.1-0.5 recommended)",
     )
     parser.add_argument(
-        "--min-conf-thr", type=float, default=1.5,
+        "--min-conf-thr",
+        type=float,
+        default=1.5,
         help="Minimum confidence threshold for point filtering",
     )
     parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
-    parser.add_argument("--dry-run", action="store_true", help="Validate routing without running models")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Validate routing without running models"
+    )
     return parser
 
 

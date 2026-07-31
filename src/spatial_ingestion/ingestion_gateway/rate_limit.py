@@ -30,4 +30,3 @@ class RateLimiter:
 
         events.append(now)
         return RateLimitResult(allowed=True, remaining=self._max_requests - len(events))
-

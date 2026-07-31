@@ -72,7 +72,9 @@ class BatchNormalizer:
                 )
                 ffmpeg_metadata[source_id] = self._ffmpeg.probe(path)
 
-            frames = [frame for source_frames in frames_by_source.values() for frame in source_frames]
+            frames = [
+                frame for source_frames in frames_by_source.values() for frame in source_frames
+            ]
             group_id = sync_group_id
             sync_map = []
             if source_type == SourceType.VIDEO_FOLDER:

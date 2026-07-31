@@ -40,8 +40,25 @@ class SyncViewGroup(BaseModel):
     offsets_ms: dict[str, float] = Field(default_factory=dict)
 
 
+class ReconstructionArtifactKind(str, Enum):
+    POINT_CLOUD = "point_cloud"
+    POSES = "poses"
+    RUN_MANIFEST = "run_manifest"
+    MESH = "mesh"
+    RIGGED_MESH = "rigged_mesh"
+    SKELETON = "skeleton"
+    SKINNING_WEIGHTS = "skinning_weights"
+
+
+class ReconstructionArtifact(BaseModel):
+    kind: ReconstructionArtifactKind
+    uri: str
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
 class Mast3rRunParams(BaseModel):
     model_config = {"protected_namespaces": ()}
+
     model_name: str = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
     device: str = "auto"
     image_size: int = 512
