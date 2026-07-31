@@ -4,15 +4,18 @@ import json
 import os
 from pathlib import Path
 
-import pyvista as pv
 import pytest
+import pyvista as pv
 
 from spatial_ingestion.final_pipeline.cli import main as final_pipeline_cli_main
-from spatial_ingestion.final_pipeline.core import PipelineArtifactError, run_phase2_phase3_pipeline
+from spatial_ingestion.final_pipeline.core import (
+    PipelineArtifactError,
+    run_full_pipeline,
+    run_phase2_phase3_pipeline,
+)
 from spatial_ingestion.reconstruction.cli import collect_input_images
 from spatial_ingestion.reconstruction.models import ReconstructionJob, ReconstructionMode
 from spatial_ingestion.refinement import MeshCleaningConfig
-from spatial_ingestion.final_pipeline.core import run_full_pipeline
 
 
 def _job(output_path: Path) -> ReconstructionJob:
@@ -30,7 +33,9 @@ def test_pipeline_runs_reconstruction_then_refinement(monkeypatch, tmp_path: Pat
         pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw_mesh_path))
         return 0
 
-    monkeypatch.setattr("spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction)
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
 
     result = run_phase2_phase3_pipeline(
         _job(raw_mesh_path),
@@ -68,18 +73,23 @@ def test_pipeline_cli_smoke_with_mocked_phase2(monkeypatch, tmp_path: Path, caps
         pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(output_path))
         return 0
 
-    monkeypatch.setattr("spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction)
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
 
-    assert final_pipeline_cli_main(
-        [
-            str(image_dir),
-            "-o",
-            str(raw_mesh_path),
-            "--smoothing-iters",
-            "0",
-            "--no-watertight-check",
-        ]
-    ) == 0
+    assert (
+        final_pipeline_cli_main(
+            [
+                str(image_dir),
+                "-o",
+                str(raw_mesh_path),
+                "--smoothing-iters",
+                "0",
+                "--no-watertight-check",
+            ]
+        )
+        == 0
+    )
 
     output = json.loads(capsys.readouterr().out)
     assert Path(output["raw_mesh_path"]).exists()
@@ -91,14 +101,13 @@ def test_pipeline_cli_smoke_with_mocked_phase2(monkeypatch, tmp_path: Path, caps
 @pytest.mark.real_pipeline
 def test_real_phase2_phase3_pipeline_with_user_images(tmp_path: Path) -> None:
     image_dir = Path(
-    r"C:\Users\Rakshit\Desktop\OldPCStuff\Mera Saman\CODING\Vinnovate\imgto3d\z-shift\data\pipeline"
-).resolve()
+        r"C:\Users\Rakshit\Desktop\OldPCStuff\Mera Saman\CODING\Vinnovate"
+        r"\imgto3d\z-shift\data\pipeline"
+    ).resolve()
 
     images = collect_input_images(image_dir)
     if len(images) < 2:
-        pytest.fail(
-        f"Image directory must contain at least two supported images: {image_dir}"
-    )
+        pytest.fail(f"Image directory must contain at least two supported images: {image_dir}")
     output_path = tmp_path / "real_pipeline" / "mesh.obj"
     job = ReconstructionJob(
         mode=ReconstructionMode.MULTI_VIEW,
@@ -121,6 +130,7 @@ def test_real_phase2_phase3_pipeline_with_user_images(tmp_path: Path) -> None:
     assert result.refinement_manifest_path.exists()
     assert result.refinement_diagnostics["output_point_count"] > 0
 
+
 def test_full_pipeline_editing_track(monkeypatch, tmp_path: Path) -> None:
     raw_mesh_path = tmp_path / "mesh.obj"
 
@@ -128,7 +138,9 @@ def test_full_pipeline_editing_track(monkeypatch, tmp_path: Path) -> None:
         pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw_mesh_path))
         return 0
 
-    monkeypatch.setattr("spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction)
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
 
     result = run_full_pipeline(
         _job(raw_mesh_path),
@@ -151,7 +163,9 @@ def test_full_pipeline_rejects_bad_use_case_for_input_type(monkeypatch, tmp_path
         pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw_mesh_path))
         return 0
 
-    monkeypatch.setattr("spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction)
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
 
     from spatial_ingestion.outcomes_engine.engine import InvalidRoutingError
 

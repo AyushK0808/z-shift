@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 import pyvista as pv
 import trimesh
+
 from spatial_ingestion.metadata.schema import SourceType
 from spatial_ingestion.outcomes_engine.engine import (
     DEFAULT_DELIVERABLES_ROOT,
     DeliverableResult,
     deliverable_router,
 )
-
 from spatial_ingestion.reconstruction.models import ReconstructionJob
 from spatial_ingestion.reconstruction.pipeline import _resolve_output_paths
 from spatial_ingestion.reconstruction.pipeline import run as run_reconstruction
@@ -34,6 +34,7 @@ def _pv_mesh_to_trimesh(mesh: pv.PolyData) -> trimesh.Trimesh:
 class FullPipelineResult:
     pipeline_result: FinalPipelineResult
     deliverable: DeliverableResult
+
 
 class PipelineArtifactError(RuntimeError):
     """Raised when a phase boundary artifact is missing or unusable."""
@@ -67,7 +68,11 @@ def run_phase2_phase3_pipeline(
     refinement_result = clean_mesh(raw_mesh, refinement_config or MeshCleaningConfig())
     cleaned_mesh = refinement_result["mesh"]
 
-    destination = Path(refined_output_path).expanduser().resolve() if refined_output_path else _default_refined_path(raw_mesh_path)
+    destination = (
+        Path(refined_output_path).expanduser().resolve()
+        if refined_output_path
+        else _default_refined_path(raw_mesh_path)
+    )
     destination.parent.mkdir(parents=True, exist_ok=True)
     cleaned_mesh.save(str(destination))
 
@@ -89,6 +94,7 @@ def run_phase2_phase3_pipeline(
         refinement_manifest_path=manifest_path,
         refinement_diagnostics=diagnostics,
     )
+
 
 def run_full_pipeline(
     job: ReconstructionJob,
@@ -125,7 +131,9 @@ def run_full_pipeline(
             point_cloud=cloud_mesh,
         )
     else:
-        deliverable = deliverable_router(input_type=input_type, use_case=use_case, output_root=deliverables_root)
+        deliverable = deliverable_router(
+            input_type=input_type, use_case=use_case, output_root=deliverables_root
+        )
 
     return FullPipelineResult(pipeline_result=pipeline_result, deliverable=deliverable)
 
@@ -155,11 +163,15 @@ def _default_refined_path(raw_mesh_path: Path) -> Path:
 
 def _validate_raw_mesh(raw_mesh_path: Path) -> None:
     if not raw_mesh_path.exists():
-        raise PipelineArtifactError(f"Phase 2 completed but no mesh artifact was produced: {raw_mesh_path}")
+        raise PipelineArtifactError(
+            f"Phase 2 completed but no mesh artifact was produced: {raw_mesh_path}"
+        )
     if raw_mesh_path.stat().st_size == 0:
         raise PipelineArtifactError(f"Phase 2 mesh artifact is empty: {raw_mesh_path}")
     if raw_mesh_path.suffix.lower() not in {".obj", ".glb", ".ply", ".stl", ".vtk", ".vtp"}:
-        raise PipelineArtifactError(f"Unsupported Phase 2 mesh artifact format: {raw_mesh_path.suffix}")
+        raise PipelineArtifactError(
+            f"Unsupported Phase 2 mesh artifact format: {raw_mesh_path.suffix}"
+        )
 
 
 def _serializable_diagnostics(refinement_result: dict[str, Any]) -> dict[str, Any]:

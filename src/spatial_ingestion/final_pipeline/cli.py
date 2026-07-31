@@ -1,25 +1,51 @@
 from __future__ import annotations
-from spatial_ingestion.final_pipeline.core import full_result_to_dict, run_full_pipeline
+
 import argparse
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
-from spatial_ingestion.final_pipeline.core import result_to_dict, run_phase2_phase3_pipeline
-from spatial_ingestion.reconstruction.cli import DEFAULT_MODEL, collect_input_images, resolve_output_path
-from spatial_ingestion.reconstruction.models import Mast3rRunParams, ReconstructionJob, ReconstructionMode
+from spatial_ingestion.final_pipeline.core import (
+    full_result_to_dict,
+    result_to_dict,
+    run_full_pipeline,
+    run_phase2_phase3_pipeline,
+)
+from spatial_ingestion.reconstruction.cli import (
+    DEFAULT_MODEL,
+    collect_input_images,
+    resolve_output_path,
+)
+from spatial_ingestion.reconstruction.models import (
+    Mast3rRunParams,
+    ReconstructionJob,
+    ReconstructionMode,
+)
 from spatial_ingestion.refinement import MeshCleaningConfig
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run Phase 2 reconstruction followed by Phase 3 mesh refinement.")
+    parser = argparse.ArgumentParser(
+        description="Run Phase 2 reconstruction followed by Phase 3 mesh refinement."
+    )
     parser.add_argument("input", help="Folder containing at least two views of the same subject")
     parser.add_argument("-o", "--output", help="Raw Phase 2 mesh output path or output directory")
-    parser.add_argument("--refined-output", type=Path, help="Where to write the Phase 3 refined mesh")
-    parser.add_argument("--use-case", choices=("editing", "viewing", "live"), help="Run Phase 4 too, routing to this use case")
-    parser.add_argument("--input-type", help="SourceType for Phase 4 routing (e.g. image_folder). Required if --use-case is set.")
+    parser.add_argument(
+        "--refined-output", type=Path, help="Where to write the Phase 3 refined mesh"
+    )
+    parser.add_argument(
+        "--use-case",
+        choices=("editing", "viewing", "live"),
+        help="Run Phase 4 too, routing to this use case",
+    )
+    parser.add_argument(
+        "--input-type",
+        help="SourceType for Phase 4 routing (e.g. image_folder). Required if --use-case is set.",
+    )
     parser.add_argument("--device", default="auto", help="cuda, cpu, mps, or auto")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="MASt3R model id or local checkpoint path")
+    parser.add_argument(
+        "--model", default=DEFAULT_MODEL, help="MASt3R model id or local checkpoint path"
+    )
     parser.add_argument("--pairing-strategy", default="complete", choices=["complete", "swin"])
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--tsdf-thresh", type=float, default=0)
@@ -88,6 +114,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(full_result_to_dict(full_result), indent=2, sort_keys=True))
         return 0
 
-    result = run_phase2_phase3_pipeline(job, refinement_config, refined_output_path=args.refined_output)
+    result = run_phase2_phase3_pipeline(
+        job, refinement_config, refined_output_path=args.refined_output
+    )
     print(json.dumps(result_to_dict(result), indent=2, sort_keys=True))
     return 0

@@ -157,8 +157,8 @@ def deliverable_router(
     input_type: str | SourceType,
     use_case: str,
     output_root: Path | str = DEFAULT_DELIVERABLES_ROOT,
-    mesh: Optional[trimesh.Trimesh] = None,
-    point_cloud: Optional[trimesh.PointCloud] = None,
+    mesh: trimesh.Trimesh | None = None,
+    point_cloud: trimesh.PointCloud | None = None,
 ) -> DeliverableResult:
     """Routes and packages Phase 3 output based on the declared use case.
 
