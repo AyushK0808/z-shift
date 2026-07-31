@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+from spatial_ingestion.final_pipeline.core import full_result_to_dict, run_full_pipeline
 import argparse
 import json
 from pathlib import Path
@@ -16,7 +16,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("input", help="Folder containing at least two views of the same subject")
     parser.add_argument("-o", "--output", help="Raw Phase 2 mesh output path or output directory")
     parser.add_argument("--refined-output", type=Path, help="Where to write the Phase 3 refined mesh")
-
+    parser.add_argument("--use-case", choices=("editing", "viewing", "live"), help="Run Phase 4 too, routing to this use case")
+    parser.add_argument("--input-type", help="SourceType for Phase 4 routing (e.g. image_folder). Required if --use-case is set.")
     parser.add_argument("--device", default="auto", help="cuda, cpu, mps, or auto")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="MASt3R model id or local checkpoint path")
     parser.add_argument("--pairing-strategy", default="complete", choices=["complete", "swin"])
@@ -73,6 +74,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         decimate_target_reduction=args.decimate_target_reduction,
         verify_watertight=not args.no_watertight_check,
     )
+
+    if args.use_case:
+        if not args.input_type:
+            raise ValueError("--input-type is required when --use-case is set")
+        full_result = run_full_pipeline(
+            job,
+            use_case=args.use_case,
+            input_type=args.input_type,
+            refinement_config=refinement_config,
+            refined_output_path=args.refined_output,
+        )
+        print(json.dumps(full_result_to_dict(full_result), indent=2, sort_keys=True))
+        return 0
 
     result = run_phase2_phase3_pipeline(job, refinement_config, refined_output_path=args.refined_output)
     print(json.dumps(result_to_dict(result), indent=2, sort_keys=True))

@@ -6,12 +6,34 @@ from pathlib import Path
 from typing import Any
 
 import pyvista as pv
+import trimesh
+from spatial_ingestion.metadata.schema import SourceType
+from spatial_ingestion.outcomes_engine.engine import (
+    DEFAULT_DELIVERABLES_ROOT,
+    DeliverableResult,
+    deliverable_router,
+)
 
 from spatial_ingestion.reconstruction.models import ReconstructionJob
 from spatial_ingestion.reconstruction.pipeline import _resolve_output_paths
 from spatial_ingestion.reconstruction.pipeline import run as run_reconstruction
 from spatial_ingestion.refinement import MeshCleaningConfig, clean_mesh
 
+
+def _pv_mesh_to_trimesh(mesh: pv.PolyData) -> trimesh.Trimesh:
+    """Adapt a PyVista PolyData (Phase 3 output) to trimesh (Phase 4 input)."""
+    tri = mesh.triangulate()
+    faces = tri.faces.reshape(-1, 4)[:, 1:]
+    vertex_colors = None
+    if "RGB" in tri.point_data:
+        vertex_colors = tri.point_data["RGB"]
+    return trimesh.Trimesh(vertices=tri.points, faces=faces, vertex_colors=vertex_colors)
+
+
+@dataclass(frozen=True)
+class FullPipelineResult:
+    pipeline_result: FinalPipelineResult
+    deliverable: DeliverableResult
 
 class PipelineArtifactError(RuntimeError):
     """Raised when a phase boundary artifact is missing or unusable."""
@@ -67,6 +89,51 @@ def run_phase2_phase3_pipeline(
         refinement_manifest_path=manifest_path,
         refinement_diagnostics=diagnostics,
     )
+
+def run_full_pipeline(
+    job: ReconstructionJob,
+    use_case: str,
+    input_type: str | SourceType,
+    refinement_config: MeshCleaningConfig | None = None,
+    *,
+    refined_output_path: Path | str | None = None,
+    deliverables_root: Path | str = DEFAULT_DELIVERABLES_ROOT,
+) -> FullPipelineResult:
+    """Run Phase 2 -> Phase 3 -> Phase 4 as one command."""
+    pipeline_result = run_phase2_phase3_pipeline(
+        job, refinement_config, refined_output_path=refined_output_path
+    )
+
+    if use_case == "editing":
+        refined_mesh = pv.read(str(pipeline_result.refined_mesh_path))
+        mesh = _pv_mesh_to_trimesh(refined_mesh)
+        deliverable = deliverable_router(
+            input_type=input_type,
+            use_case="editing",
+            output_root=deliverables_root,
+            mesh=mesh,
+        )
+    elif use_case == "viewing":
+        point_cloud_path = pipeline_result.reconstruction_manifest_path.parent / "point_cloud.ply"
+        if not point_cloud_path.exists():
+            raise PipelineArtifactError(f"Phase 2 point cloud not found: {point_cloud_path}")
+        cloud_mesh = trimesh.load(str(point_cloud_path))
+        deliverable = deliverable_router(
+            input_type=input_type,
+            use_case="viewing",
+            output_root=deliverables_root,
+            point_cloud=cloud_mesh,
+        )
+    else:
+        deliverable = deliverable_router(input_type=input_type, use_case=use_case, output_root=deliverables_root)
+
+    return FullPipelineResult(pipeline_result=pipeline_result, deliverable=deliverable)
+
+
+def full_result_to_dict(result: FullPipelineResult) -> dict[str, Any]:
+    data = result_to_dict(result.pipeline_result)
+    data["deliverable"] = asdict(result.deliverable)
+    return data
 
 
 def result_to_dict(result: FinalPipelineResult) -> dict[str, Any]:
