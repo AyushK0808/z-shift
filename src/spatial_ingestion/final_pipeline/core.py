@@ -5,7 +5,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-import pyvista as pv
 import trimesh
 
 from spatial_ingestion.metadata.schema import SourceType
@@ -17,17 +16,13 @@ from spatial_ingestion.outcomes_engine.engine import (
 from spatial_ingestion.reconstruction.models import ReconstructionJob
 from spatial_ingestion.reconstruction.pipeline import _resolve_output_paths
 from spatial_ingestion.reconstruction.pipeline import run as run_reconstruction
-from spatial_ingestion.refinement import MeshCleaningConfig, clean_mesh
-
-
-def _pv_mesh_to_trimesh(mesh: pv.PolyData) -> trimesh.Trimesh:
-    """Adapt a PyVista PolyData (Phase 3 output) to trimesh (Phase 4 input)."""
-    tri = mesh.triangulate()
-    faces = tri.faces.reshape(-1, 4)[:, 1:]
-    vertex_colors = None
-    if "RGB" in tri.point_data:
-        vertex_colors = tri.point_data["RGB"]
-    return trimesh.Trimesh(vertices=tri.points, faces=faces, vertex_colors=vertex_colors)
+from spatial_ingestion.refinement import (
+    MeshCleaningConfig,
+    clean_mesh,
+    load_mesh_file,
+    to_trimesh,
+    write_mesh_file,
+)
 
 
 @dataclass(frozen=True)
@@ -64,7 +59,7 @@ def run_phase2_phase3_pipeline(
     raw_mesh_path, output_dir = _resolve_output_paths(job)
     _validate_raw_mesh(raw_mesh_path)
 
-    raw_mesh = pv.read(str(raw_mesh_path))
+    raw_mesh = load_mesh_file(raw_mesh_path)
     refinement_result = clean_mesh(raw_mesh, refinement_config or MeshCleaningConfig())
     cleaned_mesh = refinement_result["mesh"]
 
@@ -74,7 +69,7 @@ def run_phase2_phase3_pipeline(
         else _default_refined_path(raw_mesh_path)
     )
     destination.parent.mkdir(parents=True, exist_ok=True)
-    cleaned_mesh.save(str(destination))
+    write_mesh_file(cleaned_mesh, destination)
 
     manifest_path = output_dir / "refinement_manifest.json"
     diagnostics = _serializable_diagnostics(refinement_result)
@@ -111,8 +106,8 @@ def run_full_pipeline(
     )
 
     if use_case == "editing":
-        refined_mesh = pv.read(str(pipeline_result.refined_mesh_path))
-        mesh = _pv_mesh_to_trimesh(refined_mesh)
+        refined_mesh = load_mesh_file(pipeline_result.refined_mesh_path)
+        mesh = to_trimesh(refined_mesh)
         deliverable = deliverable_router(
             input_type=input_type,
             use_case="editing",
@@ -124,6 +119,10 @@ def run_full_pipeline(
         if not point_cloud_path.exists():
             raise PipelineArtifactError(f"Phase 2 point cloud not found: {point_cloud_path}")
         cloud_mesh = trimesh.load(str(point_cloud_path))
+        if not isinstance(cloud_mesh, trimesh.PointCloud):
+            raise PipelineArtifactError(
+                f"Phase 2 point cloud artifact is not a point cloud: {point_cloud_path}"
+            )
         deliverable = deliverable_router(
             input_type=input_type,
             use_case="viewing",
@@ -157,7 +156,7 @@ def result_to_dict(result: FinalPipelineResult) -> dict[str, Any]:
 
 
 def _default_refined_path(raw_mesh_path: Path) -> Path:
-    suffix = raw_mesh_path.suffix or ".obj"
+    suffix = raw_mesh_path.suffix or ".glb"
     return raw_mesh_path.with_name(f"{raw_mesh_path.stem}_refined{suffix}")
 
 

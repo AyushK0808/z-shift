@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 
+import numpy as np
 import pytest
 import pyvista as pv
 
@@ -16,6 +17,7 @@ from spatial_ingestion.final_pipeline.core import (
 from spatial_ingestion.reconstruction.cli import collect_input_images
 from spatial_ingestion.reconstruction.models import ReconstructionJob, ReconstructionMode
 from spatial_ingestion.refinement import MeshCleaningConfig
+from spatial_ingestion.test_harness.media_factory import create_sample_image
 
 
 def _job(output_path: Path) -> ReconstructionJob:
@@ -63,8 +65,8 @@ def test_pipeline_fails_when_phase2_mesh_is_missing(monkeypatch, tmp_path: Path)
 def test_pipeline_cli_smoke_with_mocked_phase2(monkeypatch, tmp_path: Path, capsys) -> None:
     image_dir = tmp_path / "views"
     image_dir.mkdir()
-    (image_dir / "front.png").write_bytes(b"front")
-    (image_dir / "side.png").write_bytes(b"side")
+    create_sample_image(image_dir / "front.png")
+    create_sample_image(image_dir / "side.png")
     raw_mesh_path = tmp_path / "pipeline_out" / "mesh.obj"
 
     def fake_reconstruction(job: ReconstructionJob) -> int:
@@ -104,6 +106,8 @@ def test_real_phase2_phase3_pipeline_with_user_images(tmp_path: Path) -> None:
         r"C:\Users\Rakshit\Desktop\OldPCStuff\Mera Saman\CODING\Vinnovate"
         r"\imgto3d\z-shift\data\pipeline"
     ).resolve()
+    if not image_dir.exists():
+        pytest.skip(f"user image directory not present on this machine: {image_dir}")
 
     images = collect_input_images(image_dir)
     if len(images) < 2:
@@ -152,6 +156,7 @@ def test_full_pipeline_editing_track(monkeypatch, tmp_path: Path) -> None:
 
     assert result.pipeline_result.refined_mesh_path.exists()
     assert result.deliverable.track == "A"
+    assert result.deliverable.output_path is not None
     assert Path(result.deliverable.output_path).exists()
     assert Path(result.deliverable.output_path).suffix == ".glb"
 
@@ -181,3 +186,42 @@ def test_full_pipeline_rejects_bad_use_case_for_input_type(monkeypatch, tmp_path
         pass
     else:
         raise AssertionError("expected invalid input_type/use_case combo to raise")
+
+
+def test_full_pipeline_editing_track_with_glb_artifacts(monkeypatch, tmp_path: Path) -> None:
+    import trimesh
+
+    raw_mesh_path = tmp_path / "pipeline_out" / "mesh.glb"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        output_path = Path(job.output_path or raw_mesh_path).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sphere = pv.Sphere(theta_resolution=16, phi_resolution=16)
+        faces = sphere.faces.reshape(-1, 4)[:, 1:]
+        colors = np.zeros((sphere.n_points, 4), dtype=np.uint8)
+        colors[:, 0] = 255
+        colors[:, 3] = 255
+        trimesh.Trimesh(vertices=sphere.points, faces=faces, vertex_colors=colors).export(
+            str(output_path)
+        )
+        return 0
+
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
+
+    result = run_full_pipeline(
+        _job(raw_mesh_path),
+        use_case="editing",
+        input_type="image_folder",
+        refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+        deliverables_root=tmp_path / "deliverables",
+    )
+
+    assert result.pipeline_result.raw_mesh_path.suffix == ".glb"
+    assert result.pipeline_result.refined_mesh_path.suffix == ".glb"
+    assert result.pipeline_result.refined_mesh_path.exists()
+    assert result.deliverable.track == "A"
+    assert result.deliverable.output_path is not None
+    assert Path(result.deliverable.output_path).exists()
+    assert Path(result.deliverable.output_path).suffix == ".glb"

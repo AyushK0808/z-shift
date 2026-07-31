@@ -27,7 +27,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-o",
         "--output",
-        help="Output path (.obj, .glb, .ply). .glb and .ply have proper vertex color support.",
+        help=(
+            "Output path (.obj, .glb, .ply); defaults to .glb. "
+            ".glb and .ply have proper vertex color support."
+        ),
     )
     parser.add_argument("--device", default="auto", help="cuda, cpu, mps, or auto")
     parser.add_argument(
@@ -108,7 +111,9 @@ def collect_input_images(input_path: Path) -> list[Path]:
     raise FileNotFoundError(f"Input path does not exist: {input_path}")
 
 
-def resolve_output_path(input_path: Path, explicit_output: str | None) -> Path:
+def resolve_output_path(
+    input_path: Path, explicit_output: str | None, label: str | None = None
+) -> Path:
     job_id = uuid4().hex[:12]
 
     if explicit_output:
@@ -116,7 +121,7 @@ def resolve_output_path(input_path: Path, explicit_output: str | None) -> Path:
         if output_path.suffix.lower() in {".obj", ".glb", ".ply"}:
             stem = output_path.stem
             return output_path.parent / f"{stem}_{job_id}" / output_path.name
-        return output_path / f"mesh_{job_id}.obj"
+        return output_path / f"mesh_{job_id}.glb"
 
-    stem = input_path.stem if input_path.is_file() else input_path.name
-    return RECONSTRUCTION_OUTPUT_ROOT / f"{stem}_{job_id}" / f"{stem}.obj"
+    stem = label or (input_path.stem if input_path.is_file() else input_path.name)
+    return RECONSTRUCTION_OUTPUT_ROOT / f"{stem}_{job_id}" / f"{stem}.glb"

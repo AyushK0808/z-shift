@@ -109,11 +109,11 @@ def export_scene_to_mesh(
     fmt = output_path.suffix.lower()
     if fmt not in _SUPPORTED_FORMATS:
         logger.warning(
-            "Unsupported format '%s', falling back to .obj. Supported: .obj, .glb, .ply",
+            "Unsupported format '%s', falling back to .glb. Supported: .obj, .glb, .ply",
             fmt,
         )
-        output_path = output_path.with_suffix(".obj")
-        fmt = ".obj"
+        output_path = output_path.with_suffix(".glb")
+        fmt = ".glb"
 
     if fmt == ".ply":
         mesh.export(str(output_path))

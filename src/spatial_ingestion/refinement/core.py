@@ -1,10 +1,12 @@
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
 import pyvista as pv
+import trimesh
 
 logger = logging.getLogger(__name__)
 
@@ -48,18 +50,30 @@ class MeshCleaningConfig:
 
 def _extract_mesh_from_multiblock(mesh: Any) -> pv.DataSet:
     if isinstance(mesh, pv.MultiBlock):
-        for block in mesh:
-            if isinstance(block, pv.DataSet) and block.n_points > 0 and block.n_cells > 0:
-                return block
-            if isinstance(block, pv.MultiBlock):
-                try:
-                    extracted = _extract_mesh_from_multiblock(block)
-                except MeshValidationError:
-                    continue
-                if extracted is not None:
-                    return extracted
-        raise MeshValidationError("MultiBlock input did not contain any usable mesh blocks")
+        blocks = _collect_usable_blocks(mesh)
+        if not blocks:
+            raise MeshValidationError("MultiBlock input did not contain any usable mesh blocks")
+        if len(blocks) > 1:
+            logger.warning(
+                "MultiBlock input contains %d usable mesh blocks; using the first "
+                "(%d points, %d cells) and dropping the rest",
+                len(blocks),
+                blocks[0].n_points,
+                blocks[0].n_cells,
+            )
+        return blocks[0]
     return mesh
+
+
+def _collect_usable_blocks(mesh: Any) -> list[pv.DataSet]:
+    if isinstance(mesh, pv.MultiBlock):
+        blocks: list[pv.DataSet] = []
+        for block in mesh:
+            blocks.extend(_collect_usable_blocks(block))
+        return blocks
+    if isinstance(mesh, pv.DataSet) and mesh.n_points > 0 and mesh.n_cells > 0:
+        return [mesh]
+    return []
 
 
 def validate_mesh_input(mesh: Any) -> pv.DataSet:
@@ -71,6 +85,41 @@ def validate_mesh_input(mesh: Any) -> pv.DataSet:
     if not np.all(np.isfinite(mesh.points)):
         raise MeshValidationError("Mesh contains NaN/Inf point coordinates")
     return mesh
+
+
+def load_mesh_file(path: Path | str) -> pv.DataSet:
+    """Read a mesh file, unwrapping MultiBlock containers (e.g. GLB scenes)."""
+    path = Path(path)
+    mesh = _extract_mesh_from_multiblock(pv.read(str(path)))
+    if not isinstance(mesh, pv.DataSet):
+        raise MeshValidationError(f"Unsupported mesh content in {path}: {type(mesh).__name__}")
+    return mesh
+
+
+def to_trimesh(mesh: pv.DataSet) -> trimesh.Trimesh:
+    """Adapt a PyVista DataSet to a trimesh.Trimesh, preserving vertex colors."""
+    tri = mesh.extract_surface(algorithm=None).triangulate()
+    faces = tri.faces.reshape(-1, 4)[:, 1:]
+    colors = None
+    for name in ("RGBA", "RGB", "rgba", "rgb", "COLOR_0", "color_0"):
+        colors = tri.point_data.get(name)
+        if colors is not None:
+            break
+    if colors is None and tri.active_scalars_name not in (None, "Normals"):
+        active = tri.active_scalars
+        if active.ndim == 2 and active.shape[1] in (3, 4):
+            colors = active
+    vertex_colors = np.asarray(colors) if colors is not None else None
+    return trimesh.Trimesh(vertices=tri.points, faces=faces, vertex_colors=vertex_colors)
+
+
+def write_mesh_file(mesh: pv.DataSet, path: Path | str) -> None:
+    """Save a mesh; .glb/.gltf go through trimesh (pyvista cannot write GLB)."""
+    path = Path(path)
+    if path.suffix.lower() in {".glb", ".gltf"}:
+        to_trimesh(mesh).export(str(path))
+    else:
+        mesh.save(str(path))
 
 
 def run_step(step_name: str, fn, *args, **kwargs):
@@ -171,23 +220,29 @@ def smooth_mesh(
 
 
 def preserve_data_arrays(source: pv.DataSet, target: pv.DataSet) -> pv.DataSet:
+    """Transfer point color arrays (2-D, 3-4 channel) from source to target.
+
+    Nearest-point transfer is used so colors survive geometry-changing steps
+    (smoothing, decimation) without probe-interpolation zeros. Non-color
+    point data and cell data are intentionally not transferred.
+    """
     if target.n_points == 0:
         return target
-    if not source.point_data and not source.cell_data:
+    color_arrays = {
+        name: np.asarray(array)
+        for name, array in source.point_data.items()
+        if array.ndim == 2 and array.shape[1] in (3, 4)
+    }
+    if not color_arrays:
         return target
 
-    try:
-        transferred = target.sample(source)
-    except Exception:
-        transferred = target.copy(deep=True)
-        for name, array in source.point_data.items():
-            if array.ndim != 2 or array.shape[1] not in (3, 4):
-                continue
-            nearest_values = np.empty((target.n_points, array.shape[1]), dtype=array.dtype)
-            for index, point in enumerate(np.asarray(target.points)):
-                closest_id = source.find_closest_point(point)
-                nearest_values[index] = np.asarray(array[closest_id])
-            transferred.point_data[name] = nearest_values
+    from scipy.spatial import KDTree
+
+    tree = KDTree(np.asarray(source.points))
+    _, nearest = tree.query(np.asarray(target.points), k=1)
+    transferred = target.copy(deep=True)
+    for name, array in color_arrays.items():
+        transferred.point_data[name] = array[nearest]
     return transferred
 
 
@@ -241,7 +296,7 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
     else:
         filtered = run_step("component_filter", filter_room_components, mesh, cfg.min_cell_count)
 
-    data_source = filtered if (filtered.point_data or filtered.cell_data) else mesh
+    data_source = filtered if filtered.point_data else mesh
 
     filled = run_step("fill_holes", fill_mesh_holes, filtered, cfg.hole_size)
 
@@ -258,7 +313,7 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
     final_mesh = run_step(
         "finalize", finalize_mesh, smoothed, cfg.merge_tolerance, cfg.decimate_target_reduction
     )
-    if data_source.point_data or data_source.cell_data:
+    if data_source.point_data:
         final_mesh = run_step("transfer_data", preserve_data_arrays, data_source, final_mesh)
 
     topology = {"boundary_edge_count": None, "non_manifold_edge_count": None}
