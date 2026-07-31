@@ -43,7 +43,24 @@ class MeshCleaningConfig:
             raise ValueError("decimate_target_reduction must be between 0 and 1")
 
 
-def validate_mesh_input(mesh: pv.DataSet) -> pv.DataSet:
+def _extract_mesh_from_multiblock(mesh: Any) -> pv.DataSet:
+    if isinstance(mesh, pv.MultiBlock):
+        for block in mesh:
+            if isinstance(block, pv.DataSet) and block.n_points > 0 and block.n_cells > 0:
+                return block
+            if isinstance(block, pv.MultiBlock):
+                try:
+                    extracted = _extract_mesh_from_multiblock(block)
+                except MeshValidationError:
+                    continue
+                if extracted is not None:
+                    return extracted
+        raise MeshValidationError("MultiBlock input did not contain any usable mesh blocks")
+    return mesh
+
+
+def validate_mesh_input(mesh: Any) -> pv.DataSet:
+    mesh = _extract_mesh_from_multiblock(mesh)
     if not isinstance(mesh, pv.DataSet):
         raise MeshValidationError(f"Expected a pyvista DataSet, got {type(mesh).__name__}")
     if mesh.n_points == 0 or mesh.n_cells == 0:

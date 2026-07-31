@@ -17,7 +17,7 @@ from spatial_ingestion.refinement import MeshCleaningConfig
 def _job(output_path: Path) -> ReconstructionJob:
     return ReconstructionJob(
         mode=ReconstructionMode.MULTI_VIEW,
-        image_uris=["view_a.png", "view_b.png"],
+        image_uris=["image1.jpg", "image2.jpg"],
         output_path=str(output_path),
     )
 
@@ -89,15 +89,15 @@ def test_pipeline_cli_smoke_with_mocked_phase2(monkeypatch, tmp_path: Path, caps
 
 @pytest.mark.real_pipeline
 def test_real_phase2_phase3_pipeline_with_user_images(tmp_path: Path) -> None:
-    image_dir_env = os.environ.get("ZSHIFT_TEST_IMAGE_DIR")
-    if not image_dir_env:
-        pytest.skip("Set ZSHIFT_TEST_IMAGE_DIR to a folder with at least two real input images to run this test")
+    image_dir = Path(
+    r"C:\Users\Rakshit\Desktop\OldPCStuff\Mera Saman\CODING\Vinnovate\imgto3d\z-shift\data\pipeline"
+).resolve()
 
-    image_dir = Path(image_dir_env).expanduser().resolve()
     images = collect_input_images(image_dir)
     if len(images) < 2:
-        pytest.fail(f"ZSHIFT_TEST_IMAGE_DIR must contain at least two supported images: {image_dir}")
-
+        pytest.fail(
+        f"Image directory must contain at least two supported images: {image_dir}"
+    )
     output_path = tmp_path / "real_pipeline" / "mesh.obj"
     job = ReconstructionJob(
         mode=ReconstructionMode.MULTI_VIEW,
