@@ -102,12 +102,12 @@ def test_pipeline_cli_smoke_with_mocked_phase2(monkeypatch, tmp_path: Path, caps
 
 @pytest.mark.real_pipeline
 def test_real_phase2_phase3_pipeline_with_user_images(tmp_path: Path) -> None:
-    image_dir = Path(
-        r"C:\Users\Rakshit\Desktop\OldPCStuff\Mera Saman\CODING\Vinnovate"
-        r"\imgto3d\z-shift\data\pipeline"
-    ).resolve()
+    env_images = os.environ.get("ZSHIFT_TEST_IMAGES")
+    if not env_images:
+        pytest.skip("set ZSHIFT_TEST_IMAGES to a folder of user images to run this test")
+    image_dir = Path(env_images).resolve()
     if not image_dir.exists():
-        pytest.skip(f"user image directory not present on this machine: {image_dir}")
+        pytest.fail(f"ZSHIFT_TEST_IMAGES directory not found: {image_dir}")
 
     images = collect_input_images(image_dir)
     if len(images) < 2:
@@ -133,6 +133,39 @@ def test_real_phase2_phase3_pipeline_with_user_images(tmp_path: Path) -> None:
     assert result.refined_mesh_path.exists()
     assert result.refinement_manifest_path.exists()
     assert result.refinement_diagnostics["output_point_count"] > 0
+
+
+def test_full_pipeline_viewing_track(monkeypatch, tmp_path: Path) -> None:
+    import trimesh
+
+    raw_mesh_path = tmp_path / "mesh.obj"
+    point_cloud_path = tmp_path / "point_cloud.ply"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw_mesh_path))
+        rng = np.random.default_rng(0)
+        points = rng.random((100, 3))
+        colors = (rng.random((100, 3)) * 255).astype(np.uint8)
+        trimesh.PointCloud(vertices=points, colors=colors).export(str(point_cloud_path))
+        return 0
+
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
+
+    result = run_full_pipeline(
+        _job(raw_mesh_path),
+        use_case="viewing",
+        input_type="image_folder",
+        refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+        deliverables_root=tmp_path / "deliverables",
+    )
+
+    assert result.pipeline_result.refined_mesh_path.exists()
+    assert result.deliverable.track == "B"
+    assert result.deliverable.output_path is not None
+    assert Path(result.deliverable.output_path).exists()
+    assert Path(result.deliverable.output_path).suffix == ".ply"
 
 
 def test_full_pipeline_editing_track(monkeypatch, tmp_path: Path) -> None:
