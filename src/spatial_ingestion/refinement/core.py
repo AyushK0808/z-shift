@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 Mode = Literal["object", "room"]
 
+_COLOR_ARRAY_NAMES = ("RGBA", "RGB", "rgba", "rgb", "COLOR_0", "color_0")
+
 
 class MeshValidationError(ValueError):
     """Raised when input data isn't a usable mesh for cleaning."""
@@ -101,11 +103,11 @@ def to_trimesh(mesh: pv.DataSet) -> trimesh.Trimesh:
     tri = mesh.extract_surface(algorithm=None).triangulate()
     faces = tri.faces.reshape(-1, 4)[:, 1:]
     colors = None
-    for name in ("RGBA", "RGB", "rgba", "rgb", "COLOR_0", "color_0"):
+    for name in _COLOR_ARRAY_NAMES:
         colors = tri.point_data.get(name)
         if colors is not None:
             break
-    if colors is None and tri.active_scalars_name not in (None, "Normals"):
+    if colors is None and tri.active_scalars_name not in ("Normals", "TCoords", None):
         active = tri.active_scalars
         if active.ndim == 2 and active.shape[1] in (3, 4):
             colors = active
@@ -114,9 +116,13 @@ def to_trimesh(mesh: pv.DataSet) -> trimesh.Trimesh:
 
 
 def write_mesh_file(mesh: pv.DataSet, path: Path | str) -> None:
-    """Save a mesh; .glb/.gltf go through trimesh (pyvista cannot write GLB)."""
+    """Save a mesh with vertex colors intact.
+
+    .glb/.gltf/.obj/.ply/.stl go through trimesh (pyvista cannot write GLB and
+    its save() drops vertex colors for .obj/.ply); remaining formats via pyvista.
+    """
     path = Path(path)
-    if path.suffix.lower() in {".glb", ".gltf"}:
+    if path.suffix.lower() in {".glb", ".gltf", ".obj", ".ply", ".stl"}:
         to_trimesh(mesh).export(str(path))
     else:
         mesh.save(str(path))
@@ -220,18 +226,18 @@ def smooth_mesh(
 
 
 def preserve_data_arrays(source: pv.DataSet, target: pv.DataSet) -> pv.DataSet:
-    """Transfer point color arrays (2-D, 3-4 channel) from source to target.
+    """Transfer vertex color arrays (recognized color names) from source to target.
 
     Nearest-point transfer is used so colors survive geometry-changing steps
-    (smoothing, decimation) without probe-interpolation zeros. Non-color
-    point data and cell data are intentionally not transferred.
+    (smoothing, decimation) without probe-interpolation zeros. Other point data
+    (e.g. normals, confidence) and cell data are intentionally not transferred.
     """
     if target.n_points == 0:
         return target
     color_arrays = {
         name: np.asarray(array)
         for name, array in source.point_data.items()
-        if array.ndim == 2 and array.shape[1] in (3, 4)
+        if name in _COLOR_ARRAY_NAMES
     }
     if not color_arrays:
         return target

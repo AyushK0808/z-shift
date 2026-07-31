@@ -207,3 +207,41 @@ def test_clean_mesh_preserves_vertex_colors_through_smoothing(tmp_path: Path) ->
     )
     assert tri_colors is not None
     assert np.count_nonzero(tri_colors.sum(axis=1)) > len(tri.vertices) / 2
+
+
+def test_write_mesh_file_keeps_vertex_colors_for_obj_and_ply(tmp_path: Path) -> None:
+    import trimesh
+    import trimesh.visual
+
+    mesh = _make_colored_sphere_with_hole()
+
+    for suffix in (".obj", ".ply"):
+        target = tmp_path / f"cleaned{suffix}"
+        write_mesh_file(mesh, target)
+        assert target.exists() and target.stat().st_size > 0
+        loaded = trimesh.load(str(target))
+        assert isinstance(loaded, trimesh.Trimesh), f"{suffix} did not load as a mesh"
+        tri_colors = None
+        if isinstance(loaded.visual, trimesh.visual.ColorVisuals):
+            tri_colors = loaded.visual.vertex_colors
+        assert tri_colors is not None, f"no vertex colors survived {suffix} export"
+        assert np.count_nonzero(tri_colors.sum(axis=1)) > len(loaded.vertices) / 2
+
+    ply_reloaded = load_mesh_file(tmp_path / "cleaned.ply")
+    assert any(name in ply_reloaded.point_data for name in ("RGB", "RGBA"))
+
+
+def test_preserve_data_arrays_only_transfers_recognized_color_names() -> None:
+    from spatial_ingestion.refinement.core import preserve_data_arrays
+
+    rng = np.random.default_rng(0)
+    source = pv.Sphere(theta_resolution=16, phi_resolution=16)
+    source.point_data["Confidence"] = rng.random((source.n_points, 3))
+    source.point_data["COLOR_0"] = np.full((source.n_points, 4), [255, 0, 0, 255], dtype=np.uint8)
+    target = pv.Sphere(theta_resolution=16, phi_resolution=16)
+    target.points += 0.01
+
+    result = preserve_data_arrays(source, target)
+
+    assert "COLOR_0" in result.point_data
+    assert "Confidence" not in result.point_data
