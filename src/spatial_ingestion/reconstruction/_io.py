@@ -86,8 +86,20 @@ def uri_to_path(uri: str) -> Path:
     parsed = urlparse(uri)
     if parsed.scheme in {"", "file"}:
         candidate = unquote(parsed.path if parsed.scheme == "file" else uri)
+        if parsed.scheme == "file" and _is_windows_drive_netloc(parsed.netloc):
+            candidate = parsed.netloc + candidate
+        if parsed.scheme == "file" and _is_windows_drive_path(candidate):
+            candidate = candidate[1:]
         return Path(candidate).expanduser().resolve()
     return Path(uri).expanduser().resolve()
+
+
+def _is_windows_drive_path(path: str) -> bool:
+    return len(path) >= 3 and path[0] == "/" and path[1].isalpha() and path[2] == ":"
+
+
+def _is_windows_drive_netloc(netloc: str) -> bool:
+    return len(netloc) == 2 and netloc[0].isalpha() and netloc[1] == ":"
 
 
 def uri_to_path_or_none(uri: str) -> Path | None:

@@ -11,16 +11,17 @@ from spatial_ingestion.final_pipeline.core import (
     run_full_pipeline,
     run_phase2_phase3_pipeline,
 )
+from spatial_ingestion.final_pipeline.handoff import (
+    build_job,
+    ingest_batch,
+    load_schema,
+)
 from spatial_ingestion.reconstruction.cli import (
     DEFAULT_MODEL,
     collect_input_images,
     resolve_output_path,
 )
-from spatial_ingestion.reconstruction.models import (
-    Mast3rRunParams,
-    ReconstructionJob,
-    ReconstructionMode,
-)
+from spatial_ingestion.reconstruction.models import Mast3rRunParams
 from spatial_ingestion.refinement import MeshCleaningConfig
 
 
@@ -29,6 +30,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Run Phase 2 reconstruction followed by Phase 3 mesh refinement."
     )
     parser.add_argument("input", help="Folder containing at least two views of the same subject")
+    parser.add_argument(
+        "--from-schema",
+        type=Path,
+        help="Use a Phase 1 payload JSON (as returned by the ingestion gateway) instead of "
+        "ingesting the input folder; 'input' is then ignored",
+    )
     parser.add_argument("-o", "--output", help="Raw Phase 2 mesh output path or output directory")
     parser.add_argument(
         "--refined-output", type=Path, help="Where to write the Phase 3 refined mesh"
@@ -40,13 +47,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--input-type",
-        help="SourceType for Phase 4 routing (e.g. image_folder). Required if --use-case is set.",
+        help="SourceType for Phase 4 routing (e.g. image_folder). Defaults to the "
+        "Phase 1 classified source type.",
     )
     parser.add_argument("--device", default="auto", help="cuda, cpu, mps, or auto")
     parser.add_argument(
         "--model", default=DEFAULT_MODEL, help="MASt3R model id or local checkpoint path"
     )
-    parser.add_argument("--pairing-strategy", default="complete", choices=["complete", "swin"])
+    parser.add_argument(
+        "--pairing-strategy",
+        choices=["complete", "swin"],
+        help="MASt3R pairing strategy (default: auto; swin is auto-selected for videos "
+        "and large image sets)",
+    )
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--tsdf-thresh", type=float, default=0)
     parser.add_argument("--min-conf-thr", type=float, default=1.5)
@@ -69,25 +82,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     input_path = Path(args.input).expanduser().resolve()
-    image_paths = collect_input_images(input_path)
-    if len(image_paths) < 2:
-        raise ValueError("Need a folder containing at least two views of the same subject")
+    if args.from_schema:
+        payload = load_schema(args.from_schema)
+    else:
+        image_paths = collect_input_images(input_path)
+        if len(image_paths) < 2:
+            raise ValueError("Need a folder containing at least two views of the same subject")
+        payload = ingest_batch(image_paths)
+        input_path = image_paths[0].parent
 
-    job = ReconstructionJob(
-        mode=ReconstructionMode.MULTI_VIEW,
-        label=input_path.name,
-        image_uris=[str(path) for path in image_paths],
-        output_path=str(resolve_output_path(input_path, args.output)),
-        metadata=Mast3rRunParams(
-            model_name=args.model,
-            device=args.device,
-            image_size=args.image_size,
-            pairing_strategy=args.pairing_strategy,
-            tsdf_thresh=args.tsdf_thresh,
-            min_conf_thr=args.min_conf_thr,
-            seed=args.seed,
-            dry_run=False,
-        ).model_dump(),
+    mast3r_params = Mast3rRunParams(
+        model_name=args.model,
+        device=args.device,
+        image_size=args.image_size,
+        tsdf_thresh=args.tsdf_thresh,
+        min_conf_thr=args.min_conf_thr,
+        seed=args.seed,
+        dry_run=False,
+    )
+    if args.pairing_strategy:
+        mast3r_params.pairing_strategy = args.pairing_strategy
+
+    label = None if args.from_schema else input_path.name
+    output_path = resolve_output_path(
+        input_path,
+        args.output,
+        label=label or (payload.sync_group_id or payload.source_type.value),
     )
     refinement_config = MeshCleaningConfig(
         mode=args.refinement_mode,
@@ -101,13 +121,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         verify_watertight=not args.no_watertight_check,
     )
 
+    job = build_job(
+        payload,
+        mast3r_params=mast3r_params,
+        output_path=output_path,
+        label=label,
+    )
     if args.use_case:
-        if not args.input_type:
-            raise ValueError("--input-type is required when --use-case is set")
         full_result = run_full_pipeline(
             job,
             use_case=args.use_case,
-            input_type=args.input_type,
+            input_type=args.input_type or payload.source_type.value,
             refinement_config=refinement_config,
             refined_output_path=args.refined_output,
         )
