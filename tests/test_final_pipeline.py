@@ -12,6 +12,7 @@ from spatial_ingestion.final_pipeline.core import PipelineArtifactError, run_pha
 from spatial_ingestion.reconstruction.cli import collect_input_images
 from spatial_ingestion.reconstruction.models import ReconstructionJob, ReconstructionMode
 from spatial_ingestion.refinement import MeshCleaningConfig
+from spatial_ingestion.final_pipeline.core import run_full_pipeline
 
 
 def _job(output_path: Path) -> ReconstructionJob:
@@ -119,3 +120,50 @@ def test_real_phase2_phase3_pipeline_with_user_images(tmp_path: Path) -> None:
     assert result.refined_mesh_path.exists()
     assert result.refinement_manifest_path.exists()
     assert result.refinement_diagnostics["output_point_count"] > 0
+
+def test_full_pipeline_editing_track(monkeypatch, tmp_path: Path) -> None:
+    raw_mesh_path = tmp_path / "mesh.obj"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw_mesh_path))
+        return 0
+
+    monkeypatch.setattr("spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction)
+
+    result = run_full_pipeline(
+        _job(raw_mesh_path),
+        use_case="editing",
+        input_type="image_folder",
+        refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+        deliverables_root=tmp_path / "deliverables",
+    )
+
+    assert result.pipeline_result.refined_mesh_path.exists()
+    assert result.deliverable.track == "A"
+    assert Path(result.deliverable.output_path).exists()
+    assert Path(result.deliverable.output_path).suffix == ".glb"
+
+
+def test_full_pipeline_rejects_bad_use_case_for_input_type(monkeypatch, tmp_path: Path) -> None:
+    raw_mesh_path = tmp_path / "mesh.obj"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw_mesh_path))
+        return 0
+
+    monkeypatch.setattr("spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction)
+
+    from spatial_ingestion.outcomes_engine.engine import InvalidRoutingError
+
+    try:
+        run_full_pipeline(
+            _job(raw_mesh_path),
+            use_case="editing",
+            input_type="live_stream",
+            refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+            deliverables_root=tmp_path / "deliverables",
+        )
+    except InvalidRoutingError:
+        pass
+    else:
+        raise AssertionError("expected invalid input_type/use_case combo to raise")

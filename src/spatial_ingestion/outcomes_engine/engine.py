@@ -158,13 +158,13 @@ def deliverable_router(
     input_type: str | SourceType,
     use_case: str,
     output_root: Path | str = DEFAULT_DELIVERABLES_ROOT,
+    mesh: Optional[trimesh.Trimesh] = None,
+    point_cloud: Optional[trimesh.PointCloud] = None,
 ) -> DeliverableResult:
     """Routes and packages Phase 3 output based on the declared use case.
 
-    Raises `InvalidRoutingError` for an unsupported (input_type, use_case)
-    combination, and `TrackNotImplementedError` for a valid combination that
-    targets a track not yet built (currently: Track C / live delivery).
-    Returns a `DeliverableResult` on success — nothing is printed.
+    If `mesh` / `point_cloud` are provided, they are used instead of the
+    in-memory Phase 3 mocks (`get_phase3_cleaned_mesh` / `get_phase3_point_cloud`).
     """
     source_type = _coerce_source_type(input_type)
     output_root = Path(output_root)
@@ -176,7 +176,7 @@ def deliverable_router(
                 f"'editing' is not valid for input_type '{source_type.value}' "
                 f"(valid: {sorted(t.value for t in _EDITING_INPUT_TYPES)})."
             )
-        raw_mesh = get_phase3_cleaned_mesh()
+        raw_mesh = mesh if mesh is not None else get_phase3_cleaned_mesh()
         final_file = export_blender_ready(raw_mesh, job_id, output_root)
         return DeliverableResult(
             job_id=job_id,
@@ -193,7 +193,7 @@ def deliverable_router(
                 f"'viewing' is not valid for input_type '{source_type.value}' "
                 f"(valid: {sorted(t.value for t in _VIEWING_INPUT_TYPES)})."
             )
-        raw_cloud = get_phase3_point_cloud()
+        raw_cloud = point_cloud if point_cloud is not None else get_phase3_point_cloud()
         final_file = export_point_cloud(raw_cloud, job_id, output_root)
         return DeliverableResult(
             job_id=job_id,
@@ -210,8 +210,6 @@ def deliverable_router(
                 f"'live' is not valid for input_type '{source_type.value}' "
                 f"(valid: {sorted(t.value for t in _LIVE_INPUT_TYPES)})."
             )
-        # Honesty item: no WebRTC/WebSocket delivery layer exists yet. Raise
-        # instead of claiming a stream was established.
         raise TrackNotImplementedError(
             f"[{job_id}] Track C (real-time WebRTC/WebSocket delivery) is not "
             "implemented yet."
