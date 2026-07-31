@@ -37,6 +37,18 @@ spatial-ingestion-refine = "spatial_ingestion.refinement.cli:main"
 zshift-final-pipeline = "spatial_ingestion.final_pipeline.cli:main"
 zshift-auto-rig = "spatial_ingestion.auto_rigging.cli:main"
 
+# PyPI only ships CPU-only torch wheels on Windows; CUDA builds live on
+# PyTorch's own index. Keep the resolution platform-scoped so Windows devs
+# get CUDA builds while CI (Linux lint jobs) stays on the lean default index.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'win32'" }]
+torchvision = [{ index = "pytorch-cu128", marker = "sys_platform == 'win32'" }]
+
 [dependency-groups]
 dev = [
   "pytest>=8.0.0",
