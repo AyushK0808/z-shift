@@ -112,7 +112,7 @@ def collect_input_images(input_path: Path) -> list[Path]:
 
 
 def resolve_output_path(
-    input_path: Path, explicit_output: str | None, label: str | None = None
+    input_path: Path | None, explicit_output: str | None, label: str | None = None
 ) -> Path:
     job_id = uuid4().hex[:12]
 
@@ -123,5 +123,8 @@ def resolve_output_path(
             return output_path.parent / f"{stem}_{job_id}" / output_path.name
         return output_path / f"mesh_{job_id}.glb"
 
-    stem = label or (input_path.stem if input_path.is_file() else input_path.name)
+    if input_path is None:
+        stem = label or "reconstruction"
+    else:
+        stem = label or (input_path.stem if input_path.is_file() else input_path.name)
     return RECONSTRUCTION_OUTPUT_ROOT / f"{stem}_{job_id}" / f"{stem}.glb"

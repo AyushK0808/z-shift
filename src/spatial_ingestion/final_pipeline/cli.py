@@ -29,12 +29,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run Phase 2 reconstruction followed by Phase 3 mesh refinement."
     )
-    parser.add_argument("input", help="Folder containing at least two views of the same subject")
+    parser.add_argument(
+        "input",
+        nargs="?",
+        help="Folder containing at least two views of the same subject "
+        "(optional when --from-schema is set)",
+    )
     parser.add_argument(
         "--from-schema",
         type=Path,
         help="Use a Phase 1 payload JSON (as returned by the ingestion gateway) instead of "
-        "ingesting the input folder; 'input' is then ignored",
+        "ingesting the input folder",
     )
     parser.add_argument("-o", "--output", help="Raw Phase 2 mesh output path or output directory")
     parser.add_argument(
@@ -81,15 +86,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    input_path = Path(args.input).expanduser().resolve()
     if args.from_schema:
+        input_path: Path | None = None
+        label = None
         payload = load_schema(args.from_schema)
     else:
+        if not args.input:
+            parser.error("an input folder or --from-schema is required")
+        input_path = Path(args.input).expanduser().resolve()
         image_paths = collect_input_images(input_path)
         if len(image_paths) < 2:
             raise ValueError("Need a folder containing at least two views of the same subject")
         payload = ingest_batch(image_paths)
         input_path = image_paths[0].parent
+        label = input_path.name
 
     mast3r_params = Mast3rRunParams(
         model_name=args.model,
@@ -103,7 +113,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.pairing_strategy:
         mast3r_params.pairing_strategy = args.pairing_strategy
 
-    label = None if args.from_schema else input_path.name
     output_path = resolve_output_path(
         input_path,
         args.output,
