@@ -126,7 +126,7 @@ uv run zshift-final-pipeline path/to/views -o out/mesh.glb \
      --refined-output out/mesh_refined.glb --use-case editing
 
 # Replay a gateway payload (e.g. a video-folder capture with sync map)
-uv run zshift-final-pipeline ignored-folder --from-schema payload.json -o out/mesh.glb
+uv run zshift-final-pipeline --from-schema payload.json -o out/mesh.glb
 ```
 
 ### Flags
@@ -390,8 +390,9 @@ Notes:
   `mast3r`/`dust3r` installs. If you run `uv sync` again later, re-run the setup script
   afterwards.
 - On Windows, `pyproject.toml` pins torch/torchvision to the CUDA 12.8 wheels
-  (`2.11.0+cu128`) via a `pytorch-cu128` uv index; other platforms resolve the CPU
-  wheels. This keeps GPU support on Windows without affecting CI.
+  (`2.11.0+cu128`) via a `pytorch-cu128` uv index, even on machines that only need
+  CPU inference. If you want a CPU-only local override, edit the uv source mapping
+  in your environment; the repo default keeps Windows GPU support on by default.
 - Do not install the upstream `requirements.txt` files separately (they force numpy 2.x);
   the project dependency set already includes the MASt3R runtime requirements.
 - The expected layout is `third_party/mast3r/` containing `dust3r/` as a submodule,

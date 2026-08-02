@@ -15,6 +15,10 @@ Mode = Literal["object", "room"]
 _COLOR_ARRAY_NAMES = ("RGBA", "RGB", "rgba", "rgb", "COLOR_0", "color_0")
 
 
+def _has_recognized_color_data(data: pv.DataSet) -> bool:
+    return any(name in data.point_data for name in _COLOR_ARRAY_NAMES)
+
+
 class MeshValidationError(ValueError):
     """Raised when input data isn't a usable mesh for cleaning."""
 
@@ -302,7 +306,7 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
     else:
         filtered = run_step("component_filter", filter_room_components, mesh, cfg.min_cell_count)
 
-    data_source = filtered if filtered.point_data else mesh
+    data_source = filtered if _has_recognized_color_data(filtered) else mesh
 
     filled = run_step("fill_holes", fill_mesh_holes, filtered, cfg.hole_size)
 
@@ -319,7 +323,7 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
     final_mesh = run_step(
         "finalize", finalize_mesh, smoothed, cfg.merge_tolerance, cfg.decimate_target_reduction
     )
-    if data_source.point_data:
+    if _has_recognized_color_data(data_source):
         final_mesh = run_step("transfer_data", preserve_data_arrays, data_source, final_mesh)
 
     topology = {"boundary_edge_count": None, "non_manifold_edge_count": None}

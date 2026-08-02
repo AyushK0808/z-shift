@@ -148,6 +148,39 @@ def _coerce_source_type(input_type: str | SourceType) -> SourceType:
         ) from exc
 
 
+def validate_routing(input_type: str | SourceType, use_case: str) -> SourceType:
+    """Validate a Phase 4 routing decision without exporting anything."""
+    source_type = _coerce_source_type(input_type)
+
+    if use_case == "editing":
+        if source_type not in _EDITING_INPUT_TYPES:
+            raise InvalidRoutingError(
+                f"'editing' is not valid for input_type '{source_type.value}' "
+                f"(valid: {sorted(t.value for t in _EDITING_INPUT_TYPES)})."
+            )
+        return source_type
+
+    if use_case == "viewing":
+        if source_type not in _VIEWING_INPUT_TYPES:
+            raise InvalidRoutingError(
+                f"'viewing' is not valid for input_type '{source_type.value}' "
+                f"(valid: {sorted(t.value for t in _VIEWING_INPUT_TYPES)})."
+            )
+        return source_type
+
+    if use_case == "live":
+        if source_type not in _LIVE_INPUT_TYPES:
+            raise InvalidRoutingError(
+                f"'live' is not valid for input_type '{source_type.value}' "
+                f"(valid: {sorted(t.value for t in _LIVE_INPUT_TYPES)})."
+            )
+        return source_type
+
+    raise InvalidRoutingError(
+        f"Unknown use_case '{use_case}'. Expected one of: 'editing', 'viewing', 'live'."
+    )
+
+
 # ---------------------------------------------------------------------------
 # 6. Deliverable router
 # ---------------------------------------------------------------------------
@@ -165,16 +198,16 @@ def deliverable_router(
     If `mesh` / `point_cloud` are provided, they are used instead of the
     in-memory Phase 3 mocks (`get_phase3_cleaned_mesh` / `get_phase3_point_cloud`).
     """
-    source_type = _coerce_source_type(input_type)
+    source_type = validate_routing(input_type, use_case)
     output_root = Path(output_root)
     job_id = f"JOB_{uuid.uuid4().hex[:6].upper()}"
 
+    if use_case == "live":
+        raise TrackNotImplementedError(
+            f"[{job_id}] Track C (real-time WebRTC/WebSocket delivery) is not implemented yet."
+        )
+
     if use_case == "editing":
-        if source_type not in _EDITING_INPUT_TYPES:
-            raise InvalidRoutingError(
-                f"'editing' is not valid for input_type '{source_type.value}' "
-                f"(valid: {sorted(t.value for t in _EDITING_INPUT_TYPES)})."
-            )
         raw_mesh = mesh if mesh is not None else get_phase3_cleaned_mesh()
         final_file = export_blender_ready(raw_mesh, job_id, output_root)
         return DeliverableResult(
@@ -187,11 +220,6 @@ def deliverable_router(
         )
 
     if use_case == "viewing":
-        if source_type not in _VIEWING_INPUT_TYPES:
-            raise InvalidRoutingError(
-                f"'viewing' is not valid for input_type '{source_type.value}' "
-                f"(valid: {sorted(t.value for t in _VIEWING_INPUT_TYPES)})."
-            )
         raw_cloud = point_cloud if point_cloud is not None else get_phase3_point_cloud()
         final_file = export_point_cloud(raw_cloud, job_id, output_root)
         return DeliverableResult(
@@ -202,17 +230,3 @@ def deliverable_router(
             output_path=final_file,
             message="Point-cloud deliverable packaged successfully.",
         )
-
-    if use_case == "live":
-        if source_type not in _LIVE_INPUT_TYPES:
-            raise InvalidRoutingError(
-                f"'live' is not valid for input_type '{source_type.value}' "
-                f"(valid: {sorted(t.value for t in _LIVE_INPUT_TYPES)})."
-            )
-        raise TrackNotImplementedError(
-            f"[{job_id}] Track C (real-time WebRTC/WebSocket delivery) is not implemented yet."
-        )
-
-    raise InvalidRoutingError(
-        f"Unknown use_case '{use_case}'. Expected one of: 'editing', 'viewing', 'live'."
-    )

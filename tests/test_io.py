@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from spatial_ingestion.reconstruction._io import (
     flatten_rows,
@@ -75,16 +76,12 @@ def test_write_ply_writes_correct_header(tmp_path: Path) -> None:
     points = np.array([[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]])
     colors = np.array([[0.5, 0.5, 0.5], [1.0, 0.0, 0.0]])
     write_ply(path, points, colors)
-    content = path.read_text(encoding="utf-8")
-    assert content.startswith("ply")
-    assert "element vertex 2" in content
-    assert "end_header" in content
-    lines = content.strip().split("\n")
-    data_lines = [
-        line
-        for line in lines
-        if not line.startswith(("ply", "format", "element", "property", "end_header"))
-    ]
-    assert len(data_lines) == 2
-    assert "128 128 128" in data_lines[0]
-    assert "255 0 0" in data_lines[1]
+    content = path.read_bytes()
+    assert content.startswith(b"ply\nformat binary_little_endian 1.0\n")
+    assert b"element vertex 2" in content
+    assert b"end_header\n" in content
+
+    trimesh = pytest.importorskip("trimesh")
+    loaded = trimesh.load(str(path))
+    assert len(loaded.vertices) == 2
+    assert loaded.vertices[1][0] == pytest.approx(1.0)

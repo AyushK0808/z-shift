@@ -198,8 +198,7 @@ def test_full_pipeline_rejects_bad_use_case_for_input_type(monkeypatch, tmp_path
     raw_mesh_path = tmp_path / "mesh.obj"
 
     def fake_reconstruction(job: ReconstructionJob) -> int:
-        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw_mesh_path))
-        return 0
+        raise AssertionError("Phase 2 should not run for an invalid route")
 
     monkeypatch.setattr(
         "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
@@ -219,6 +218,58 @@ def test_full_pipeline_rejects_bad_use_case_for_input_type(monkeypatch, tmp_path
         pass
     else:
         raise AssertionError("expected invalid input_type/use_case combo to raise")
+
+
+def test_full_pipeline_rejects_typoed_use_case_before_phase2(monkeypatch, tmp_path: Path) -> None:
+    raw_mesh_path = tmp_path / "mesh.obj"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        raise AssertionError("Phase 2 should not run for an unknown use case")
+
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
+
+    from spatial_ingestion.outcomes_engine.engine import InvalidRoutingError
+
+    try:
+        run_full_pipeline(
+            _job(raw_mesh_path),
+            use_case="liv",
+            input_type="image_folder",
+            refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+            deliverables_root=tmp_path / "deliverables",
+        )
+    except InvalidRoutingError:
+        pass
+    else:
+        raise AssertionError("expected unknown use_case to fail before Phase 2")
+
+
+def test_full_pipeline_rejects_live_use_case_before_phase2(monkeypatch, tmp_path: Path) -> None:
+    raw_mesh_path = tmp_path / "mesh.obj"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        raise AssertionError("Phase 2 should not run for the live use case")
+
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
+
+    from spatial_ingestion.outcomes_engine.engine import TrackNotImplementedError
+
+    try:
+        run_full_pipeline(
+            _job(raw_mesh_path),
+            use_case="live",
+            input_type="live_stream",
+            refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+            deliverables_root=tmp_path / "deliverables",
+        )
+    except TrackNotImplementedError:
+        pass
+    else:
+        raise AssertionError("expected live use case to fail before Phase 2")
 
 
 def test_full_pipeline_editing_track_with_glb_artifacts(monkeypatch, tmp_path: Path) -> None:

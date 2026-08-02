@@ -132,18 +132,10 @@ def export_scene_to_mesh(
             fmt,
         )
         output_path = output_path.with_suffix(".glb")
-        fmt = ".glb"
+    mesh.export(str(output_path))
 
-    if fmt == ".ply":
-        mesh.export(str(output_path))
-    else:
-        mesh.export(str(output_path))
-
-    try:
-        xyz, rgb = _dense_points_xyz_rgb(imgs, pts3d, confs, min_conf_thr)
-        write_ply(output_dir / "point_cloud.ply", xyz, rgb)
-    except Exception as exc:
-        logger.warning("Failed to export point cloud artifact: %s", exc)
+    xyz, rgb = _dense_points_xyz_rgb(imgs, pts3d, confs, min_conf_thr)
+    write_ply(output_dir / "point_cloud.ply", xyz, rgb)
 
     logger.info(
         "Exported %s (vertex colors: %s)", output_path, mesh.visual.vertex_colors is not None

@@ -11,7 +11,9 @@ from spatial_ingestion.metadata.schema import SourceType
 from spatial_ingestion.outcomes_engine.engine import (
     DEFAULT_DELIVERABLES_ROOT,
     DeliverableResult,
+    TrackNotImplementedError,
     deliverable_router,
+    validate_routing,
 )
 from spatial_ingestion.reconstruction.models import ReconstructionJob
 from spatial_ingestion.reconstruction.pipeline import _resolve_output_paths
@@ -101,6 +103,12 @@ def run_full_pipeline(
     deliverables_root: Path | str = DEFAULT_DELIVERABLES_ROOT,
 ) -> FullPipelineResult:
     """Run Phase 2 -> Phase 3 -> Phase 4 as one command."""
+    validate_routing(input_type, use_case)
+    if use_case == "live":
+        raise TrackNotImplementedError(
+            f"[{job.job_id}] Track C (real-time WebRTC/WebSocket delivery) is not implemented yet."
+        )
+
     pipeline_result = run_phase2_phase3_pipeline(
         job, refinement_config, refined_output_path=refined_output_path
     )
