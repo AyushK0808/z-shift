@@ -63,31 +63,73 @@ def write_ply(path: Path, points: Any, colors: Any) -> None:
     rgb_rows = flatten_rows(colors)
     row_count = min(len(xyz_rows), len(rgb_rows))
 
-    lines = [
-        "ply",
-        "format ascii 1.0",
-        f"element vertex {row_count}",
-        "property float x",
-        "property float y",
-        "property float z",
-        "property uchar red",
-        "property uchar green",
-        "property uchar blue",
-        "end_header",
-    ]
-    for xyz, rgb in zip(xyz_rows[:row_count], rgb_rows[:row_count], strict=False):
-        red, green, blue = scale_rgb_to_byte(rgb)
-        lines.append(f"{float(xyz[0])} {float(xyz[1])} {float(xyz[2])} {red} {green} {blue}")
+    xyz = np.asarray(xyz_rows[:row_count], dtype=np.float32).reshape(row_count, 3)
+    rgb = np.asarray(rgb_rows[:row_count], dtype=float).reshape(row_count, 3)
+    if row_count and np.nanmax(rgb) <= 1.0:
+        rgb = np.clip(np.rint(rgb[:, :3] * 255.0), 0.0, 255.0).astype(np.uint8, copy=False)
+    else:
+        rgb = np.clip(rgb[:, :3], 0.0, 255.0).astype(np.uint8, copy=False)
 
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    vertex_data = np.empty(
+        row_count,
+        dtype=[
+            ("x", "<f4"),
+            ("y", "<f4"),
+            ("z", "<f4"),
+            ("red", "u1"),
+            ("green", "u1"),
+            ("blue", "u1"),
+        ],
+    )
+    if row_count:
+        vertex_data["x"] = xyz[:, 0]
+        vertex_data["y"] = xyz[:, 1]
+        vertex_data["z"] = xyz[:, 2]
+        vertex_data["red"] = rgb[:, 0]
+        vertex_data["green"] = rgb[:, 1]
+        vertex_data["blue"] = rgb[:, 2]
+
+    header = (
+        "\n".join(
+            [
+                "ply",
+                "format binary_little_endian 1.0",
+                f"element vertex {row_count}",
+                "property float x",
+                "property float y",
+                "property float z",
+                "property uchar red",
+                "property uchar green",
+                "property uchar blue",
+                "end_header",
+            ]
+        )
+        + "\n"
+    )
+
+    with path.open("wb") as file_handle:
+        file_handle.write(header.encode("ascii"))
+        file_handle.write(vertex_data.tobytes())
 
 
 def uri_to_path(uri: str) -> Path:
     parsed = urlparse(uri)
     if parsed.scheme in {"", "file"}:
         candidate = unquote(parsed.path if parsed.scheme == "file" else uri)
+        if parsed.scheme == "file" and _is_windows_drive_netloc(parsed.netloc):
+            candidate = parsed.netloc + candidate
+        if parsed.scheme == "file" and _is_windows_drive_path(candidate):
+            candidate = candidate[1:]
         return Path(candidate).expanduser().resolve()
     return Path(uri).expanduser().resolve()
+
+
+def _is_windows_drive_path(path: str) -> bool:
+    return len(path) >= 3 and path[0] == "/" and path[1].isalpha() and path[2] == ":"
+
+
+def _is_windows_drive_netloc(netloc: str) -> bool:
+    return len(netloc) == 2 and netloc[0].isalpha() and netloc[1] == ":"
 
 
 def uri_to_path_or_none(uri: str) -> Path | None:

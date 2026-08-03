@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy as np
 
+from spatial_ingestion.reconstruction._io import write_ply
 from spatial_ingestion.reconstruction.device import reproducibility_metadata
 from spatial_ingestion.reconstruction.models import SyncViewGroup
 
@@ -78,6 +79,24 @@ def _dense_points_to_mesh(
     )
 
 
+def _dense_points_xyz_rgb(
+    imgs: list[np.ndarray],
+    pts3d: list[np.ndarray],
+    confs: list[np.ndarray],
+    min_conf_thr: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Flatten confidence-masked dense points and their image colors."""
+    masks = [c > min_conf_thr for c in confs]
+    xyz_parts: list[np.ndarray] = []
+    rgb_parts: list[np.ndarray] = []
+    for i in range(len(imgs)):
+        pts3d_i = pts3d[i].reshape(imgs[i].shape)
+        msk_i = masks[i] & np.isfinite(pts3d_i.sum(axis=-1))
+        xyz_parts.append(pts3d_i[msk_i].reshape(-1, 3))
+        rgb_parts.append(imgs[i].reshape(-1, 3)[msk_i.ravel()])
+    return np.concatenate(xyz_parts, axis=0), np.concatenate(rgb_parts, axis=0)
+
+
 def export_scene_to_mesh(
     scene: Any,
     output_path: Path,
@@ -109,16 +128,14 @@ def export_scene_to_mesh(
     fmt = output_path.suffix.lower()
     if fmt not in _SUPPORTED_FORMATS:
         logger.warning(
-            "Unsupported format '%s', falling back to .obj. Supported: .obj, .glb, .ply",
+            "Unsupported format '%s', falling back to .glb. Supported: .obj, .glb, .ply",
             fmt,
         )
-        output_path = output_path.with_suffix(".obj")
-        fmt = ".obj"
+        output_path = output_path.with_suffix(".glb")
+    mesh.export(str(output_path))
 
-    if fmt == ".ply":
-        mesh.export(str(output_path))
-    else:
-        mesh.export(str(output_path))
+    xyz, rgb = _dense_points_xyz_rgb(imgs, pts3d, confs, min_conf_thr)
+    write_ply(output_dir / "point_cloud.ply", xyz, rgb)
 
     logger.info(
         "Exported %s (vertex colors: %s)", output_path, mesh.visual.vertex_colors is not None

@@ -35,10 +35,10 @@ def test_cli_dry_run_accepts_a_folder_with_multiple_views(tmp_path: Path) -> Non
     assert (job_dirs[0] / "run_manifest.json").exists()
 
 
-def test_resolve_output_path_defaults_to_obj_in_reconstruction_dir(tmp_path: Path) -> None:
+def test_resolve_output_path_defaults_to_glb_in_reconstruction_dir(tmp_path: Path) -> None:
     target = resolve_output_path(tmp_path / "images", None)
 
-    assert target.name == "images.obj"
+    assert target.name == "images.glb"
     assert target.parent.name.startswith("images_")
 
 
@@ -58,9 +58,9 @@ def test_resolve_output_path_preserves_explicit_glb(tmp_path: Path) -> None:
     assert target.parent.name.startswith("mesh_")
 
 
-def test_resolve_output_path_appends_mesh_obj_for_directory(tmp_path: Path) -> None:
+def test_resolve_output_path_appends_mesh_glb_for_directory(tmp_path: Path) -> None:
     target = resolve_output_path(tmp_path / "images", str(tmp_path / "out"))
 
-    assert target.suffix == ".obj"
+    assert target.suffix == ".glb"
     assert target.parent == (tmp_path / "out").resolve()
     assert target.stem.startswith("mesh_")

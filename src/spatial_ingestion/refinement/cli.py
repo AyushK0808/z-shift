@@ -5,9 +5,14 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-import pyvista as pv
-
-from .core import MeshCleaningConfig, MeshProcessingError, MeshValidationError, clean_mesh
+from .core import (
+    MeshCleaningConfig,
+    MeshProcessingError,
+    MeshValidationError,
+    clean_mesh,
+    load_mesh_file,
+    write_mesh_file,
+)
 
 
 def _default_output_path(input_path: Path) -> Path:
@@ -37,12 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
 def refine_mesh(
     input_path: Path, output_path: Path | None = None, config: MeshCleaningConfig | None = None
 ) -> dict:
-    mesh = pv.read(str(input_path))
+    mesh = load_mesh_file(input_path)
     result = clean_mesh(mesh, config)
     cleaned_mesh = result["mesh"]
     destination = output_path or _default_output_path(input_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    cleaned_mesh.save(str(destination))
+    write_mesh_file(cleaned_mesh, destination)
     result = dict(result)
     result["input_path"] = str(input_path)
     result["output_path"] = str(destination)

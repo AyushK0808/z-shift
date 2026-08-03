@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
-from spatial_ingestion.reconstruction._io import write_json
+from spatial_ingestion.reconstruction._io import uri_to_path, write_json
 from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
 from spatial_ingestion.reconstruction.device import resolve_device, set_seed
 from spatial_ingestion.reconstruction.export import (
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def run(job: ReconstructionJob) -> int:
     params = _resolve_params(job)
-    image_paths = [Path(u).expanduser().resolve() for u in job.image_uris]
+    image_paths = [uri_to_path(u) for u in job.image_uris]
 
     if len(image_paths) < 2:
         raise ValueError("MASt3R reconstruction requires at least two images")
@@ -80,7 +80,7 @@ def _resolve_output_paths(job: ReconstructionJob) -> tuple[Path, Path]:
     else:
         label = job.label or "reconstruction"
         output_dir = RECONSTRUCTION_OUTPUT_ROOT / f"{label}_{job.job_id}"
-        output_path = output_dir / f"{label}.obj"
+        output_path = output_dir / f"{label}.glb"
     return output_path, output_dir
 
 

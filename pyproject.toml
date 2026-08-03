@@ -34,7 +34,20 @@ dependencies = [
 [project.scripts]
 zshift-image-to-3d = "spatial_ingestion.reconstruction.cli:main"
 spatial-ingestion-refine = "spatial_ingestion.refinement.cli:main"
+zshift-final-pipeline = "spatial_ingestion.final_pipeline.cli:main"
 zshift-auto-rig = "spatial_ingestion.auto_rigging.cli:main"
+
+# PyPI only ships CPU-only torch wheels on Windows; CUDA builds live on
+# PyTorch's own index. Keep the resolution platform-scoped so Windows devs
+# get CUDA builds while CI (Linux lint jobs) stays on the lean default index.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'win32'" }]
+torchvision = [{ index = "pytorch-cu128", marker = "sys_platform == 'win32'" }]
 
 [dependency-groups]
 dev = [
@@ -83,3 +96,6 @@ allowed-unresolved-imports = ["mast3r.**", "dust3r.**"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+  "real_pipeline: runs the real Phase 2 MASt3R reconstruction and Phase 3 refinement on user-provided images",
+]

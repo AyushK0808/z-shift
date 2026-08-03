@@ -6,6 +6,9 @@ from .core import (
     MeshValidationError,
     clean_ai_mesh,
     clean_mesh,
+    load_mesh_file,
+    to_trimesh,
+    write_mesh_file,
 )
 
 __all__ = [
@@ -14,4 +17,7 @@ __all__ = [
     "MeshValidationError",
     "clean_ai_mesh",
     "clean_mesh",
+    "load_mesh_file",
+    "to_trimesh",
+    "write_mesh_file",
 ]
