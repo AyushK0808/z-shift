@@ -89,20 +89,23 @@ def write_ply(path: Path, points: Any, colors: Any) -> None:
         vertex_data["green"] = rgb[:, 1]
         vertex_data["blue"] = rgb[:, 2]
 
-    header = "\n".join(
-        [
-            "ply",
-            "format binary_little_endian 1.0",
-            f"element vertex {row_count}",
-            "property float x",
-            "property float y",
-            "property float z",
-            "property uchar red",
-            "property uchar green",
-            "property uchar blue",
-            "end_header",
-        ]
-    ) + "\n"
+    header = (
+        "\n".join(
+            [
+                "ply",
+                "format binary_little_endian 1.0",
+                f"element vertex {row_count}",
+                "property float x",
+                "property float y",
+                "property float z",
+                "property uchar red",
+                "property uchar green",
+                "property uchar blue",
+                "end_header",
+            ]
+        )
+        + "\n"
+    )
 
     with path.open("wb") as file_handle:
         file_handle.write(header.encode("ascii"))
