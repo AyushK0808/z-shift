@@ -230,3 +230,9 @@ def deliverable_router(
             output_path=final_file,
             message="Point-cloud deliverable packaged successfully.",
         )
+
+    # Defensive: `validate_routing` should have raised for unknown use_cases,
+    # and all valid use_cases either return a DeliverableResult or raise.
+    # Add an explicit raise to make the control flow obvious to static
+    # analyzers and satisfy the type checker.
+    raise InvalidRoutingError(f"Unhandled use_case '{use_case}'")
