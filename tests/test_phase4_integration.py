@@ -52,18 +52,6 @@ from spatial_ingestion.test_harness.media_factory import create_sample_image
 # ---------------------------------------------------------------------------
 
 
-def _ingest_folder(tmp_path: Path) -> Path:
-    folder = tmp_path / "views"
-    folder.mkdir()
-    create_sample_image(folder / "front.jpg")
-    create_sample_image(folder / "side.jpg")
-    return folder
-
-
-def _normalizer(output_root: Path) -> BatchNormalizer:
-    return BatchNormalizer(image_processor=ImageProcessor(output_root=output_root))
-
-
 def _require_mast3r_stack() -> None:
     """Skip the real-export tests unless the heavy MASt3R stack is importable.
 
@@ -75,12 +63,14 @@ def _require_mast3r_stack() -> None:
     pytest.importorskip("dust3r")
 
 
-def test_gateway_upload_persists_payload_for_downstream(tmp_path: Path) -> None:
+def test_gateway_upload_persists_payload_for_downstream(
+    ingest_folder: Path, normalizer: BatchNormalizer, tmp_path: Path
+) -> None:
     from fastapi.testclient import TestClient
 
-    folder = _ingest_folder(tmp_path)
+    folder = ingest_folder
     app = create_app()
-    app.state.gateway_state.batch_normalizer = _normalizer(tmp_path / "normalized")
+    app.state.gateway_state.batch_normalizer = normalizer
     app.state.gateway_state.object_store = ObjectStore(root=tmp_path / "object_store")
     app.state.gateway_state.payload_store = PayloadStore(root=tmp_path / "payloads")
 
@@ -140,18 +130,20 @@ class _FakeScene:
         return self._pts3d, None, self._confs
 
 
-def _job_from_folder(tmp_path: Path) -> ReconstructionJob:
-    folder = _ingest_folder(tmp_path)
-    payload = ingest_batch(
-        sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
-    )
+@pytest.fixture
+def job_from_folder(
+    tmp_path: Path, ingest_folder: Path, normalizer: BatchNormalizer
+) -> ReconstructionJob:
+    payload = ingest_batch(sorted(ingest_folder.iterdir()), normalizer=normalizer)
     job = build_job(payload, mast3r_params=Mast3rRunParams(device="cpu", image_size=512))
     job.output_path = str(tmp_path / "out" / "mesh.glb")
     return job
 
 
 @pytest.mark.parametrize("use_case", ["editing", "viewing"])
-def test_real_pipeline_chain_round_trips_job_id(monkeypatch, tmp_path: Path, use_case: str) -> None:
+def test_real_pipeline_chain_round_trips_job_id(
+    monkeypatch, tmp_path: Path, use_case: str, job_from_folder: ReconstructionJob
+) -> None:
     _require_mast3r_stack()
 
     def fake_alignment(**kwargs):
@@ -161,7 +153,7 @@ def test_real_pipeline_chain_round_trips_job_id(monkeypatch, tmp_path: Path, use
         "spatial_ingestion.reconstruction.pipeline.run_sparse_alignment", fake_alignment
     )
 
-    job = _job_from_folder(tmp_path)
+    job = job_from_folder
     assert job.output_path is not None
 
     # Phase 2 runs for real (export + manifest + point_cloud.ply), with only
@@ -194,7 +186,9 @@ def test_real_pipeline_chain_round_trips_job_id(monkeypatch, tmp_path: Path, use
     assert result.pipeline_result.refined_mesh_path.exists()
 
 
-def test_real_pipeline_viewing_uses_phase2_point_cloud(monkeypatch, tmp_path: Path) -> None:
+def test_real_pipeline_viewing_uses_phase2_point_cloud(
+    monkeypatch, tmp_path: Path, job_from_folder: ReconstructionJob
+) -> None:
     _require_mast3r_stack()
 
     def fake_alignment(**kwargs):
@@ -204,7 +198,7 @@ def test_real_pipeline_viewing_uses_phase2_point_cloud(monkeypatch, tmp_path: Pa
         "spatial_ingestion.reconstruction.pipeline.run_sparse_alignment", fake_alignment
     )
 
-    job = _job_from_folder(tmp_path)
+    job = job_from_folder
     assert job.output_path is not None
 
     run_result = run_reconstruction(job)
@@ -243,8 +237,10 @@ def test_deliverable_router_respects_explicit_job_id(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cli_live_use_case_fails_before_ingestion(tmp_path: Path, capsys) -> None:
-    folder = _ingest_folder(tmp_path)
+def test_cli_live_use_case_fails_before_ingestion(
+    ingest_folder: Path, normalizer: BatchNormalizer, tmp_path: Path, capsys
+) -> None:
+    folder = ingest_folder
     with pytest.raises(SystemExit) as excinfo:
         final_pipeline_cli_main([str(folder), "--use-case", "live"])
     assert excinfo.value.code == 2
@@ -287,24 +283,24 @@ def test_resolve_output_path_rejects_unsupported_phase2_format(tmp_path: Path) -
         resolve_output_path(tmp_path, str(tmp_path / "mesh.stl"), job_id="abc")
 
 
-def test_build_job_embeds_job_id_in_programmatic_output_folder(tmp_path: Path) -> None:
+def test_build_job_embeds_job_id_in_programmatic_output_folder(
+    ingest_folder: Path, normalizer: BatchNormalizer, tmp_path: Path
+) -> None:
     """run_from_schema/run_ingested_pipeline (via build_job) must resolve output
     the same way the CLI does — folder name carries the job id."""
-    folder = _ingest_folder(tmp_path)
-    payload = ingest_batch(
-        sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
-    )
+    folder = ingest_folder
+    payload = ingest_batch(sorted(folder.iterdir()), normalizer=normalizer)
     job = build_job(payload, output_path=tmp_path / "out" / "mesh.obj", label="prog")
     assert job.output_path is not None
     assert job.output_path.endswith("mesh.obj")
     assert f"mesh_{job.job_id}" in job.output_path
 
 
-def test_build_job_rejects_unsupported_format_via_programmatic_path(tmp_path: Path) -> None:
-    folder = _ingest_folder(tmp_path)
-    payload = ingest_batch(
-        sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
-    )
+def test_build_job_rejects_unsupported_format_via_programmatic_path(
+    ingest_folder: Path, normalizer: BatchNormalizer, tmp_path: Path
+) -> None:
+    folder = ingest_folder
+    payload = ingest_batch(sorted(folder.iterdir()), normalizer=normalizer)
     with pytest.raises(ValueError, match="Unsupported Phase 2 mesh format"):
         build_job(payload, output_path=tmp_path / "out" / "mesh.stl")
 

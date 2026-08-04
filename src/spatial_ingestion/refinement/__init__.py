@@ -7,7 +7,9 @@ from .core import (
     MeshValidationError,
     clean_ai_mesh,
     clean_mesh,
+    default_refined_path,
     load_mesh_file,
+    refine_mesh_file,
     to_trimesh,
     write_mesh_file,
 )
@@ -19,7 +21,9 @@ __all__ = [
     "MeshValidationError",
     "clean_ai_mesh",
     "clean_mesh",
+    "default_refined_path",
     "load_mesh_file",
+    "refine_mesh_file",
     "to_trimesh",
     "write_mesh_file",
 ]

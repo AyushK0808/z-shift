@@ -17,17 +17,19 @@ from spatial_ingestion.final_pipeline.handoff import (
     load_schema,
 )
 from spatial_ingestion.metadata.schema import SourceType
-from spatial_ingestion.reconstruction.cli import (
-    DEFAULT_MODEL,
-    collect_input_images,
-)
+from spatial_ingestion.reconstruction.config import DEFAULT_MODEL_NAME
+from spatial_ingestion.reconstruction.input import collect_input_images
 from spatial_ingestion.reconstruction.models import Mast3rRunParams
-from spatial_ingestion.refinement import MeshCleaningConfig
+from spatial_ingestion.refinement.options import (
+    add_mesh_cleaning_args,
+    mesh_cleaning_config_from_args,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run Phase 2 reconstruction followed by Phase 3 mesh refinement."
+        description="Phase 1-4 end-to-end pipeline: ingest -> reconstruct (MASt3R) -> "
+        "refine -> deliverable."
     )
     parser.add_argument(
         "input",
@@ -60,7 +62,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--device", default="auto", help="cuda, cpu, mps, or auto")
     parser.add_argument(
-        "--model", default=DEFAULT_MODEL, help="MASt3R model id or local checkpoint path"
+        "--model",
+        default=DEFAULT_MODEL_NAME,
+        help="MASt3R model id or local checkpoint path",
     )
     parser.add_argument(
         "--pairing-strategy",
@@ -73,15 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-conf-thr", type=float, default=1.5)
     parser.add_argument("--seed", type=int, default=None)
 
-    parser.add_argument("--refinement-mode", choices=("object", "room"), default="object")
-    parser.add_argument("--smoothing-iters", type=int, default=15)
-    parser.add_argument("--pass-band", type=float, default=0.1)
-    parser.add_argument("--hole-size", type=float)
-    parser.add_argument("--min-cell-count", type=int, default=500)
-    parser.add_argument("--feature-angle", type=float, default=45.0)
-    parser.add_argument("--merge-tolerance", type=float, default=1e-5)
-    parser.add_argument("--decimate-target-reduction", type=float)
-    parser.add_argument("--no-watertight-check", action="store_true")
+    add_mesh_cleaning_args(parser, mode_flag="--refinement-mode")
     return parser
 
 
@@ -131,17 +127,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         output_path=args.output,
         label=label,
     )
-    refinement_config = MeshCleaningConfig(
-        mode=args.refinement_mode,
-        smoothing_iters=args.smoothing_iters,
-        pass_band=args.pass_band,
-        hole_size=args.hole_size,
-        min_cell_count=args.min_cell_count,
-        feature_angle=args.feature_angle,
-        merge_tolerance=args.merge_tolerance,
-        decimate_target_reduction=args.decimate_target_reduction,
-        verify_watertight=not args.no_watertight_check,
-    )
+    refinement_config = mesh_cleaning_config_from_args(args)
 
     if args.use_case:
         full_result = run_full_pipeline(

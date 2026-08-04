@@ -24,10 +24,10 @@ from spatial_ingestion.reconstruction.pipeline import run as run_reconstruction
 from spatial_ingestion.refinement import (
     REFINEMENT_MANIFEST_FILENAME,
     MeshCleaningConfig,
-    clean_mesh,
+    default_refined_path,
     load_mesh_file,
+    refine_mesh_file,
     to_trimesh,
-    write_mesh_file,
 )
 
 
@@ -63,17 +63,16 @@ def run_phase2_phase3_pipeline(
     output_dir = run_result.output_dir
     _validate_raw_mesh(raw_mesh_path)
 
-    raw_mesh = load_mesh_file(raw_mesh_path)
-    refinement_result = clean_mesh(raw_mesh, refinement_config or MeshCleaningConfig())
-    cleaned_mesh = refinement_result["mesh"]
-
     destination = (
         Path(refined_output_path).expanduser().resolve()
         if refined_output_path
-        else _default_refined_path(raw_mesh_path)
+        else default_refined_path(raw_mesh_path)
     )
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    write_mesh_file(cleaned_mesh, destination)
+    refinement_result = refine_mesh_file(
+        raw_mesh_path,
+        destination,
+        refinement_config or MeshCleaningConfig(),
+    )
 
     manifest_path = output_dir / REFINEMENT_MANIFEST_FILENAME
     diagnostics = _serializable_diagnostics(refinement_result)
@@ -167,11 +166,6 @@ def result_to_dict(result: FinalPipelineResult) -> dict[str, Any]:
     ):
         data[key] = str(data[key])
     return data
-
-
-def _default_refined_path(raw_mesh_path: Path) -> Path:
-    suffix = raw_mesh_path.suffix or ".glb"
-    return raw_mesh_path.with_name(f"{raw_mesh_path.stem}_refined{suffix}")
 
 
 def _validate_raw_mesh(raw_mesh_path: Path) -> None:

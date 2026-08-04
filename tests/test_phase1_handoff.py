@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from spatial_ingestion.batch_normalization.image_processor import ImageProcessor
 from spatial_ingestion.batch_normalization.normalizer import BatchNormalizer
 from spatial_ingestion.final_pipeline.cli import main as final_pipeline_cli_main
 from spatial_ingestion.final_pipeline.core import FinalPipelineResult, FullPipelineResult
@@ -29,26 +28,13 @@ from spatial_ingestion.reconstruction.models import (
     ReconstructionMode,
 )
 from spatial_ingestion.refinement import MeshCleaningConfig
-from spatial_ingestion.test_harness.media_factory import create_sample_image
 
 
-def _normalizer(output_root: Path) -> BatchNormalizer:
-    return BatchNormalizer(image_processor=ImageProcessor(output_root=output_root))
-
-
-def _ingest_folder(tmp_path: Path) -> Path:
-    folder = tmp_path / "views"
-    folder.mkdir()
-    create_sample_image(folder / "front.jpg")
-    create_sample_image(folder / "side.jpg")
-    return folder
-
-
-def test_ingest_batch_produces_phase1_schema(tmp_path: Path) -> None:
-    folder = _ingest_folder(tmp_path)
-    payload = ingest_batch(
-        sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
-    )
+def test_ingest_batch_produces_phase1_schema(
+    ingest_folder: Path, normalizer: BatchNormalizer, tmp_path: Path
+) -> None:
+    folder = ingest_folder
+    payload = ingest_batch(sorted(folder.iterdir()), normalizer=normalizer)
 
     assert payload.source_type == SourceType.IMAGE_FOLDER
     assert payload.frame_count == 2
@@ -60,11 +46,11 @@ def test_ingest_batch_produces_phase1_schema(tmp_path: Path) -> None:
         assert uri_to_path(frame.uri).exists()
 
 
-def test_build_job_merges_mast3r_params(tmp_path: Path) -> None:
-    folder = _ingest_folder(tmp_path)
-    payload = ingest_batch(
-        sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
-    )
+def test_build_job_merges_mast3r_params(
+    ingest_folder: Path, normalizer: BatchNormalizer, tmp_path: Path
+) -> None:
+    folder = ingest_folder
+    payload = ingest_batch(sorted(folder.iterdir()), normalizer=normalizer)
 
     job = build_job(
         payload,
@@ -85,11 +71,11 @@ def test_build_job_merges_mast3r_params(tmp_path: Path) -> None:
     assert len(job.image_uris) == 2
 
 
-def test_run_from_schema_pipeline_with_file_uris(fake_reconstruction, tmp_path: Path) -> None:
-    folder = _ingest_folder(tmp_path)
-    payload = ingest_batch(
-        sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
-    )
+def test_run_from_schema_pipeline_with_file_uris(
+    fake_reconstruction, ingest_folder: Path, normalizer: BatchNormalizer, tmp_path: Path
+) -> None:
+    folder = ingest_folder
+    payload = ingest_batch(sorted(folder.iterdir()), normalizer=normalizer)
     raw_mesh_path = tmp_path / "mesh.obj"
     fake_reconstruction(raw_mesh_path=raw_mesh_path, check_image_uris=True)
 
@@ -109,12 +95,10 @@ def test_run_from_schema_pipeline_with_file_uris(fake_reconstruction, tmp_path: 
 
 
 def test_run_from_schema_with_use_case_defaults_source_type(
-    fake_reconstruction, tmp_path: Path
+    fake_reconstruction, ingest_folder: Path, normalizer: BatchNormalizer, tmp_path: Path
 ) -> None:
-    folder = _ingest_folder(tmp_path)
-    payload = ingest_batch(
-        sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
-    )
+    folder = ingest_folder
+    payload = ingest_batch(sorted(folder.iterdir()), normalizer=normalizer)
     fake_reconstruction(raw_mesh_path=tmp_path / "mesh.obj", check_image_uris=True)
 
     result = run_from_schema(
@@ -131,13 +115,15 @@ def test_run_from_schema_with_use_case_defaults_source_type(
     assert Path(result.deliverable.output_path).exists()
 
 
-def test_run_ingested_pipeline(fake_reconstruction, tmp_path: Path) -> None:
-    folder = _ingest_folder(tmp_path)
+def test_run_ingested_pipeline(
+    fake_reconstruction, ingest_folder: Path, normalizer: BatchNormalizer, tmp_path: Path
+) -> None:
+    folder = ingest_folder
     fake_reconstruction(raw_mesh_path=tmp_path / "mesh.obj", check_image_uris=True)
 
     result = run_ingested_pipeline(
         sorted(folder.iterdir()),
-        normalizer=_normalizer(tmp_path / "normalized"),
+        normalizer=normalizer,
         output_path=tmp_path / "out" / "mesh.obj",
         refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
     )
@@ -147,11 +133,11 @@ def test_run_ingested_pipeline(fake_reconstruction, tmp_path: Path) -> None:
     assert result.refined_mesh_path.exists()
 
 
-def test_pipeline_cli_from_schema(fake_reconstruction, tmp_path: Path, capsys) -> None:
-    folder = _ingest_folder(tmp_path)
-    payload = ingest_batch(
-        sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
-    )
+def test_pipeline_cli_from_schema(
+    fake_reconstruction, ingest_folder: Path, normalizer: BatchNormalizer, tmp_path: Path, capsys
+) -> None:
+    folder = ingest_folder
+    payload = ingest_batch(sorted(folder.iterdir()), normalizer=normalizer)
     schema_path = tmp_path / "payload.json"
     schema_path.write_text(payload.model_dump_json(indent=2), encoding="utf-8")
     raw_mesh_path = tmp_path / "out" / "mesh.obj"
@@ -179,11 +165,11 @@ def test_pipeline_cli_from_schema(fake_reconstruction, tmp_path: Path, capsys) -
     assert Path(output["refinement_manifest_path"]).exists()
 
 
-def test_load_schema_round_trips_gateway_json(tmp_path: Path) -> None:
-    folder = _ingest_folder(tmp_path)
-    payload = ingest_batch(
-        sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
-    )
+def test_load_schema_round_trips_gateway_json(
+    ingest_folder: Path, normalizer: BatchNormalizer, tmp_path: Path
+) -> None:
+    folder = ingest_folder
+    payload = ingest_batch(sorted(folder.iterdir()), normalizer=normalizer)
     schema_path = tmp_path / "payload.json"
     schema_path.write_text(payload.model_dump_json(indent=2), encoding="utf-8")
 

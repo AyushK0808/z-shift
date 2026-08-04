@@ -12,10 +12,9 @@ upstream models must supply their own synthetic artifact.
 
 from __future__ import annotations
 
-import os
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 import trimesh
 
@@ -59,7 +58,7 @@ class DeliverableResult:
 
 def _deliverable_dir(output_root: Path, *parts: str) -> Path:
     path = output_root.joinpath(*parts)
-    os.makedirs(path, exist_ok=True)
+    path.mkdir(parents=True, exist_ok=True)
     return path
 
 
@@ -177,7 +176,7 @@ def deliverable_router(
     """
     source_type = validate_routing(source_type, use_case)
     output_root = Path(output_root)
-    resolved_job_id = job_id or f"JOB_{uuid.uuid4().hex[:6].upper()}"
+    resolved_job_id = job_id or uuid4().hex[:12]
 
     if use_case == "live":
         raise TrackNotImplementedError(

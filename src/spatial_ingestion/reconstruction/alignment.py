@@ -56,7 +56,7 @@ def run_sparse_alignment(
     str_paths = [str(path) for path in image_paths]
     init: dict[str, dict[str, object]] = {}
     if frames:
-        for img_path, frame in zip(image_paths, frames, strict=False):
+        for img_path, frame in zip(image_paths, frames, strict=True):
             if frame.camera_intrinsics:
                 K = intrinsics_to_k_matrix(frame.camera_intrinsics, img_path)
                 if K is not None:

@@ -134,6 +134,34 @@ def write_mesh_file(mesh: pv.DataSet, path: Path | str) -> None:
         mesh.save(str(path))
 
 
+def default_refined_path(input_path: Path) -> Path:
+    """Default destination for a refined mesh: ``<stem>_refined<suffix>``."""
+    suffix = input_path.suffix or ".glb"
+    return input_path.with_name(f"{input_path.stem}_refined{suffix}")
+
+
+def refine_mesh_file(
+    input_path: Path,
+    output_path: Path | None = None,
+    config: MeshCleaningConfig | None = None,
+) -> dict:
+    """Load, clean, and write a mesh file in one call.
+
+    Returns the ``clean_mesh`` result dict plus ``input_path`` and
+    ``output_path`` keys.
+    """
+    mesh = load_mesh_file(input_path)
+    result = clean_mesh(mesh, config)
+    cleaned_mesh = result["mesh"]
+    destination = output_path or default_refined_path(input_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    write_mesh_file(cleaned_mesh, destination)
+    result = dict(result)
+    result["input_path"] = str(input_path)
+    result["output_path"] = str(destination)
+    return result
+
+
 def run_step(step_name: str, fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
