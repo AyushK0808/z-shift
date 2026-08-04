@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+from spatial_ingestion.media_classifier.router import IMAGE_EXTENSIONS
 
 
 def collect_input_images(input_path: Path) -> list[Path]:

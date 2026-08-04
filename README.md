@@ -202,7 +202,7 @@ contains the job builder, MASt3R inference/pairing/alignment, mesh export, and C
 The `ReconstructionJobBuilder` converts a `UnifiedSpatialIngestionSchema` into a
 `ReconstructionJob`. It:
 
-- Orders and rewrites normalized frames into `HandoffFrame`s (each carrying its normalized
+- Orders and rewrites normalized frames into `FrameReference`s (each carrying its normalized
   asset URI, index, source, timestamp, motion score, resolution, and camera intrinsics).
 - Maps each source type to a `ReconstructionMode` (multi-view, video-sequence, or
   synchronized-views). Single-view and live-stream modes are rejected.

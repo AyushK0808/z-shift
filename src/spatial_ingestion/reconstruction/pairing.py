@@ -7,7 +7,7 @@ import torch
 
 from spatial_ingestion.metadata.schema import CameraIntrinsics
 from spatial_ingestion.reconstruction._deps import mast3r_dependency_error
-from spatial_ingestion.reconstruction._io import uri_to_path
+from spatial_ingestion.reconstruction.io import uri_to_path
 from spatial_ingestion.reconstruction.models import SyncViewGroup
 
 logger = logging.getLogger(__name__)

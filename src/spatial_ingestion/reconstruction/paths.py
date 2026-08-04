@@ -4,7 +4,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
-from spatial_ingestion.reconstruction.export import SUPPORTED_MESH_FORMATS
+from spatial_ingestion.reconstruction.export import (
+    SUPPORTED_MESH_FORMATS,
+    unsupported_mesh_format_message,
+)
 
 
 def resolve_output_path(
@@ -27,10 +30,7 @@ def resolve_output_path(
             stem = output_path.stem
             return output_path.parent / f"{stem}_{resolved_job_id}" / output_path.name
         if suffix:
-            raise ValueError(
-                f"Unsupported Phase 2 mesh format '{output_path.suffix}'. "
-                f"Phase 2 can only write {', '.join(sorted(SUPPORTED_MESH_FORMATS))}."
-            )
+            raise ValueError(unsupported_mesh_format_message(output_path.suffix))
         return output_path / f"mesh_{resolved_job_id}.glb"
 
     if input_path is None:

@@ -4,8 +4,6 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
-from spatial_ingestion.reconstruction._io import uri_to_path, write_json
 from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
 from spatial_ingestion.reconstruction.config import (
     POINT_CLOUD_FILENAME,
@@ -17,7 +15,9 @@ from spatial_ingestion.reconstruction.export import (
     export_scene_to_mesh,
     validate_mesh_format,
 )
+from spatial_ingestion.reconstruction.io import uri_to_path, write_json
 from spatial_ingestion.reconstruction.models import Mast3rRunParams, ReconstructionJob
+from spatial_ingestion.reconstruction.paths import resolve_output_path
 
 logger = logging.getLogger(__name__)
 
@@ -111,18 +111,17 @@ def resolve_output_paths(job: ReconstructionJob) -> tuple[Path, Path]:
     """Resolve (output_path, output_dir) for a job.
 
     A job with an explicit ``output_path`` (always set by the CLIs and
-    ``final_pipeline.build_job``) writes exactly there; otherwise a
-    ``<label>_<job_id>/<label>.glb`` folder is created under
-    ``data/reconstruction/``.
+    ``final_pipeline.build_job``) writes exactly there; otherwise the shared
+    job-id-aware resolver picks ``data/reconstruction/<label>_<job_id>/
+    <label>.glb``.
     """
     if job.output_path:
         output_path = Path(job.output_path).resolve()
-        output_dir = output_path.parent
-    else:
-        label = job.label or "reconstruction"
-        output_dir = RECONSTRUCTION_OUTPUT_ROOT / f"{label}_{job.job_id}"
-        output_path = output_dir / f"{label}.glb"
-    return output_path, output_dir
+        return output_path, output_path.parent
+    output_path = resolve_output_path(
+        None, None, label=job.label or "reconstruction", job_id=job.job_id
+    )
+    return output_path, output_path.parent
 
 
 def _build_manifest(

@@ -35,9 +35,9 @@ def main() -> None:
     print("  PHASE 4: OUTCOMES & DELIVERABLES ENGINE (demo)  ")
     print("==================================================")
 
-    # Scenario 1: single image -> edit result in Blender.
+    # Scenario 1: image folder -> edit result in Blender.
     result = deliverable_router(
-        source_type="single_image",
+        source_type="image_folder",
         use_case="editing",
         job_id="demo_job_1",
         mesh=_synthetic_mesh(),

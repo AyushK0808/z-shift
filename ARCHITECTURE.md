@@ -91,8 +91,9 @@ sparse global alignment → optional TSDF fusion → mesh + dense point cloud.
 - `ReconstructionJobBuilder().build(payload)` in `reconstruction/jobs.py`
   (schema → job: mode mapping, 40-frame cap by motion score, sync groups,
   swin-pairing default for videos / large sets).
-- `run(job)` in `reconstruction/pipeline.py` (exported as `run_pipeline`
-  and `run_reconstruction`) → `ReconstructionRunResult` with
+- `run(job)` in `reconstruction/pipeline.py` (exported as `run_pipeline` from
+  the package; imported as `run_reconstruction` by the final pipeline) →
+  `ReconstructionRunResult` with
   `output_path`, `output_dir`, `point_cloud_path`, `manifest_path`.
 - `zshift-image-to-3d` (standalone Phase 2 CLI, image folder only).
 

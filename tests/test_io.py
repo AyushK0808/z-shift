@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from spatial_ingestion.reconstruction._io import (
+from spatial_ingestion.reconstruction.io import (
     flatten_rows,
     scale_rgb_to_byte,
     to_array,

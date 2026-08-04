@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from spatial_ingestion.reconstruction.config import DEFAULT_MODEL_NAME
-from spatial_ingestion.reconstruction.input import IMAGE_EXTENSIONS, collect_input_images
+from spatial_ingestion.reconstruction.input import collect_input_images
 from spatial_ingestion.reconstruction.models import (
     Mast3rRunParams,
     ReconstructionJob,
@@ -14,13 +14,9 @@ from spatial_ingestion.reconstruction.models import (
 from spatial_ingestion.reconstruction.paths import resolve_output_path
 from spatial_ingestion.reconstruction.pipeline import run as pipeline_run
 
-DEFAULT_MODEL = DEFAULT_MODEL_NAME
-
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "DEFAULT_MODEL",
-    "IMAGE_EXTENSIONS",
     "build_parser",
     "collect_input_images",
     "main",
@@ -43,7 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--device", default="auto", help="cuda, cpu, mps, or auto")
     parser.add_argument(
-        "--model", default=DEFAULT_MODEL, help="MASt3R model id or local checkpoint path"
+        "--model",
+        default=DEFAULT_MODEL_NAME,
+        help="MASt3R model id or local checkpoint path",
     )
     parser.add_argument(
         "--pairing-strategy",

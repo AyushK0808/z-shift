@@ -7,9 +7,9 @@ from typing import Any
 import numpy as np
 
 from spatial_ingestion.reconstruction._deps import mast3r_dependency_error
-from spatial_ingestion.reconstruction._io import write_ply
 from spatial_ingestion.reconstruction.config import POINT_CLOUD_FILENAME
 from spatial_ingestion.reconstruction.device import reproducibility_metadata
+from spatial_ingestion.reconstruction.io import write_ply
 from spatial_ingestion.reconstruction.models import SyncViewGroup
 
 logger = logging.getLogger(__name__)
@@ -17,13 +17,17 @@ logger = logging.getLogger(__name__)
 SUPPORTED_MESH_FORMATS = {".obj", ".glb", ".ply"}
 
 
+def unsupported_mesh_format_message(suffix: str) -> str:
+    return (
+        f"Unsupported Phase 2 mesh format '{suffix}'. "
+        f"Phase 2 can only write {', '.join(sorted(SUPPORTED_MESH_FORMATS))}."
+    )
+
+
 def validate_mesh_format(output_path: Path) -> None:
     """Reject mesh output formats Phase 2 cannot produce."""
     if output_path.suffix.lower() not in SUPPORTED_MESH_FORMATS:
-        raise ValueError(
-            f"Unsupported Phase 2 mesh format '{output_path.suffix}'. "
-            f"Phase 2 can only write {', '.join(sorted(SUPPORTED_MESH_FORMATS))}."
-        )
+        raise ValueError(unsupported_mesh_format_message(output_path.suffix))
 
 
 def build_run_manifest(

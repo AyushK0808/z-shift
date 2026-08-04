@@ -95,9 +95,10 @@ def export_point_cloud(point_cloud_data: trimesh.PointCloud, job_id: str, output
 
 # Which SourceTypes each use_case is actually valid for. Explicit, so a
 # mismatch (e.g. live_stream + editing) is rejected instead of silently
-# falling through.
+# falling through. SINGLE_IMAGE is deliberately absent from every set: the
+# pipeline rejects single-view jobs before Phase 2, so no deliverable can
+# ever be produced from one.
 _EDITING_SOURCE_TYPES = {
-    SourceType.SINGLE_IMAGE,
     SourceType.IMAGE_FOLDER,
     SourceType.SINGLE_VIDEO,
     SourceType.VIDEO_FOLDER,

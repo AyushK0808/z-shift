@@ -32,12 +32,6 @@ class ReconstructionArtifactKind(str, Enum):
     SKINNING_WEIGHTS = "skinning_weights"
 
 
-class ReconstructionArtifact(BaseModel):
-    kind: ReconstructionArtifactKind
-    uri: str
-    metadata: dict[str, object] = Field(default_factory=dict)
-
-
 class Mast3rRunParams(BaseModel):
     model_config = {"protected_namespaces": ()}
 

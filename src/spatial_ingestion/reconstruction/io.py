@@ -130,5 +130,3 @@ def _is_windows_drive_path(path: str) -> bool:
 
 def _is_windows_drive_netloc(netloc: str) -> bool:
     return len(netloc) == 2 and netloc[0].isalpha() and netloc[1] == ":"
-
-

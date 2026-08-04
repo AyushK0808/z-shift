@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -15,10 +14,9 @@ from spatial_ingestion.outcomes_engine.engine import (
     deliverable_router,
     validate_routing,
 )
-from spatial_ingestion.reconstruction.config import (
-    POINT_CLOUD_FILENAME,
-)
+from spatial_ingestion.reconstruction.config import POINT_CLOUD_FILENAME
 from spatial_ingestion.reconstruction.export import SUPPORTED_MESH_FORMATS
+from spatial_ingestion.reconstruction.io import write_json
 from spatial_ingestion.reconstruction.models import ReconstructionJob
 from spatial_ingestion.reconstruction.pipeline import run as run_reconstruction
 from spatial_ingestion.refinement import (
@@ -82,9 +80,7 @@ def run_phase2_phase3_pipeline(
         "output_mesh": str(destination),
         **diagnostics,
     }
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+    write_json(manifest_path, manifest)
 
     return FinalPipelineResult(
         job_id=job.job_id,

@@ -574,7 +574,7 @@ src/spatial_ingestion/
 
 For single-image backends, add `ReconstructionMode.SINGLE_VIEW` support. The artifact kind `MESH` already exists. Add `RIGGED_MESH` for the skinned output.
 
-**Potential issue:** The current `ReconstructionJob` is designed around multi-view reconstruction (multiple `image_uris`). For single-image, a single URI should suffice. This is already handled since `image_uris` is a list (can be length 1) and `SINGLE_VIEW` mode exists in `GenerationMode` but not in `ReconstructionMode` — need to add it.
+**Potential issue:** The current `ReconstructionJob` is designed around multi-view reconstruction (multiple `image_uris`). For single-image, a single URI should suffice. This is already handled since `image_uris` is a list (can be length 1) and `ReconstructionMode.SINGLE_VIEW` already exists — the job builder just rejects single-frame payloads for now.
 
 ### 9.3 New Dependencies for pyproject.toml
 
