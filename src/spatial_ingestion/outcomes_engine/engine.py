@@ -63,7 +63,7 @@ def _deliverable_dir(output_root: Path, *parts: str) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# 4. Packaging & export pipelines
+# 3. Packaging & export pipelines
 # ---------------------------------------------------------------------------
 
 

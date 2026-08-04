@@ -146,7 +146,7 @@ uv run zshift-final-pipeline --from-schema payload.json -o out/mesh.glb
 | `-o, --output` | `data/reconstruction/<name>_<id>/<name>.glb` | Raw Phase 2 mesh path (`.glb`, `.obj`, `.ply`) |
 | `--refined-output` | `<raw>_refined<ext>` next to the raw mesh | Phase 3 cleaned mesh path |
 | `--use-case` | — | `editing` (→ `.glb` deliverable), `viewing` (→ `.ply` point cloud), `live` (not implemented) |
-| `--input-type` | Phase 1 classified type | SourceType for Phase 4 routing |
+| `--source-type` | Phase 1 classified type | SourceType for Phase 4 routing (old `--input-type` still accepted) |
 | `--device` | `auto` | `cuda`, `cpu`, `mps` |
 | `--model` | `naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric` | model id or local checkpoint |
 | `--pairing-strategy` | auto | `complete` or `swin`; auto picks `swin` for videos and >20-frame image sets (an explicit flag overrides the auto choice) |
@@ -162,7 +162,8 @@ uv run zshift-final-pipeline --from-schema payload.json -o out/mesh.glb
 ### Outputs
 
 - Raw mesh: `data/reconstruction/<label>_<job_id>/<label>.glb` + `run_manifest.json`
-  (model, device, pairing, seed, TSDF config, reproducibility metadata) +
+  (`job_id`, `mode`, `label`, model, device, pairing, seed, TSDF config,
+  reproducibility metadata, and the Phase 1 `provenance`) +
   `point_cloud.ply` (dense, confidence-masked point cloud used by `--use-case viewing`) +
   `cache/` (MASt3R alignment cache, reused between runs on the same frames).
 - Refined mesh + `refinement_manifest.json` next to the raw mesh.
@@ -257,8 +258,8 @@ wrapped so any VTK/PyVista failure is reported with the failing step name:
    MultiBlock/GLB containers (warns when a multi-primitive scene is truncated to the first
    mesh).
 2. **Component filter** — depends on the mode:
-   - `object` (default) — keep only the single largest connected component, discarding
-     stray fragments.
+   - `object` (default) — merge all components into a single mesh (stray fragments
+     are kept; use `room` mode if you want size-filtering).
    - `room` — split into bodies and keep every component larger than `min_cell_count`,
      then merge them (for scenes made of multiple legitimate pieces).
 3. **Fill holes** — close boundary holes up to `hole_size` (auto-sized to the mesh's
@@ -312,7 +313,7 @@ For a standalone CLI (`.glb`, `.obj`, `.ply`, `.stl`, `.vtk` inputs and outputs 
 supported):
 
 ```bash
-uv run spatial-ingestion-refine --refine path/to/input.glb --output path/to/output.glb
+uv run spatial-ingestion-refine path/to/input.glb --output path/to/output.glb
 ```
 
 ---
@@ -320,22 +321,22 @@ uv run spatial-ingestion-refine --refine path/to/input.glb --output path/to/outp
 ## Phase 4 — Outcomes & Deliverables Engine
 
 Phases 1–3 turn 2D media into clean 3D geometry; Phase 4 (`outcomes_engine/`) decides what
-that geometry should *become*. `deliverable_router(input_type, use_case, mesh=..., ...)`
+that geometry should *become*. `deliverable_router(source_type, use_case, mesh=..., ...)`
 assigns a job id and selects a track:
 
-- **Track A — Editing** (`use_case="editing"`) — exports a Blender-ready `.glb` via
+- **Editing** (`use_case="editing"`) — exports a Blender-ready `.glb` via
   `export_blender_ready`, for jobs that will be edited in a DCC tool. Valid for image /
   image-folder / video-folder inputs.
-- **Track B — Viewing** (`use_case="viewing"` with a `single_video`, `video_folder`, or
+- **Viewing** (`use_case="viewing"` with a `single_video`, `video_folder`, or
   `image_folder` input) — packages point/splat-center data into a `.ply` via
   `export_point_cloud`. (Renamed from `package_4d_gaussian`: it currently exports a plain
   colored point cloud — no covariances, spherical-harmonic coefficients, opacity, or time
   dimension — so the old name overstated what it produces.)
-- **Track C — Live** (`use_case="live"` with a `live_stream` input) — intended to
+- **Live** (`use_case="live"` with a `live_stream` input) — intended to
   establish a real-time delivery layer (WebRTC / WebSocket). **Not implemented**: calling
   it raises `TrackNotImplementedError` rather than claiming a stream was established.
 
-`input_type` is validated against the shared `SourceType` enum
+`source_type` is validated against the shared `SourceType` enum
 (`spatial_ingestion.metadata.schema.SourceType`), and each use case is only valid for a
 specific subset of source types (e.g. `editing` is not valid for `live_stream`). Any other
 combination raises `InvalidRoutingError`.
@@ -354,20 +355,20 @@ Deliverables are written under `data/deliverables/`:
 ### Run
 
 The integrated pipeline (`zshift-final-pipeline --use-case editing`) feeds the *real*
-refined mesh into the router, so Track A is fully wired end-to-end. The same holds for
-Track B, which packages the Phase 2 `point_cloud.ply`.
+refined mesh into the router, so the editing deliverable is fully wired end-to-end.
+The same holds for the viewing deliverable, which packages the Phase 2 `point_cloud.ply`.
 
 ```python
 from spatial_ingestion.outcomes_engine.engine import deliverable_router
 import trimesh
 
 mesh = trimesh.creation.icosphere()          # stand-in for a Phase 3 cleaned mesh
-deliverable_router(input_type="image_folder", use_case="editing",
-                   job_id="my_job", mesh=mesh)        # Track A -> .glb
+deliverable_router(source_type="image_folder", use_case="editing",
+                   job_id="my_job", mesh=mesh)        # editing -> .glb
 cloud = trimesh.PointCloud(vertices=[[0, 0, 0], [1, 1, 1]])
-deliverable_router(input_type="video_folder", use_case="viewing",
-                   job_id="my_job", point_cloud=cloud)  # Track B -> .ply
-deliverable_router(input_type="live_stream", use_case="live")  # Track C -> raises
+deliverable_router(source_type="video_folder", use_case="viewing",
+                   job_id="my_job", point_cloud=cloud)  # viewing -> .ply
+deliverable_router(source_type="live_stream", use_case="live")  # live -> raises
 ```
 
 ---

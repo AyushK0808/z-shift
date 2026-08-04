@@ -132,8 +132,3 @@ def _is_windows_drive_netloc(netloc: str) -> bool:
     return len(netloc) == 2 and netloc[0].isalpha() and netloc[1] == ":"
 
 
-def uri_to_path_or_none(uri: str) -> Path | None:
-    try:
-        return uri_to_path(uri)
-    except (ValueError, FileNotFoundError):
-        return None
