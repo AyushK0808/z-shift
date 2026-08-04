@@ -12,7 +12,7 @@ from spatial_ingestion.reconstruction.models import SyncViewGroup
 
 logger = logging.getLogger(__name__)
 
-_SUPPORTED_FORMATS = {".obj", ".glb", ".ply"}
+SUPPORTED_MESH_FORMATS = {".obj", ".glb", ".ply"}
 
 
 def build_run_manifest(
@@ -126,12 +126,11 @@ def export_scene_to_mesh(
     mesh = _dense_points_to_mesh(imgs, pts3d, confs, min_conf_thr)
 
     fmt = output_path.suffix.lower()
-    if fmt not in _SUPPORTED_FORMATS:
-        logger.warning(
-            "Unsupported format '%s', falling back to .glb. Supported: .obj, .glb, .ply",
-            fmt,
+    if fmt not in SUPPORTED_MESH_FORMATS:
+        raise ValueError(
+            f"Unsupported Phase 2 mesh format '{output_path.suffix}'. "
+            f"Phase 2 can only write {', '.join(sorted(SUPPORTED_MESH_FORMATS))}."
         )
-        output_path = output_path.with_suffix(".glb")
     mesh.export(str(output_path))
 
     xyz, rgb = _dense_points_xyz_rgb(imgs, pts3d, confs, min_conf_thr)

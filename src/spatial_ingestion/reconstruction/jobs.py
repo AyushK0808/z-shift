@@ -21,11 +21,18 @@ class ReconstructionJobBuilder:
 
     def build(self, payload: UnifiedSpatialIngestionSchema) -> ReconstructionJob:
         if payload.source_type == SourceType.LIVE_STREAM:
-            raise ValueError("live streams cannot be converted into reconstruction jobs")
+            raise ValueError(
+                "live streams cannot be converted into reconstruction jobs: Phase 1 Track B "
+                "(live ingestion) has no Phase 2 handoff yet"
+            )
 
         mode = self._mode_for_source(payload.source_type)
         if mode == GenerationMode.SINGLE_VIEW:
-            raise ValueError(f"{mode.value} reconstruction is not implemented yet")
+            raise ValueError(
+                f"{mode.value} reconstruction is not implemented yet: source_type="
+                f"'{payload.source_type.value}' carries a single frame. Provide at least two "
+                "views (image_folder) or a video capture."
+            )
 
         base_metadata: dict[str, object] = {
             "source_type": payload.source_type.value,
@@ -186,4 +193,8 @@ def _build_sync_view_groups(payload: UnifiedSpatialIngestionSchema) -> list[Sync
             )
         )
 
+    # NOTE: `anchor_timestamp_ms` / `offsets_ms` are carried through to Phase 2
+    # for traceability, but current pairing (`reconstruction.pairing`) uses
+    # group membership only — MASt3R alignment does not consume timestamps, so
+    # the clock-offset values do not change reconstruction behaviour today.
     return sync_groups

@@ -8,6 +8,7 @@ from spatial_ingestion.reconstruction._io import uri_to_path, write_json
 from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
 from spatial_ingestion.reconstruction.device import resolve_device, set_seed
 from spatial_ingestion.reconstruction.export import (
+    SUPPORTED_MESH_FORMATS,
     build_run_manifest,
     export_scene_to_mesh,
 )
@@ -24,6 +25,11 @@ def run(job: ReconstructionJob) -> int:
         raise ValueError("MASt3R reconstruction requires at least two images")
 
     output_path, output_dir = _resolve_output_paths(job)
+    if output_path.suffix.lower() not in SUPPORTED_MESH_FORMATS:
+        raise ValueError(
+            f"Unsupported Phase 2 mesh format '{output_path.suffix}'. "
+            f"Phase 2 can only write {', '.join(sorted(SUPPORTED_MESH_FORMATS))}."
+        )
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

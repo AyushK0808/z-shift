@@ -29,6 +29,7 @@ from spatial_ingestion.live_stream.manager import (
 from spatial_ingestion.media_classifier.router import MediaClassifierRouter, MediaItemDescriptor
 from spatial_ingestion.metadata.schema import UnifiedSpatialIngestionSchema
 from spatial_ingestion.storage.object_store import ObjectStore
+from spatial_ingestion.storage.payload_store import PayloadStore
 
 
 class StreamConnectRequest(BaseModel):
@@ -44,6 +45,7 @@ class GatewayState:
         self.batch_normalizer = BatchNormalizer()
         self.live_streams = LiveStreamManager()
         self.object_store = ObjectStore()
+        self.payload_store = PayloadStore()
 
 
 class UploadTooLargeError(Exception):
@@ -102,7 +104,7 @@ def create_app() -> FastAPI:
 
             original_uris = {path: state.object_store.put_file(path, "originals") for path in paths}
             try:
-                return state.batch_normalizer.normalize(
+                payload = state.batch_normalizer.normalize(
                     paths,
                     decision,
                     original_uris=original_uris,
@@ -111,6 +113,11 @@ def create_app() -> FastAPI:
                 for uri in original_uris.values():
                     state.object_store.delete_uri(uri)
                 raise
+
+            # Persist the accepted payload so downstream phases can run against
+            # it via `zshift-final-pipeline --from-schema <payload_uri>`.
+            state.payload_store.store(payload)
+            return payload
 
     @app.post("/v1/ingest/streams/connect", response_model=UnifiedSpatialIngestionSchema)
     async def connect_stream(

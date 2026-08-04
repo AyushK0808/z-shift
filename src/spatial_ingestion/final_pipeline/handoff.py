@@ -19,6 +19,7 @@ from spatial_ingestion.media_classifier.router import (
 )
 from spatial_ingestion.metadata.schema import SourceType, UnifiedSpatialIngestionSchema
 from spatial_ingestion.outcomes_engine.engine import DEFAULT_DELIVERABLES_ROOT
+from spatial_ingestion.reconstruction.cli import resolve_output_path
 from spatial_ingestion.reconstruction.jobs import ReconstructionJobBuilder
 from spatial_ingestion.reconstruction.models import Mast3rRunParams, ReconstructionJob
 from spatial_ingestion.refinement import MeshCleaningConfig
@@ -58,17 +59,27 @@ def build_job(
     output_path: Path | str | None = None,
     label: str | None = None,
 ) -> ReconstructionJob:
-    """Convert a Phase 1 schema into a Phase 2 reconstruction job."""
+    """Convert a Phase 1 schema into a Phase 2 reconstruction job.
+
+    ``output_path`` is resolved through the same job-id-aware resolver the
+    CLIs use, so the output folder and the reconstruction job share one id.
+    """
     job = ReconstructionJobBuilder().build(payload)
     if mast3r_params:
         params_dump = mast3r_params.model_dump(exclude_unset=True)
         job.metadata = {**job.metadata, **params_dump}
-    if output_path:
-        job.output_path = str(Path(output_path).expanduser().resolve())
     if label:
         job.label = label
     elif not job.label:
         job.label = payload.sync_group_id or payload.source_type.value
+    if output_path:
+        resolved = resolve_output_path(
+            None,
+            str(output_path),
+            label=job.label,
+            job_id=job.job_id,
+        )
+        job.output_path = str(resolved)
     return job
 
 

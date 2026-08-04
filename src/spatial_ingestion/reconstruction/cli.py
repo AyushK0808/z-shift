@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
+from spatial_ingestion.reconstruction.export import SUPPORTED_MESH_FORMATS
 from spatial_ingestion.reconstruction.models import (
     Mast3rRunParams,
     ReconstructionJob,
@@ -72,13 +73,10 @@ def main(argv: list[str] | None = None) -> int:
     if len(image_paths) < 2:
         raise ValueError("Need a folder containing at least two views of the same subject")
 
-    output_path = str(resolve_output_path(input_path, args.output))
-
     job = ReconstructionJob(
         mode=ReconstructionMode.MULTI_VIEW,
         label=input_path.name,
         image_uris=[str(p) for p in image_paths],
-        output_path=str(output_path),
         metadata=Mast3rRunParams(
             model_name=args.model,
             device=args.device,
@@ -90,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=args.dry_run,
         ).model_dump(),
     )
+    job.output_path = str(resolve_output_path(input_path, args.output, job_id=job.job_id))
 
     return pipeline_run(job)
 
@@ -112,19 +111,28 @@ def collect_input_images(input_path: Path) -> list[Path]:
 
 
 def resolve_output_path(
-    input_path: Path | None, explicit_output: str | None, label: str | None = None
+    input_path: Path | None,
+    explicit_output: str | None,
+    label: str | None = None,
+    job_id: str | None = None,
 ) -> Path:
-    job_id = uuid4().hex[:12]
+    resolved_job_id = job_id or uuid4().hex[:12]
 
     if explicit_output:
         output_path = Path(explicit_output).expanduser().resolve()
-        if output_path.suffix.lower() in {".obj", ".glb", ".ply"}:
+        suffix = output_path.suffix.lower()
+        if suffix in SUPPORTED_MESH_FORMATS:
             stem = output_path.stem
-            return output_path.parent / f"{stem}_{job_id}" / output_path.name
-        return output_path / f"mesh_{job_id}.glb"
+            return output_path.parent / f"{stem}_{resolved_job_id}" / output_path.name
+        if suffix:
+            raise ValueError(
+                f"Unsupported Phase 2 mesh format '{output_path.suffix}'. "
+                f"Phase 2 can only write {', '.join(sorted(SUPPORTED_MESH_FORMATS))}."
+            )
+        return output_path / f"mesh_{resolved_job_id}.glb"
 
     if input_path is None:
         stem = label or "reconstruction"
     else:
         stem = label or (input_path.stem if input_path.is_file() else input_path.name)
-    return RECONSTRUCTION_OUTPUT_ROOT / f"{stem}_{job_id}" / f"{stem}.glb"
+    return RECONSTRUCTION_OUTPUT_ROOT / f"{stem}_{resolved_job_id}" / f"{stem}.glb"

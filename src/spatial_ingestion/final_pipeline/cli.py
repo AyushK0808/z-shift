@@ -16,10 +16,10 @@ from spatial_ingestion.final_pipeline.handoff import (
     ingest_batch,
     load_schema,
 )
+from spatial_ingestion.metadata.schema import SourceType
 from spatial_ingestion.reconstruction.cli import (
     DEFAULT_MODEL,
     collect_input_images,
-    resolve_output_path,
 )
 from spatial_ingestion.reconstruction.models import Mast3rRunParams
 from spatial_ingestion.refinement import MeshCleaningConfig
@@ -86,20 +86,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.use_case == "live":
+        parser.error(
+            "Track C (real-time WebRTC/WebSocket delivery) is not implemented yet; "
+            "use --use-case editing or viewing"
+        )
+
     if args.from_schema:
-        input_path: Path | None = None
         label = None
         payload = load_schema(args.from_schema)
+        if payload.source_type == SourceType.SINGLE_IMAGE:
+            parser.error(
+                "single-image reconstruction is not supported; the payload must contain "
+                "at least two views (image_folder) or a video capture"
+            )
     else:
         if not args.input:
             parser.error("an input folder or --from-schema is required")
-        input_path = Path(args.input).expanduser().resolve()
-        image_paths = collect_input_images(input_path)
+        folder = Path(args.input).expanduser().resolve()
+        image_paths = collect_input_images(folder)
         if len(image_paths) < 2:
-            raise ValueError("Need a folder containing at least two views of the same subject")
+            parser.error("Need a folder containing at least two views of the same subject")
         payload = ingest_batch(image_paths)
-        input_path = image_paths[0].parent
-        label = input_path.name
+        label = image_paths[0].parent.name
 
     mast3r_params = Mast3rRunParams(
         model_name=args.model,
@@ -113,10 +122,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.pairing_strategy:
         mast3r_params.pairing_strategy = args.pairing_strategy
 
-    output_path = resolve_output_path(
-        input_path,
-        args.output,
-        label=label or (payload.sync_group_id or payload.source_type.value),
+    job = build_job(
+        payload,
+        mast3r_params=mast3r_params,
+        output_path=args.output,
+        label=label,
     )
     refinement_config = MeshCleaningConfig(
         mode=args.refinement_mode,
@@ -130,12 +140,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         verify_watertight=not args.no_watertight_check,
     )
 
-    job = build_job(
-        payload,
-        mast3r_params=mast3r_params,
-        output_path=output_path,
-        label=label,
-    )
     if args.use_case:
         full_result = run_full_pipeline(
             job,

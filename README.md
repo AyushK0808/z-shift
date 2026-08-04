@@ -13,6 +13,9 @@ stream; **Phase 5** (WIP) fits a skeleton and skinning weights.
 - Live ingestion: authenticated WebSocket frame push after `/v1/ingest/streams/connect`.
 - Originals are preserved in the local object-store stub under `data/object_store/`;
   normalized PNG derivatives are written under `data/normalized/`.
+- Every accepted upload is persisted as a payload JSON under `data/payloads/`, and the
+  payload's `metadata.payload_uri` points at it — so a gateway upload hands off to
+  `zshift-final-pipeline --from-schema` automatically (no manual `curl -o payload.json` needed).
 - Image/video normalization preserves aspect ratio and never pads to a square canvas or
   stretches frames.
 - Live stream, auth, and rate-limit state are in-memory and single-process for this
@@ -36,9 +39,10 @@ src/spatial_ingestion/
   outcomes_engine/            Phase 4 — use-case router + deliverable packaging/export
   auto_rigging/               Phase 5 — skeleton / skinning-weights MVP (see AUTO_RIGGING.md)
   final_pipeline/             Orchestration — Phase 1→2→3 (→4) end-to-end entry point
-  storage/                    Object-store stub for gateway originals
+  storage/                    Object-store stub for gateway originals + payload persistence
   test_harness/               Synthetic media factory + harness
 data/normalized/              Phase 1 normalized media outputs
+data/payloads/                Phase 1 gateway payload JSON (feeds `--from-schema`)
 data/reconstruction/          Phase 2 raw mesh + manifests (one dir per job)
 data/deliverables/            Phase 4 packaged deliverables
 scripts/setup-mast3r.sh       clones upstream MASt3R into third_party/mast3r (macOS/Linux/WSL)
@@ -90,7 +94,9 @@ downstream 3D-reconstruction stages can consume regardless of where the media ca
 
 - `GET  /health` — liveness probe.
 - `POST /v1/ingest/uploads` — multipart upload of one or more image/video files; returns
-  the unified schema for the batch.
+  the unified schema for the batch. The schema is also persisted under
+  `data/payloads/` and `metadata.payload_uri` points at the file, so it can be fed
+  straight into `zshift-final-pipeline --from-schema <payload_uri>`.
 - `POST /v1/ingest/streams/connect` — open a live WebSocket stream and get back a stream
   handle plus the unified schema.
 - `WS   /v1/ingest/streams/{stream_id}/frames` — push encoded frames; each frame gets a
@@ -102,12 +108,15 @@ downstream 3D-reconstruction stages can consume regardless of where the media ca
 uv run uvicorn spatial_ingestion.main:app --reload
 ```
 
-Upload a batch and save the returned schema JSON for later replay (`--from-schema`):
+Upload a batch; the response's `metadata.payload_uri` is the persisted schema for later
+replay (`--from-schema`). The persisted file is self-describing — it carries its own
+`payload_uri` — so any file under `data/payloads/` can be re-run directly:
 
 ```bash
 curl -H "authorization: Bearer dev-token" \
      -F "files=@a.jpg" -F "files=@b.jpg" \
-     http://localhost:8000/v1/ingest/uploads -o payload.json
+     http://localhost:8000/v1/ingest/uploads
+# -> metadata.payload_uri tells you where data/payloads/<...>.json was written
 ```
 
 ---
@@ -164,7 +173,14 @@ uv run zshift-final-pipeline --from-schema payload.json -o out/mesh.glb
 
 - `--use-case viewing` packages the Phase 2 `point_cloud.ply` as a `.ply` deliverable under
   `data/deliverables/point_clouds/`.
-- `--use-case live` raises `TrackNotImplementedError` by design.
+- `--use-case live` fails fast with a clean exit-2 error at the CLI, before any
+  ingestion or reconstruction runs.
+- Phase 2 only writes `.obj`/`.glb`/`.ply`; requesting another extension fails with a clear
+  error instead of silently rewriting to `.glb`.
+- Single-image payloads (from a one-image folder or a gateway `single_image` upload) are
+  rejected with a clear message — provide at least two views.
+- Live-ingested frames are buffered in memory and dropped when a stream closes; there is no
+  live-frame handoff into reconstruction yet.
 - Phase 3 is CPU-bound and slow on large reconstructions — `split_bodies()` dominates. A
   ~2.6M-triangle mesh takes ~7 minutes even with `--smoothing-iters 0
   --no-watertight-check`; the default 15 smoothing iterations take substantially longer.
@@ -324,6 +340,12 @@ assigns a job id and selects a track:
 specific subset of source types (e.g. `editing` is not valid for `live_stream`). Any other
 combination raises `InvalidRoutingError`.
 
+The router takes the real Phase 2/3 artifact explicitly: a `trimesh.Trimesh` for
+`editing`, a `trimesh.PointCloud` for `viewing`. It no longer falls back to fabricated
+geometry — calling it without the artifact raises `ValueError`. The reconstruction
+`job_id` is threaded through, so the deliverable's filename and `job_id` match the Phase 2
+run manifest and output folder for the same run.
+
 Deliverables are written under `data/deliverables/`:
 
 - `blender_ready/<job_id>_model.glb`
@@ -332,16 +354,20 @@ Deliverables are written under `data/deliverables/`:
 ### Run
 
 The integrated pipeline (`zshift-final-pipeline --use-case editing`) feeds the *real*
-refined mesh into the router, so Track A is fully wired end-to-end. The in-memory mocks
-(`get_phase3_cleaned_mesh`, `get_phase3_point_cloud`) remain as fallbacks so routing and
-packaging can still be exercised without running the upstream models.
+refined mesh into the router, so Track A is fully wired end-to-end. The same holds for
+Track B, which packages the Phase 2 `point_cloud.ply`.
 
 ```python
 from spatial_ingestion.outcomes_engine.engine import deliverable_router
+import trimesh
 
-deliverable_router(input_type="image_folder", use_case="editing")   # Track A -> .glb
-deliverable_router(input_type="video_folder", use_case="viewing")   # Track B -> .ply
-deliverable_router(input_type="live_stream", use_case="live")       # Track C -> raises
+mesh = trimesh.creation.icosphere()          # stand-in for a Phase 3 cleaned mesh
+deliverable_router(input_type="image_folder", use_case="editing",
+                   job_id="my_job", mesh=mesh)        # Track A -> .glb
+cloud = trimesh.PointCloud(vertices=[[0, 0, 0], [1, 1, 1]])
+deliverable_router(input_type="video_folder", use_case="viewing",
+                   job_id="my_job", point_cloud=cloud)  # Track B -> .ply
+deliverable_router(input_type="live_stream", use_case="live")  # Track C -> raises
 ```
 
 ---

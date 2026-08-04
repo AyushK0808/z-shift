@@ -92,7 +92,10 @@ def test_build_job_merges_mast3r_params(tmp_path: Path) -> None:
 
     assert job.mode == ReconstructionMode.MULTI_VIEW
     assert job.label == "custom_label"
-    assert job.output_path == str((tmp_path / "out" / "mesh.obj").resolve())
+    # build_job resolves the output path with the job id so folder and job match.
+    assert job.output_path is not None
+    assert job.output_path.endswith("mesh.obj")
+    assert f"mesh_{job.job_id}" in job.output_path
     assert job.metadata["model_name"] == "test/model"
     assert job.metadata["image_size"] == 224
     assert job.metadata["source_type"] == "image_folder"

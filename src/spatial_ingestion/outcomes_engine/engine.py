@@ -4,11 +4,10 @@ Routes a cleaned Phase 3 artifact (mesh or point cloud) to the correct
 export/delivery pipeline based on the declared use case, and returns a
 structured result instead of printing to stdout.
 
-NOTE: `get_phase3_cleaned_mesh` / `get_phase3_point_cloud` below are still
-in-memory mocks of the real Phase 3 handoff (tracked separately — de-mocking
-is blocked on the pipeline executor landing, see ROADMAP §1·X1 and §5). They
-let the router, validation, and export logic be developed and tested without
-running the upstream models.
+The router expects the actual Phase 3 artifact (a `trimesh.Trimesh` for
+`editing`, a `trimesh.PointCloud` for `viewing`) — it no longer falls back to
+fabricated geometry. Callers that want to exercise routing without running the
+upstream models must supply their own synthetic artifact.
 """
 
 from __future__ import annotations
@@ -18,37 +17,12 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
 import trimesh
 
 from spatial_ingestion.metadata.schema import SourceType
 
 # ---------------------------------------------------------------------------
-# 1. Mocked Phase 3 inputs (temporary — see module docstring)
-# ---------------------------------------------------------------------------
-
-
-def get_phase3_cleaned_mesh() -> trimesh.Trimesh:
-    """Simulates Phase 3 handing over a cleaned, unformatted 3D mesh."""
-    mesh = trimesh.creation.icosphere(subdivisions=3, radius=1.0)
-    mesh.visual.vertex_colors = [100, 150, 255, 255]
-    return mesh
-
-
-def get_phase3_point_cloud() -> trimesh.PointCloud:
-    """Simulates Phase 3 handing over raw point/splat-center data.
-
-    NOTE: this is a plain colored point cloud, not real 4D Gaussian splats
-    (no covariances, no spherical-harmonic coefficients, no opacity, no time
-    dimension). See `export_point_cloud` below.
-    """
-    points = np.random.rand(10000, 3) * 10
-    colors = np.random.randint(0, 255, (10000, 4))
-    return trimesh.PointCloud(vertices=points, colors=colors)
-
-
-# ---------------------------------------------------------------------------
-# 2. Result types & errors
+# 1. Result types & errors
 # ---------------------------------------------------------------------------
 
 
@@ -71,7 +45,7 @@ class DeliverableResult:
 
 
 # ---------------------------------------------------------------------------
-# 3. Output location
+# 2. Output location
 # ---------------------------------------------------------------------------
 
 # Deliverables previously landed in the source tree (only `data/` is
@@ -190,28 +164,34 @@ def deliverable_router(
     input_type: str | SourceType,
     use_case: str,
     output_root: Path | str = DEFAULT_DELIVERABLES_ROOT,
+    job_id: str | None = None,
     mesh: trimesh.Trimesh | None = None,
     point_cloud: trimesh.PointCloud | None = None,
 ) -> DeliverableResult:
-    """Routes and packages Phase 3 output based on the declared use case.
+    """Routes and packages a Phase 3 artifact based on the declared use case.
 
-    If `mesh` / `point_cloud` are provided, they are used instead of the
-    in-memory Phase 3 mocks (`get_phase3_cleaned_mesh` / `get_phase3_point_cloud`).
+    `job_id` is the reconstruction job id from Phase 2; when omitted a fresh
+    value is generated. The packaged deliverable shares this id so folders,
+    manifests, and deliverables are traceable to the same run.
     """
     source_type = validate_routing(input_type, use_case)
     output_root = Path(output_root)
-    job_id = f"JOB_{uuid.uuid4().hex[:6].upper()}"
+    resolved_job_id = job_id or f"JOB_{uuid.uuid4().hex[:6].upper()}"
 
     if use_case == "live":
         raise TrackNotImplementedError(
-            f"[{job_id}] Track C (real-time WebRTC/WebSocket delivery) is not implemented yet."
+            f"[{resolved_job_id}] Track C (real-time WebRTC/WebSocket delivery) "
+            "is not implemented yet."
         )
 
     if use_case == "editing":
-        raw_mesh = mesh if mesh is not None else get_phase3_cleaned_mesh()
-        final_file = export_blender_ready(raw_mesh, job_id, output_root)
+        if mesh is None:
+            raise ValueError(
+                "'editing' requires a Phase 3 cleaned mesh artifact; pass one via `mesh=`."
+            )
+        final_file = export_blender_ready(mesh, resolved_job_id, output_root)
         return DeliverableResult(
-            job_id=job_id,
+            job_id=resolved_job_id,
             track="A",
             input_type=source_type.value,
             use_case=use_case,
@@ -220,10 +200,13 @@ def deliverable_router(
         )
 
     if use_case == "viewing":
-        raw_cloud = point_cloud if point_cloud is not None else get_phase3_point_cloud()
-        final_file = export_point_cloud(raw_cloud, job_id, output_root)
+        if point_cloud is None:
+            raise ValueError(
+                "'viewing' requires a Phase 3 point-cloud artifact; pass one via `point_cloud=`."
+            )
+        final_file = export_point_cloud(point_cloud, resolved_job_id, output_root)
         return DeliverableResult(
-            job_id=job_id,
+            job_id=resolved_job_id,
             track="B",
             input_type=source_type.value,
             use_case=use_case,

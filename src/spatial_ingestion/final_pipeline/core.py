@@ -15,6 +15,7 @@ from spatial_ingestion.outcomes_engine.engine import (
     deliverable_router,
     validate_routing,
 )
+from spatial_ingestion.reconstruction.export import SUPPORTED_MESH_FORMATS
 from spatial_ingestion.reconstruction.models import ReconstructionJob
 from spatial_ingestion.reconstruction.pipeline import _resolve_output_paths
 from spatial_ingestion.reconstruction.pipeline import run as run_reconstruction
@@ -120,6 +121,7 @@ def run_full_pipeline(
             input_type=input_type,
             use_case="editing",
             output_root=deliverables_root,
+            job_id=job.job_id,
             mesh=mesh,
         )
     elif use_case == "viewing":
@@ -135,12 +137,11 @@ def run_full_pipeline(
             input_type=input_type,
             use_case="viewing",
             output_root=deliverables_root,
+            job_id=job.job_id,
             point_cloud=cloud_mesh,
         )
     else:
-        deliverable = deliverable_router(
-            input_type=input_type, use_case=use_case, output_root=deliverables_root
-        )
+        raise PipelineArtifactError(f"Unhandled use_case '{use_case}'")
 
     return FullPipelineResult(pipeline_result=pipeline_result, deliverable=deliverable)
 
@@ -175,9 +176,10 @@ def _validate_raw_mesh(raw_mesh_path: Path) -> None:
         )
     if raw_mesh_path.stat().st_size == 0:
         raise PipelineArtifactError(f"Phase 2 mesh artifact is empty: {raw_mesh_path}")
-    if raw_mesh_path.suffix.lower() not in {".obj", ".glb", ".ply", ".stl", ".vtk", ".vtp"}:
+    if raw_mesh_path.suffix.lower() not in SUPPORTED_MESH_FORMATS:
         raise PipelineArtifactError(
-            f"Unsupported Phase 2 mesh artifact format: {raw_mesh_path.suffix}"
+            f"Unsupported Phase 2 mesh artifact format: {raw_mesh_path.suffix} "
+            f"(Phase 2 can only produce {', '.join(sorted(SUPPORTED_MESH_FORMATS))})"
         )
 
 
