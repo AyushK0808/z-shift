@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 
 import pytest
-import pyvista as pv
 
 from spatial_ingestion.batch_normalization.image_processor import ImageProcessor
 from spatial_ingestion.batch_normalization.normalizer import BatchNormalizer
@@ -27,7 +26,6 @@ from spatial_ingestion.metadata.schema import (
 from spatial_ingestion.reconstruction._io import uri_to_path
 from spatial_ingestion.reconstruction.models import (
     Mast3rRunParams,
-    ReconstructionJob,
     ReconstructionMode,
 )
 from spatial_ingestion.refinement import MeshCleaningConfig
@@ -44,21 +42,6 @@ def _ingest_folder(tmp_path: Path) -> Path:
     create_sample_image(folder / "front.jpg")
     create_sample_image(folder / "side.jpg")
     return folder
-
-
-def _fake_reconstruction(monkeypatch, raw_mesh_path: Path):
-    def fake_reconstruction(job: ReconstructionJob) -> int:
-        image_paths = [uri_to_path(uri) for uri in job.image_uris]
-        assert all(path.exists() for path in image_paths)
-        raw = Path(job.output_path or raw_mesh_path).resolve()
-        raw.parent.mkdir(parents=True, exist_ok=True)
-        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw))
-        return 0
-
-    monkeypatch.setattr(
-        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
-    )
-    return fake_reconstruction
 
 
 def test_ingest_batch_produces_phase1_schema(tmp_path: Path) -> None:
@@ -96,19 +79,19 @@ def test_build_job_merges_mast3r_params(tmp_path: Path) -> None:
     assert job.output_path is not None
     assert job.output_path.endswith("mesh.obj")
     assert f"mesh_{job.job_id}" in job.output_path
-    assert job.metadata["model_name"] == "test/model"
-    assert job.metadata["image_size"] == 224
+    assert job.params.model_name == "test/model"
+    assert job.params.image_size == 224
     assert job.metadata["source_type"] == "image_folder"
     assert len(job.image_uris) == 2
 
 
-def test_run_from_schema_pipeline_with_file_uris(monkeypatch, tmp_path: Path) -> None:
+def test_run_from_schema_pipeline_with_file_uris(fake_reconstruction, tmp_path: Path) -> None:
     folder = _ingest_folder(tmp_path)
     payload = ingest_batch(
         sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
     )
     raw_mesh_path = tmp_path / "mesh.obj"
-    _fake_reconstruction(monkeypatch, raw_mesh_path)
+    fake_reconstruction(raw_mesh_path=raw_mesh_path, check_image_uris=True)
 
     result = run_from_schema(
         payload,
@@ -125,12 +108,14 @@ def test_run_from_schema_pipeline_with_file_uris(monkeypatch, tmp_path: Path) ->
     assert result.refinement_diagnostics["output_point_count"] > 0
 
 
-def test_run_from_schema_with_use_case_defaults_input_type(monkeypatch, tmp_path: Path) -> None:
+def test_run_from_schema_with_use_case_defaults_source_type(
+    fake_reconstruction, tmp_path: Path
+) -> None:
     folder = _ingest_folder(tmp_path)
     payload = ingest_batch(
         sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
     )
-    _fake_reconstruction(monkeypatch, tmp_path / "mesh.obj")
+    fake_reconstruction(raw_mesh_path=tmp_path / "mesh.obj", check_image_uris=True)
 
     result = run_from_schema(
         payload,
@@ -141,14 +126,14 @@ def test_run_from_schema_with_use_case_defaults_input_type(monkeypatch, tmp_path
     )
 
     assert isinstance(result, FullPipelineResult)
-    assert result.deliverable.track == "A"
+    assert result.deliverable.track == "editing"
     assert result.deliverable.output_path is not None
     assert Path(result.deliverable.output_path).exists()
 
 
-def test_run_ingested_pipeline(monkeypatch, tmp_path: Path) -> None:
+def test_run_ingested_pipeline(fake_reconstruction, tmp_path: Path) -> None:
     folder = _ingest_folder(tmp_path)
-    _fake_reconstruction(monkeypatch, tmp_path / "mesh.obj")
+    fake_reconstruction(raw_mesh_path=tmp_path / "mesh.obj", check_image_uris=True)
 
     result = run_ingested_pipeline(
         sorted(folder.iterdir()),
@@ -162,7 +147,7 @@ def test_run_ingested_pipeline(monkeypatch, tmp_path: Path) -> None:
     assert result.refined_mesh_path.exists()
 
 
-def test_pipeline_cli_from_schema(monkeypatch, tmp_path: Path, capsys) -> None:
+def test_pipeline_cli_from_schema(fake_reconstruction, tmp_path: Path, capsys) -> None:
     folder = _ingest_folder(tmp_path)
     payload = ingest_batch(
         sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
@@ -170,7 +155,7 @@ def test_pipeline_cli_from_schema(monkeypatch, tmp_path: Path, capsys) -> None:
     schema_path = tmp_path / "payload.json"
     schema_path.write_text(payload.model_dump_json(indent=2), encoding="utf-8")
     raw_mesh_path = tmp_path / "out" / "mesh.obj"
-    _fake_reconstruction(monkeypatch, raw_mesh_path)
+    fake_reconstruction(raw_mesh_path=raw_mesh_path, check_image_uris=True)
 
     assert (
         final_pipeline_cli_main(
@@ -215,9 +200,8 @@ def test_build_job_keeps_builder_pairing_recommendation() -> None:
     job = build_job(payload, mast3r_params=Mast3rRunParams())
 
     assert job.mode == ReconstructionMode.VIDEO_SEQUENCE
-    assert job.metadata["pairing_strategy"] == "swin"
-    resolved = Mast3rRunParams.model_validate(job.metadata)
-    assert resolved.model_name == Mast3rRunParams().model_name
+    assert job.params.pairing_strategy == "swin"
+    assert job.params.model_name == Mast3rRunParams().model_name
 
 
 def test_build_job_explicit_pairing_overrides_builder_recommendation() -> None:
@@ -225,7 +209,7 @@ def test_build_job_explicit_pairing_overrides_builder_recommendation() -> None:
 
     job = build_job(payload, mast3r_params=Mast3rRunParams(pairing_strategy="complete"))
 
-    assert job.metadata["pairing_strategy"] == "complete"
+    assert job.params.pairing_strategy == "complete"
 
 
 def _single_video_payload() -> UnifiedSpatialIngestionSchema:

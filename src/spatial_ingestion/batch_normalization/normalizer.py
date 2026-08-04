@@ -39,7 +39,7 @@ class BatchNormalizer:
         original_uris: dict[Path, str] | None = None,
     ) -> UnifiedSpatialIngestionSchema:
         namespace = f"ingest_{uuid4().hex}"
-        source_type = decision.input_type
+        source_type = decision.source_type
         original_uris = original_uris or {}
 
         if source_type in {SourceType.SINGLE_IMAGE, SourceType.IMAGE_FOLDER}:

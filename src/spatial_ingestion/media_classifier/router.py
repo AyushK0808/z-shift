@@ -21,7 +21,7 @@ class MediaItemDescriptor:
 
 @dataclass(frozen=True)
 class RoutingDecision:
-    input_type: SourceType
+    source_type: SourceType
     track: Track
     priority_score: float
     reason: str
@@ -90,7 +90,7 @@ class MediaClassifierRouter:
         reason: str,
     ) -> RoutingDecision:
         return RoutingDecision(
-            input_type=source_type,
+            source_type=source_type,
             track=track,
             priority_score=self._tagger.score(source_type, track, file_count=file_count),
             reason=reason,

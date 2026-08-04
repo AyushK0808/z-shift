@@ -19,7 +19,10 @@ from pathlib import Path
 
 import trimesh
 
+from spatial_ingestion.config import DELIVERABLES_OUTPUT_ROOT
 from spatial_ingestion.metadata.schema import SourceType
+
+DEFAULT_DELIVERABLES_ROOT = DELIVERABLES_OUTPUT_ROOT
 
 # ---------------------------------------------------------------------------
 # 1. Result types & errors
@@ -27,7 +30,7 @@ from spatial_ingestion.metadata.schema import SourceType
 
 
 class InvalidRoutingError(ValueError):
-    """Raised when (input_type, use_case) is not a supported combination."""
+    """Raised when (source_type, use_case) is not a supported combination."""
 
 
 class TrackNotImplementedError(NotImplementedError):
@@ -37,8 +40,8 @@ class TrackNotImplementedError(NotImplementedError):
 @dataclass(frozen=True)
 class DeliverableResult:
     job_id: str
-    track: str  # "A" (editing/blender), "B" (viewing/point-cloud), "C" (live)
-    input_type: str
+    track: str  # the deliverable lane: "editing", "viewing", or "live"
+    source_type: str
     use_case: str
     output_path: str | None
     message: str
@@ -50,10 +53,8 @@ class DeliverableResult:
 
 # Deliverables previously landed in the source tree (only `data/` is
 # gitignored), which made it easy to accidentally commit binary artifacts.
-# Default to <repo_root>/data/deliverables instead; callers (e.g. tests) can
-# still override via `output_root`.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DELIVERABLES_ROOT = _REPO_ROOT / "data" / "deliverables"
+# The canonical root lives in `spatial_ingestion.config`; callers (e.g. tests)
+# can still override via `output_root`.
 
 
 def _deliverable_dir(output_root: Path, *parts: str) -> Path:
@@ -96,57 +97,57 @@ def export_point_cloud(point_cloud_data: trimesh.PointCloud, job_id: str, output
 # Which SourceTypes each use_case is actually valid for. Explicit, so a
 # mismatch (e.g. live_stream + editing) is rejected instead of silently
 # falling through.
-_EDITING_INPUT_TYPES = {
+_EDITING_SOURCE_TYPES = {
     SourceType.SINGLE_IMAGE,
     SourceType.IMAGE_FOLDER,
     SourceType.SINGLE_VIDEO,
     SourceType.VIDEO_FOLDER,
 }
-_VIEWING_INPUT_TYPES = {
+_VIEWING_SOURCE_TYPES = {
     SourceType.SINGLE_VIDEO,
     SourceType.VIDEO_FOLDER,
     SourceType.IMAGE_FOLDER,
 }
-_LIVE_INPUT_TYPES = {SourceType.LIVE_STREAM}
+_LIVE_SOURCE_TYPES = {SourceType.LIVE_STREAM}
 
 
-def _coerce_source_type(input_type: str | SourceType) -> SourceType:
-    if isinstance(input_type, SourceType):
-        return input_type
+def _coerce_source_type(source_type: str | SourceType) -> SourceType:
+    if isinstance(source_type, SourceType):
+        return source_type
     try:
-        return SourceType(input_type)
+        return SourceType(source_type)
     except ValueError as exc:
         valid = ", ".join(t.value for t in SourceType)
         raise InvalidRoutingError(
-            f"Unknown input_type '{input_type}'. Expected one of: {valid}."
+            f"Unknown source_type '{source_type}'. Expected one of: {valid}."
         ) from exc
 
 
-def validate_routing(input_type: str | SourceType, use_case: str) -> SourceType:
+def validate_routing(source_type: str | SourceType, use_case: str) -> SourceType:
     """Validate a Phase 4 routing decision without exporting anything."""
-    source_type = _coerce_source_type(input_type)
+    source_type = _coerce_source_type(source_type)
 
     if use_case == "editing":
-        if source_type not in _EDITING_INPUT_TYPES:
+        if source_type not in _EDITING_SOURCE_TYPES:
             raise InvalidRoutingError(
-                f"'editing' is not valid for input_type '{source_type.value}' "
-                f"(valid: {sorted(t.value for t in _EDITING_INPUT_TYPES)})."
+                f"'editing' is not valid for source_type '{source_type.value}' "
+                f"(valid: {sorted(t.value for t in _EDITING_SOURCE_TYPES)})."
             )
         return source_type
 
     if use_case == "viewing":
-        if source_type not in _VIEWING_INPUT_TYPES:
+        if source_type not in _VIEWING_SOURCE_TYPES:
             raise InvalidRoutingError(
-                f"'viewing' is not valid for input_type '{source_type.value}' "
-                f"(valid: {sorted(t.value for t in _VIEWING_INPUT_TYPES)})."
+                f"'viewing' is not valid for source_type '{source_type.value}' "
+                f"(valid: {sorted(t.value for t in _VIEWING_SOURCE_TYPES)})."
             )
         return source_type
 
     if use_case == "live":
-        if source_type not in _LIVE_INPUT_TYPES:
+        if source_type not in _LIVE_SOURCE_TYPES:
             raise InvalidRoutingError(
-                f"'live' is not valid for input_type '{source_type.value}' "
-                f"(valid: {sorted(t.value for t in _LIVE_INPUT_TYPES)})."
+                f"'live' is not valid for source_type '{source_type.value}' "
+                f"(valid: {sorted(t.value for t in _LIVE_SOURCE_TYPES)})."
             )
         return source_type
 
@@ -161,7 +162,7 @@ def validate_routing(input_type: str | SourceType, use_case: str) -> SourceType:
 
 
 def deliverable_router(
-    input_type: str | SourceType,
+    source_type: str | SourceType,
     use_case: str,
     output_root: Path | str = DEFAULT_DELIVERABLES_ROOT,
     job_id: str | None = None,
@@ -174,13 +175,13 @@ def deliverable_router(
     value is generated. The packaged deliverable shares this id so folders,
     manifests, and deliverables are traceable to the same run.
     """
-    source_type = validate_routing(input_type, use_case)
+    source_type = validate_routing(source_type, use_case)
     output_root = Path(output_root)
     resolved_job_id = job_id or f"JOB_{uuid.uuid4().hex[:6].upper()}"
 
     if use_case == "live":
         raise TrackNotImplementedError(
-            f"[{resolved_job_id}] Track C (real-time WebRTC/WebSocket delivery) "
+            f"[{resolved_job_id}] live delivery (real-time WebRTC/WebSocket) "
             "is not implemented yet."
         )
 
@@ -192,8 +193,8 @@ def deliverable_router(
         final_file = export_blender_ready(mesh, resolved_job_id, output_root)
         return DeliverableResult(
             job_id=resolved_job_id,
-            track="A",
-            input_type=source_type.value,
+            track="editing",
+            source_type=source_type.value,
             use_case=use_case,
             output_path=final_file,
             message="Blender-ready export packaged successfully.",
@@ -207,8 +208,8 @@ def deliverable_router(
         final_file = export_point_cloud(point_cloud, resolved_job_id, output_root)
         return DeliverableResult(
             job_id=resolved_job_id,
-            track="B",
-            input_type=source_type.value,
+            track="viewing",
+            source_type=source_type.value,
             use_case=use_case,
             output_path=final_file,
             message="Point-cloud deliverable packaged successfully.",

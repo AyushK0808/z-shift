@@ -6,6 +6,7 @@ from pathlib import Path
 import torch
 
 from spatial_ingestion.metadata.schema import CameraIntrinsics
+from spatial_ingestion.reconstruction._deps import mast3r_dependency_error
 from spatial_ingestion.reconstruction._io import uri_to_path
 from spatial_ingestion.reconstruction.models import SyncViewGroup
 
@@ -19,7 +20,7 @@ def build_pairs(
     try:
         from dust3r.image_pairs import make_pairs
     except ImportError as exc:
-        raise RuntimeError("MASt3R (dust3r) is not installed.") from exc
+        raise mast3r_dependency_error("dust3r (make_pairs)") from exc
 
     pairs = make_pairs(images, scene_graph=strategy, symmetrize=True)
     return pairs
@@ -49,6 +50,8 @@ def build_sync_pairs(
         indices: list[int] = []
         for source_id in cameras:
             handoff = group.frames_by_source[source_id]
+            if handoff.uri is None:
+                continue
             path_stem = uri_to_path(handoff.uri).stem
             idx = stem_to_idx.get(path_stem)
             if idx is not None:

@@ -11,7 +11,10 @@ from spatial_ingestion.reconstruction import (
     ReconstructionJobBuilder,
     ReconstructionMode,
 )
-from spatial_ingestion.reconstruction.models import ReconstructionJob
+from spatial_ingestion.reconstruction.models import (
+    Mast3rRunParams,
+    ReconstructionJob,
+)
 
 
 def test_mast3r_job_builder_maps_image_folder_to_multi_view() -> None:
@@ -131,13 +134,14 @@ def test_pipeline_dry_run(tmp_path: Path) -> None:
         mode=ReconstructionMode.MULTI_VIEW,
         image_uris=[str(image_a), str(image_b)],
         output_path=str(output_path),
-        metadata={"dry_run": True},
+        params=Mast3rRunParams(dry_run=True),
     )
 
-    exit_code = pipeline_run(job)
+    result = pipeline_run(job)
 
-    assert exit_code == 0
-    assert (tmp_path / "artifacts" / "run_manifest.json").exists()
+    assert result.dry_run
+    assert result.manifest_path == (tmp_path / "artifacts" / "run_manifest.json")
+    assert result.manifest_path.exists()
 
 
 def test_pipeline_rejects_single_view() -> None:

@@ -28,7 +28,7 @@ def run_harness() -> None:
             [MediaItemDescriptor(filename=image.name, mime_type="image/jpeg")]
         )
         image_payload = normalizer.normalize([image], image_decision)
-        assert image_decision.input_type == SourceType.SINGLE_IMAGE
+        assert image_decision.source_type == SourceType.SINGLE_IMAGE
         assert image_payload.track == Track.BATCH
         assert image_payload.frame_count == 1
 
@@ -36,7 +36,7 @@ def run_harness() -> None:
             [MediaItemDescriptor(filename=video.name, mime_type="video/mp4")]
         )
         video_payload = normalizer.normalize([video], video_decision)
-        assert video_decision.input_type == SourceType.SINGLE_VIDEO
+        assert video_decision.source_type == SourceType.SINGLE_VIDEO
         assert video_payload.track == Track.BATCH
         assert video_payload.frame_count and video_payload.frame_count > 1
         assert any((frame.motion_score or 0) > 0 for frame in video_payload.frames)
@@ -45,7 +45,7 @@ def run_harness() -> None:
         live_payload = live.open_stream("mock-live")
         for index in range(5):
             live.push_frame("mock-live", create_live_frame(index))
-        assert stream_decision.input_type == SourceType.LIVE_STREAM
+        assert stream_decision.source_type == SourceType.LIVE_STREAM
         assert live_payload.is_stream
         assert live.get_buffer("mock-live").latest() is not None
 

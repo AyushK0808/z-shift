@@ -30,7 +30,7 @@ def test_image_routing_and_schema(tmp_path: Path) -> None:
     decision = router.classify_static([MediaItemDescriptor(image.name, "image/jpeg")])
     payload = BatchNormalizer().normalize([image], decision)
 
-    assert decision.input_type == SourceType.SINGLE_IMAGE
+    assert decision.source_type == SourceType.SINGLE_IMAGE
     assert decision.track == Track.BATCH
     assert payload.source_type == SourceType.SINGLE_IMAGE
     assert payload.frame_count == 1
@@ -122,14 +122,14 @@ def test_classifier_rejects_unknown_mixed_payload() -> None:
             MediaItemDescriptor("notes.txt", "text/plain"),
         ]
     )
-    assert decision.input_type == SourceType.UNKNOWN
+    assert decision.source_type == SourceType.UNKNOWN
     assert "notes.txt" in decision.reason
 
 
 def test_stream_router_rejects_unimplemented_transports() -> None:
     router = MediaClassifierRouter()
     decision = router.classify_stream("rtsp", "camera-1")
-    assert decision.input_type == SourceType.UNKNOWN
+    assert decision.source_type == SourceType.UNKNOWN
 
 
 def test_upload_endpoint_preserves_original_and_rejects_junk(tmp_path: Path) -> None:

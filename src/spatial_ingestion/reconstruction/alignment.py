@@ -5,8 +5,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from spatial_ingestion.reconstruction._deps import mast3r_dependency_error
 from spatial_ingestion.reconstruction.inference import load_images, load_model
-from spatial_ingestion.reconstruction.models import HandoffFrame, SyncViewGroup
+from spatial_ingestion.reconstruction.models import FrameReference, SyncViewGroup
 from spatial_ingestion.reconstruction.pairing import (
     build_pairs,
     build_sync_pairs,
@@ -30,13 +31,10 @@ def run_sparse_alignment(
     image_size: int = 512,
     pairing_strategy: str = "complete",
     sync_view_groups: list[SyncViewGroup] | None = None,
-    frames: list[HandoffFrame] | None = None,
+    frames: list[FrameReference] | None = None,
 ) -> object:
     if sparse_global_alignment is None:
-        raise RuntimeError(
-            "MASt3R is not installed. Run scripts/setup-mast3r.sh or "
-            "pip install -e third_party/mast3r && pip install -e third_party/mast3r/dust3r"
-        )
+        raise mast3r_dependency_error("MASt3R (sparse_global_alignment)")
 
     model = load_model(model_name, device)
     images = load_images(image_paths, image_size=image_size)

@@ -4,10 +4,10 @@ from typing import Any
 
 import pytest
 
-from spatial_ingestion.metadata.schema import CameraIntrinsics
+from spatial_ingestion.metadata.schema import CameraIntrinsics, FrameReference
 from spatial_ingestion.reconstruction.device import resolve_device
 from spatial_ingestion.reconstruction.export import build_run_manifest
-from spatial_ingestion.reconstruction.models import HandoffFrame, SyncViewGroup
+from spatial_ingestion.reconstruction.models import SyncViewGroup
 from spatial_ingestion.reconstruction.pairing import build_sync_pairs
 
 
@@ -26,10 +26,10 @@ def sync_test_data(tmp_path: Path):
         SyncViewGroup(
             anchor_timestamp_ms=0.0,
             frames_by_source={
-                "cam_a": HandoffFrame(
+                "cam_a": FrameReference(
                     frame_id="cam_a_0", uri=cam_a_0.as_uri(), index=0, source_id="cam_a"
                 ),
-                "cam_b": HandoffFrame(
+                "cam_b": FrameReference(
                     frame_id="cam_b_0", uri=cam_b_0.as_uri(), index=0, source_id="cam_b"
                 ),
             },
@@ -37,10 +37,10 @@ def sync_test_data(tmp_path: Path):
         SyncViewGroup(
             anchor_timestamp_ms=100.0,
             frames_by_source={
-                "cam_a": HandoffFrame(
+                "cam_a": FrameReference(
                     frame_id="cam_a_1", uri=cam_a_1.as_uri(), index=1, source_id="cam_a"
                 ),
-                "cam_b": HandoffFrame(
+                "cam_b": FrameReference(
                     frame_id="cam_b_1", uri=cam_b_1.as_uri(), index=1, source_id="cam_b"
                 ),
             },
@@ -67,10 +67,10 @@ def sync_test_images(tmp_path: Path):
         SyncViewGroup(
             anchor_timestamp_ms=0.0,
             frames_by_source={
-                "cam_a": HandoffFrame(
+                "cam_a": FrameReference(
                     frame_id="cam_a_0", uri=cam_a_0.as_uri(), index=0, source_id="cam_a"
                 ),
-                "cam_b": HandoffFrame(
+                "cam_b": FrameReference(
                     frame_id="cam_b_0", uri=cam_b_0.as_uri(), index=0, source_id="cam_b"
                 ),
             },
@@ -78,10 +78,10 @@ def sync_test_images(tmp_path: Path):
         SyncViewGroup(
             anchor_timestamp_ms=100.0,
             frames_by_source={
-                "cam_a": HandoffFrame(
+                "cam_a": FrameReference(
                     frame_id="cam_a_1", uri=cam_a_1.as_uri(), index=1, source_id="cam_a"
                 ),
-                "cam_b": HandoffFrame(
+                "cam_b": FrameReference(
                     frame_id="cam_b_1", uri=cam_b_1.as_uri(), index=1, source_id="cam_b"
                 ),
             },
@@ -210,28 +210,28 @@ def test_intrinsic_priors_reach_sparse_global_alignment(sync_test_images) -> Non
     tmp_path, image_paths, sync_groups = sync_test_images
 
     frames = [
-        HandoffFrame(
+        FrameReference(
             frame_id="cam_a_0",
             uri=image_paths[0].as_uri(),
             index=0,
             source_id="cam_a",
             camera_intrinsics=CameraIntrinsics(focal_length_35mm=50.0),
         ),
-        HandoffFrame(
+        FrameReference(
             frame_id="cam_b_0",
             uri=image_paths[1].as_uri(),
             index=0,
             source_id="cam_b",
             camera_intrinsics=CameraIntrinsics(focal_length_35mm=50.0),
         ),
-        HandoffFrame(
+        FrameReference(
             frame_id="cam_a_1",
             uri=image_paths[2].as_uri(),
             index=1,
             source_id="cam_a",
             camera_intrinsics=CameraIntrinsics(focal_length_35mm=24.0),
         ),
-        HandoffFrame(
+        FrameReference(
             frame_id="cam_b_1",
             uri=image_paths[3].as_uri(),
             index=1,

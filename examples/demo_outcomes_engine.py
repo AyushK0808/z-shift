@@ -37,36 +37,36 @@ def main() -> None:
 
     # Scenario 1: single image -> edit result in Blender.
     result = deliverable_router(
-        input_type="single_image",
+        source_type="single_image",
         use_case="editing",
         job_id="demo_job_1",
         mesh=_synthetic_mesh(),
     )
-    print(f"[{result.job_id}] Track A success: {result.output_path}")
+    print(f"[{result.job_id}] editing deliverable: {result.output_path}")
 
     # Scenario 2: video -> view the dynamic 3D scene on the web.
     result = deliverable_router(
-        input_type="video_folder",
+        source_type="video_folder",
         use_case="viewing",
         job_id="demo_job_2",
         point_cloud=_synthetic_point_cloud(),
     )
-    print(f"[{result.job_id}] Track B success: {result.output_path}")
+    print(f"[{result.job_id}] viewing deliverable: {result.output_path}")
 
     # Scenario 3: live camera feed -> not implemented yet, raises.
     try:
         deliverable_router(
-            input_type="live_stream",
+            source_type="live_stream",
             use_case="live",
             job_id="demo_job_3",
         )
     except TrackNotImplementedError as exc:
-        print(f"Track C: {exc}")
+        print(f"live: {exc}")
 
     # Scenario 4: invalid combination -> raises instead of silently failing.
     try:
         deliverable_router(
-            input_type="live_stream",
+            source_type="live_stream",
             use_case="editing",
             job_id="demo_job_4",
             mesh=_synthetic_mesh(),

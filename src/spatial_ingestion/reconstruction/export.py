@@ -6,13 +6,24 @@ from typing import Any
 
 import numpy as np
 
+from spatial_ingestion.reconstruction._deps import mast3r_dependency_error
 from spatial_ingestion.reconstruction._io import write_ply
+from spatial_ingestion.reconstruction.config import POINT_CLOUD_FILENAME
 from spatial_ingestion.reconstruction.device import reproducibility_metadata
 from spatial_ingestion.reconstruction.models import SyncViewGroup
 
 logger = logging.getLogger(__name__)
 
 SUPPORTED_MESH_FORMATS = {".obj", ".glb", ".ply"}
+
+
+def validate_mesh_format(output_path: Path) -> None:
+    """Reject mesh output formats Phase 2 cannot produce."""
+    if output_path.suffix.lower() not in SUPPORTED_MESH_FORMATS:
+        raise ValueError(
+            f"Unsupported Phase 2 mesh format '{output_path.suffix}'. "
+            f"Phase 2 can only write {', '.join(sorted(SUPPORTED_MESH_FORMATS))}."
+        )
 
 
 def build_run_manifest(
@@ -108,7 +119,7 @@ def export_scene_to_mesh(
         from dust3r.utils.device import to_numpy
         from mast3r.cloud_opt.tsdf_optimizer import TSDFPostProcess
     except ImportError as exc:
-        raise RuntimeError("MASt3R mesh export dependencies are not installed.") from exc
+        raise mast3r_dependency_error("MASt3R mesh export dependencies") from exc
 
     tsdf_fell_back = False
     imgs = to_numpy(scene.imgs)
@@ -125,16 +136,11 @@ def export_scene_to_mesh(
 
     mesh = _dense_points_to_mesh(imgs, pts3d, confs, min_conf_thr)
 
-    fmt = output_path.suffix.lower()
-    if fmt not in SUPPORTED_MESH_FORMATS:
-        raise ValueError(
-            f"Unsupported Phase 2 mesh format '{output_path.suffix}'. "
-            f"Phase 2 can only write {', '.join(sorted(SUPPORTED_MESH_FORMATS))}."
-        )
+    validate_mesh_format(output_path)
     mesh.export(str(output_path))
 
     xyz, rgb = _dense_points_xyz_rgb(imgs, pts3d, confs, min_conf_thr)
-    write_ply(output_dir / "point_cloud.ply", xyz, rgb)
+    write_ply(output_dir / POINT_CLOUD_FILENAME, xyz, rgb)
 
     logger.info(
         "Exported %s (vertex colors: %s)", output_path, mesh.visual.vertex_colors is not None

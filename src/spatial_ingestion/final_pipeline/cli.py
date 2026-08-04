@@ -51,7 +51,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run Phase 4 too, routing to this use case",
     )
     parser.add_argument(
+        "--source-type",
         "--input-type",
+        dest="source_type",
+        type=SourceType,
         help="SourceType for Phase 4 routing (e.g. image_folder). Defaults to the "
         "Phase 1 classified source type.",
     )
@@ -88,7 +91,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.use_case == "live":
         parser.error(
-            "Track C (real-time WebRTC/WebSocket delivery) is not implemented yet; "
+            "live delivery (real-time WebRTC/WebSocket) is not implemented yet; "
             "use --use-case editing or viewing"
         )
 
@@ -144,7 +147,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         full_result = run_full_pipeline(
             job,
             use_case=args.use_case,
-            input_type=args.input_type or payload.source_type.value,
+            source_type=args.source_type or payload.source_type,
             refinement_config=refinement_config,
             refined_output_path=args.refined_output,
         )

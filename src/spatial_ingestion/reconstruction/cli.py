@@ -3,21 +3,29 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-from uuid import uuid4
 
-from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
-from spatial_ingestion.reconstruction.export import SUPPORTED_MESH_FORMATS
+from spatial_ingestion.reconstruction.config import DEFAULT_MODEL_NAME
+from spatial_ingestion.reconstruction.input import IMAGE_EXTENSIONS, collect_input_images
 from spatial_ingestion.reconstruction.models import (
     Mast3rRunParams,
     ReconstructionJob,
     ReconstructionMode,
 )
+from spatial_ingestion.reconstruction.paths import resolve_output_path
 from spatial_ingestion.reconstruction.pipeline import run as pipeline_run
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
-DEFAULT_MODEL = "naver/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric"
+DEFAULT_MODEL = DEFAULT_MODEL_NAME
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "DEFAULT_MODEL",
+    "IMAGE_EXTENSIONS",
+    "build_parser",
+    "collect_input_images",
+    "main",
+    "resolve_output_path",
+]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -77,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         mode=ReconstructionMode.MULTI_VIEW,
         label=input_path.name,
         image_uris=[str(p) for p in image_paths],
-        metadata=Mast3rRunParams(
+        params=Mast3rRunParams(
             model_name=args.model,
             device=args.device,
             image_size=args.image_size,
@@ -86,53 +94,9 @@ def main(argv: list[str] | None = None) -> int:
             min_conf_thr=args.min_conf_thr,
             seed=args.seed,
             dry_run=args.dry_run,
-        ).model_dump(),
+        ),
     )
     job.output_path = str(resolve_output_path(input_path, args.output, job_id=job.job_id))
 
-    return pipeline_run(job)
-
-
-def collect_input_images(input_path: Path) -> list[Path]:
-    if input_path.is_file():
-        raise ValueError("Need a folder containing at least two views of the same subject")
-
-    if input_path.is_dir():
-        image_paths = sorted(
-            path
-            for path in input_path.iterdir()
-            if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
-        )
-        if not image_paths:
-            raise ValueError(f"No supported images found in directory: {input_path}")
-        return image_paths
-
-    raise FileNotFoundError(f"Input path does not exist: {input_path}")
-
-
-def resolve_output_path(
-    input_path: Path | None,
-    explicit_output: str | None,
-    label: str | None = None,
-    job_id: str | None = None,
-) -> Path:
-    resolved_job_id = job_id or uuid4().hex[:12]
-
-    if explicit_output:
-        output_path = Path(explicit_output).expanduser().resolve()
-        suffix = output_path.suffix.lower()
-        if suffix in SUPPORTED_MESH_FORMATS:
-            stem = output_path.stem
-            return output_path.parent / f"{stem}_{resolved_job_id}" / output_path.name
-        if suffix:
-            raise ValueError(
-                f"Unsupported Phase 2 mesh format '{output_path.suffix}'. "
-                f"Phase 2 can only write {', '.join(sorted(SUPPORTED_MESH_FORMATS))}."
-            )
-        return output_path / f"mesh_{resolved_job_id}.glb"
-
-    if input_path is None:
-        stem = label or "reconstruction"
-    else:
-        stem = label or (input_path.stem if input_path.is_file() else input_path.name)
-    return RECONSTRUCTION_OUTPUT_ROOT / f"{stem}_{resolved_job_id}" / f"{stem}.glb"
+    pipeline_run(job)
+    return 0

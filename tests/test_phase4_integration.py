@@ -166,19 +166,17 @@ def test_real_pipeline_chain_round_trips_job_id(monkeypatch, tmp_path: Path, use
 
     # Phase 2 runs for real (export + manifest + point_cloud.ply), with only
     # the MASt3R alignment call stubbed.
-    exit_code = run_reconstruction(job)
-    assert exit_code == 0
-    assert Path(job.output_path).exists()
-    assert (Path(job.output_path).parent / "point_cloud.ply").exists()
-    manifest = json.loads(
-        (Path(job.output_path).parent / "run_manifest.json").read_text(encoding="utf-8")
-    )
+    run_result = run_reconstruction(job)
+    assert run_result.output_path == Path(job.output_path).resolve()
+    assert run_result.output_path.exists()
+    assert run_result.point_cloud_path.exists()
+    manifest = json.loads(run_result.manifest_path.read_text(encoding="utf-8"))
     assert manifest["job_id"] == job.job_id
 
     result = run_full_pipeline(
         job,
         use_case=use_case,
-        input_type="image_folder",
+        source_type="image_folder",
         refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
         deliverables_root=tmp_path / "deliverables",
     )
@@ -209,8 +207,8 @@ def test_real_pipeline_viewing_uses_phase2_point_cloud(monkeypatch, tmp_path: Pa
     job = _job_from_folder(tmp_path)
     assert job.output_path is not None
 
-    assert run_reconstruction(job) == 0
-    point_cloud = trimesh.load(str(Path(job.output_path).parent / "point_cloud.ply"))
+    run_result = run_reconstruction(job)
+    point_cloud = trimesh.load(str(run_result.point_cloud_path))
     assert isinstance(point_cloud, trimesh.PointCloud)
     assert len(point_cloud.vertices) > 100
 
@@ -250,7 +248,7 @@ def test_cli_live_use_case_fails_before_ingestion(tmp_path: Path, capsys) -> Non
     with pytest.raises(SystemExit) as excinfo:
         final_pipeline_cli_main([str(folder), "--use-case", "live"])
     assert excinfo.value.code == 2
-    assert "Track C" in capsys.readouterr().err
+    assert "live delivery" in capsys.readouterr().err
 
 
 def test_cli_from_schema_rejects_single_image(tmp_path: Path, capsys) -> None:

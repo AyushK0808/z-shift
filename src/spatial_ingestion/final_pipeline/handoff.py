@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from spatial_ingestion.batch_normalization.normalizer import BatchNormalizer
+from spatial_ingestion.config import DELIVERABLES_OUTPUT_ROOT
 from spatial_ingestion.final_pipeline.core import (
     FinalPipelineResult,
     FullPipelineResult,
@@ -18,10 +19,9 @@ from spatial_ingestion.media_classifier.router import (
     MediaItemDescriptor,
 )
 from spatial_ingestion.metadata.schema import SourceType, UnifiedSpatialIngestionSchema
-from spatial_ingestion.outcomes_engine.engine import DEFAULT_DELIVERABLES_ROOT
-from spatial_ingestion.reconstruction.cli import resolve_output_path
 from spatial_ingestion.reconstruction.jobs import ReconstructionJobBuilder
 from spatial_ingestion.reconstruction.models import Mast3rRunParams, ReconstructionJob
+from spatial_ingestion.reconstruction.paths import resolve_output_path
 from spatial_ingestion.refinement import MeshCleaningConfig
 
 
@@ -41,7 +41,7 @@ def ingest_batch(
     normalizer = normalizer or BatchNormalizer()
     descriptors = [MediaItemDescriptor(filename=path.name) for path in paths]
     decision = classifier.classify_static(descriptors)
-    if decision.input_type == SourceType.UNKNOWN:
+    if decision.source_type == SourceType.UNKNOWN:
         raise ValueError(f"unsupported media: {decision.reason}")
     return normalizer.normalize(list(paths), decision, sync_group_id=sync_group_id)
 
@@ -66,8 +66,7 @@ def build_job(
     """
     job = ReconstructionJobBuilder().build(payload)
     if mast3r_params:
-        params_dump = mast3r_params.model_dump(exclude_unset=True)
-        job.metadata = {**job.metadata, **params_dump}
+        job.params = job.params.model_copy(update=mast3r_params.model_dump(exclude_unset=True))
     if label:
         job.label = label
     elif not job.label:
@@ -87,7 +86,7 @@ def run_from_schema(
     payload: UnifiedSpatialIngestionSchema,
     *,
     use_case: str | None = None,
-    input_type: str | SourceType | None = None,
+    source_type: str | SourceType | None = None,
     mast3r_params: Mast3rRunParams | None = None,
     output_path: Path | str | None = None,
     refinement_config: MeshCleaningConfig | None = None,
@@ -97,7 +96,7 @@ def run_from_schema(
     """Run the final pipeline from a Phase 1 payload.
 
     With ``use_case`` set, runs Phase 2 -> 3 -> 4; otherwise Phase 2 -> 3.
-    ``input_type`` defaults to the schema's classified source type.
+    ``source_type`` defaults to the schema's classified source type.
     """
     job = build_job(
         payload,
@@ -108,10 +107,10 @@ def run_from_schema(
         return run_full_pipeline(
             job,
             use_case=use_case,
-            input_type=input_type or payload.source_type.value,
+            source_type=source_type or payload.source_type.value,
             refinement_config=refinement_config,
             refined_output_path=refined_output_path,
-            deliverables_root=deliverables_root or DEFAULT_DELIVERABLES_ROOT,
+            deliverables_root=deliverables_root or DELIVERABLES_OUTPUT_ROOT,
         )
     return run_phase2_phase3_pipeline(
         job,
@@ -127,7 +126,7 @@ def run_ingested_pipeline(
     classifier: MediaClassifierRouter | None = None,
     normalizer: BatchNormalizer | None = None,
     use_case: str | None = None,
-    input_type: str | SourceType | None = None,
+    source_type: str | SourceType | None = None,
     mast3r_params: Mast3rRunParams | None = None,
     output_path: Path | str | None = None,
     refinement_config: MeshCleaningConfig | None = None,
@@ -144,7 +143,7 @@ def run_ingested_pipeline(
     return run_from_schema(
         payload,
         use_case=use_case,
-        input_type=input_type,
+        source_type=source_type,
         mast3r_params=mast3r_params,
         output_path=output_path,
         refinement_config=refinement_config,

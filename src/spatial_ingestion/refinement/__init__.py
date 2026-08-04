@@ -1,6 +1,7 @@
 """Mesh refinement and cleanup utilities."""
 
 from .core import (
+    REFINEMENT_MANIFEST_FILENAME,
     MeshCleaningConfig,
     MeshProcessingError,
     MeshValidationError,
@@ -12,6 +13,7 @@ from .core import (
 )
 
 __all__ = [
+    "REFINEMENT_MANIFEST_FILENAME",
     "MeshCleaningConfig",
     "MeshProcessingError",
     "MeshValidationError",

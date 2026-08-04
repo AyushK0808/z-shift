@@ -1,35 +1,49 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
 from spatial_ingestion.reconstruction._io import uri_to_path, write_json
 from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
+from spatial_ingestion.reconstruction.config import (
+    POINT_CLOUD_FILENAME,
+    RUN_MANIFEST_FILENAME,
+)
 from spatial_ingestion.reconstruction.device import resolve_device, set_seed
 from spatial_ingestion.reconstruction.export import (
-    SUPPORTED_MESH_FORMATS,
     build_run_manifest,
     export_scene_to_mesh,
+    validate_mesh_format,
 )
 from spatial_ingestion.reconstruction.models import Mast3rRunParams, ReconstructionJob
 
 logger = logging.getLogger(__name__)
 
 
-def run(job: ReconstructionJob) -> int:
-    params = _resolve_params(job)
+@dataclass(frozen=True)
+class ReconstructionRunResult:
+    """Where a completed Phase 2 run left its artifacts."""
+
+    job_id: str
+    mode: str
+    output_dir: Path
+    output_path: Path
+    point_cloud_path: Path
+    manifest_path: Path
+    dry_run: bool
+
+
+def run(job: ReconstructionJob) -> ReconstructionRunResult:
+    params = job.params
     image_paths = [uri_to_path(u) for u in job.image_uris]
 
     if len(image_paths) < 2:
         raise ValueError("MASt3R reconstruction requires at least two images")
 
-    output_path, output_dir = _resolve_output_paths(job)
-    if output_path.suffix.lower() not in SUPPORTED_MESH_FORMATS:
-        raise ValueError(
-            f"Unsupported Phase 2 mesh format '{output_path.suffix}'. "
-            f"Phase 2 can only write {', '.join(sorted(SUPPORTED_MESH_FORMATS))}."
-        )
+    output_path, output_dir = resolve_output_paths(job)
+    validate_mesh_format(output_path)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -45,10 +59,20 @@ def run(job: ReconstructionJob) -> int:
         device=device,
         job=job,
     )
+    manifest_path = output_dir / RUN_MANIFEST_FILENAME
+    point_cloud_path = output_dir / POINT_CLOUD_FILENAME
 
     if params.dry_run:
-        write_json(output_dir / "run_manifest.json", manifest)
-        return 0
+        write_json(manifest_path, manifest)
+        return ReconstructionRunResult(
+            job_id=job.job_id,
+            mode=job.mode.value,
+            output_dir=output_dir,
+            output_path=output_path,
+            point_cloud_path=point_cloud_path,
+            manifest_path=manifest_path,
+            dry_run=True,
+        )
 
     sparse_scene = run_sparse_alignment(
         image_paths=image_paths,
@@ -68,18 +92,29 @@ def run(job: ReconstructionJob) -> int:
         min_conf_thr=params.min_conf_thr,
     )
     manifest["tsdf_fallback"] = tsdf_fell_back
-    write_json(output_dir / "run_manifest.json", manifest)
+    write_json(manifest_path, manifest)
 
     if not output_path.exists():
         logger.warning("Expected output artifact not found: %s", output_path)
-    return 0
+    return ReconstructionRunResult(
+        job_id=job.job_id,
+        mode=job.mode.value,
+        output_dir=output_dir,
+        output_path=output_path,
+        point_cloud_path=point_cloud_path,
+        manifest_path=manifest_path,
+        dry_run=False,
+    )
 
 
-def _resolve_params(job: ReconstructionJob) -> Mast3rRunParams:
-    return Mast3rRunParams.model_validate(job.metadata or {})
+def resolve_output_paths(job: ReconstructionJob) -> tuple[Path, Path]:
+    """Resolve (output_path, output_dir) for a job.
 
-
-def _resolve_output_paths(job: ReconstructionJob) -> tuple[Path, Path]:
+    A job with an explicit ``output_path`` (always set by the CLIs and
+    ``final_pipeline.build_job``) writes exactly there; otherwise a
+    ``<label>_<job_id>/<label>.glb`` folder is created under
+    ``data/reconstruction/``.
+    """
     if job.output_path:
         output_path = Path(job.output_path).resolve()
         output_dir = output_path.parent
@@ -115,4 +150,6 @@ def _build_manifest(
     )
     manifest["job_id"] = job.job_id
     manifest["mode"] = job.mode.value
+    manifest["label"] = job.label
+    manifest["provenance"] = dict(job.metadata)
     return manifest

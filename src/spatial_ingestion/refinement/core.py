@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 Mode = Literal["object", "room"]
 
+REFINEMENT_MANIFEST_FILENAME = "refinement_manifest.json"
+
 _COLOR_ARRAY_NAMES = ("RGBA", "RGB", "rgba", "rgb", "COLOR_0", "color_0")
 
 

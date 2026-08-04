@@ -7,19 +7,22 @@ from typing import Any
 
 import trimesh
 
+from spatial_ingestion.config import DELIVERABLES_OUTPUT_ROOT
 from spatial_ingestion.metadata.schema import SourceType
 from spatial_ingestion.outcomes_engine.engine import (
-    DEFAULT_DELIVERABLES_ROOT,
     DeliverableResult,
     TrackNotImplementedError,
     deliverable_router,
     validate_routing,
 )
+from spatial_ingestion.reconstruction.config import (
+    POINT_CLOUD_FILENAME,
+)
 from spatial_ingestion.reconstruction.export import SUPPORTED_MESH_FORMATS
 from spatial_ingestion.reconstruction.models import ReconstructionJob
-from spatial_ingestion.reconstruction.pipeline import _resolve_output_paths
 from spatial_ingestion.reconstruction.pipeline import run as run_reconstruction
 from spatial_ingestion.refinement import (
+    REFINEMENT_MANIFEST_FILENAME,
     MeshCleaningConfig,
     clean_mesh,
     load_mesh_file,
@@ -55,11 +58,9 @@ def run_phase2_phase3_pipeline(
     refined_output_path: Path | str | None = None,
 ) -> FinalPipelineResult:
     """Run Phase 2 reconstruction, then clean its mesh with Phase 3 refinement."""
-    exit_code = run_reconstruction(job)
-    if exit_code != 0:
-        raise RuntimeError(f"Phase 2 reconstruction failed with exit code {exit_code}")
-
-    raw_mesh_path, output_dir = _resolve_output_paths(job)
+    run_result = run_reconstruction(job)
+    raw_mesh_path = run_result.output_path
+    output_dir = run_result.output_dir
     _validate_raw_mesh(raw_mesh_path)
 
     raw_mesh = load_mesh_file(raw_mesh_path)
@@ -74,7 +75,7 @@ def run_phase2_phase3_pipeline(
     destination.parent.mkdir(parents=True, exist_ok=True)
     write_mesh_file(cleaned_mesh, destination)
 
-    manifest_path = output_dir / "refinement_manifest.json"
+    manifest_path = output_dir / REFINEMENT_MANIFEST_FILENAME
     diagnostics = _serializable_diagnostics(refinement_result)
     manifest = {
         "job_id": job.job_id,
@@ -82,13 +83,15 @@ def run_phase2_phase3_pipeline(
         "output_mesh": str(destination),
         **diagnostics,
     }
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     return FinalPipelineResult(
         job_id=job.job_id,
         raw_mesh_path=raw_mesh_path,
         refined_mesh_path=destination,
-        reconstruction_manifest_path=output_dir / "run_manifest.json",
+        reconstruction_manifest_path=run_result.manifest_path,
         refinement_manifest_path=manifest_path,
         refinement_diagnostics=diagnostics,
     )
@@ -97,17 +100,17 @@ def run_phase2_phase3_pipeline(
 def run_full_pipeline(
     job: ReconstructionJob,
     use_case: str,
-    input_type: str | SourceType,
+    source_type: str | SourceType,
     refinement_config: MeshCleaningConfig | None = None,
     *,
     refined_output_path: Path | str | None = None,
-    deliverables_root: Path | str = DEFAULT_DELIVERABLES_ROOT,
+    deliverables_root: Path | str = DELIVERABLES_OUTPUT_ROOT,
 ) -> FullPipelineResult:
     """Run Phase 2 -> Phase 3 -> Phase 4 as one command."""
-    validate_routing(input_type, use_case)
+    validate_routing(source_type, use_case)
     if use_case == "live":
         raise TrackNotImplementedError(
-            f"[{job.job_id}] Track C (real-time WebRTC/WebSocket delivery) is not implemented yet."
+            f"[{job.job_id}] live delivery (real-time WebRTC/WebSocket) is not implemented yet."
         )
 
     pipeline_result = run_phase2_phase3_pipeline(
@@ -118,14 +121,16 @@ def run_full_pipeline(
         refined_mesh = load_mesh_file(pipeline_result.refined_mesh_path)
         mesh = to_trimesh(refined_mesh)
         deliverable = deliverable_router(
-            input_type=input_type,
+            source_type=source_type,
             use_case="editing",
             output_root=deliverables_root,
             job_id=job.job_id,
             mesh=mesh,
         )
     elif use_case == "viewing":
-        point_cloud_path = pipeline_result.reconstruction_manifest_path.parent / "point_cloud.ply"
+        point_cloud_path = (
+            pipeline_result.reconstruction_manifest_path.parent / POINT_CLOUD_FILENAME
+        )
         if not point_cloud_path.exists():
             raise PipelineArtifactError(f"Phase 2 point cloud not found: {point_cloud_path}")
         cloud_mesh = trimesh.load(str(point_cloud_path))
@@ -134,7 +139,7 @@ def run_full_pipeline(
                 f"Phase 2 point cloud artifact is not a point cloud: {point_cloud_path}"
             )
         deliverable = deliverable_router(
-            input_type=input_type,
+            source_type=source_type,
             use_case="viewing",
             output_root=deliverables_root,
             job_id=job.job_id,

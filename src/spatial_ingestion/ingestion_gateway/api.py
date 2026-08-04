@@ -27,7 +27,7 @@ from spatial_ingestion.live_stream.manager import (
     StreamOwnershipError,
 )
 from spatial_ingestion.media_classifier.router import MediaClassifierRouter, MediaItemDescriptor
-from spatial_ingestion.metadata.schema import UnifiedSpatialIngestionSchema
+from spatial_ingestion.metadata.schema import SourceType, UnifiedSpatialIngestionSchema
 from spatial_ingestion.storage.object_store import ObjectStore
 from spatial_ingestion.storage.payload_store import PayloadStore
 
@@ -88,7 +88,7 @@ def create_app() -> FastAPI:
             for file in files
         ]
         decision = state.router.classify_static(descriptors)
-        if decision.input_type.value == "unknown":
+        if decision.source_type == SourceType.UNKNOWN:
             raise HTTPException(status_code=415, detail={"routing_decision": decision.__dict__})
 
         with TemporaryDirectory(prefix="spatial_ingest_") as temp_dir:
@@ -127,7 +127,7 @@ def create_app() -> FastAPI:
     ) -> UnifiedSpatialIngestionSchema:
         state = _gateway_state(request)
         decision = state.router.classify_stream(stream_request.transport, stream_request.stream_id)
-        if decision.input_type.value == "unknown":
+        if decision.source_type == SourceType.UNKNOWN:
             raise HTTPException(status_code=415, detail={"routing_decision": decision.__dict__})
 
         try:

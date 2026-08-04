@@ -15,7 +15,11 @@ from spatial_ingestion.final_pipeline.core import (
     run_phase2_phase3_pipeline,
 )
 from spatial_ingestion.reconstruction.cli import collect_input_images
-from spatial_ingestion.reconstruction.models import ReconstructionJob, ReconstructionMode
+from spatial_ingestion.reconstruction.models import (
+    Mast3rRunParams,
+    ReconstructionJob,
+    ReconstructionMode,
+)
 from spatial_ingestion.refinement import MeshCleaningConfig
 from spatial_ingestion.test_harness.media_factory import create_sample_image
 
@@ -28,16 +32,9 @@ def _job(output_path: Path) -> ReconstructionJob:
     )
 
 
-def test_pipeline_runs_reconstruction_then_refinement(monkeypatch, tmp_path: Path) -> None:
+def test_pipeline_runs_reconstruction_then_refinement(fake_reconstruction, tmp_path: Path) -> None:
     raw_mesh_path = tmp_path / "mesh.obj"
-
-    def fake_reconstruction(job: ReconstructionJob) -> int:
-        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw_mesh_path))
-        return 0
-
-    monkeypatch.setattr(
-        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
-    )
+    fake_reconstruction(raw_mesh_path=raw_mesh_path)
 
     result = run_phase2_phase3_pipeline(
         _job(raw_mesh_path),
@@ -50,9 +47,9 @@ def test_pipeline_runs_reconstruction_then_refinement(monkeypatch, tmp_path: Pat
     assert result.refinement_diagnostics["output_point_count"] > 0
 
 
-def test_pipeline_fails_when_phase2_mesh_is_missing(monkeypatch, tmp_path: Path) -> None:
+def test_pipeline_fails_when_phase2_mesh_is_missing(fake_reconstruction, tmp_path: Path) -> None:
     raw_mesh_path = tmp_path / "missing.obj"
-    monkeypatch.setattr("spatial_ingestion.final_pipeline.core.run_reconstruction", lambda job: 0)
+    fake_reconstruction(raw_mesh_path=raw_mesh_path, write_mesh=False)
 
     try:
         run_phase2_phase3_pipeline(_job(raw_mesh_path), MeshCleaningConfig(smoothing_iters=0))
@@ -62,22 +59,14 @@ def test_pipeline_fails_when_phase2_mesh_is_missing(monkeypatch, tmp_path: Path)
         raise AssertionError("expected missing Phase 2 mesh to fail")
 
 
-def test_pipeline_cli_smoke_with_mocked_phase2(monkeypatch, tmp_path: Path, capsys) -> None:
+def test_pipeline_cli_smoke_with_mocked_phase2(fake_reconstruction, tmp_path: Path, capsys) -> None:
     image_dir = tmp_path / "views"
     image_dir.mkdir()
     create_sample_image(image_dir / "front.png")
     create_sample_image(image_dir / "side.png")
     raw_mesh_path = tmp_path / "pipeline_out" / "mesh.obj"
 
-    def fake_reconstruction(job: ReconstructionJob) -> int:
-        output_path = Path(job.output_path or raw_mesh_path).resolve()
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(output_path))
-        return 0
-
-    monkeypatch.setattr(
-        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
-    )
+    fake_reconstruction(raw_mesh_path=raw_mesh_path)
 
     assert (
         final_pipeline_cli_main(
@@ -118,10 +107,10 @@ def test_real_phase2_phase3_pipeline_with_user_images(tmp_path: Path) -> None:
         label="real_pipeline",
         image_uris=[str(path) for path in images],
         output_path=str(output_path),
-        metadata={
-            "device": os.environ.get("ZSHIFT_TEST_DEVICE", "auto"),
-            "dry_run": False,
-        },
+        params=Mast3rRunParams(
+            device=os.environ.get("ZSHIFT_TEST_DEVICE", "auto"),
+            dry_run=False,
+        ),
     )
 
     result = run_phase2_phase3_pipeline(
@@ -135,66 +124,56 @@ def test_real_phase2_phase3_pipeline_with_user_images(tmp_path: Path) -> None:
     assert result.refinement_diagnostics["output_point_count"] > 0
 
 
-def test_full_pipeline_viewing_track(monkeypatch, tmp_path: Path) -> None:
+def test_full_pipeline_viewing_track(fake_reconstruction, tmp_path: Path) -> None:
     import trimesh
 
     raw_mesh_path = tmp_path / "mesh.obj"
     point_cloud_path = tmp_path / "point_cloud.ply"
 
-    def fake_reconstruction(job: ReconstructionJob) -> int:
-        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw_mesh_path))
+    def write_artifacts(raw: Path) -> None:
+        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw))
         rng = np.random.default_rng(0)
         points = rng.random((100, 3))
         colors = (rng.random((100, 3)) * 255).astype(np.uint8)
         trimesh.PointCloud(vertices=points, colors=colors).export(str(point_cloud_path))
-        return 0
 
-    monkeypatch.setattr(
-        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
-    )
+    fake_reconstruction(raw_mesh_path=raw_mesh_path, write_mesh=write_artifacts)
 
     result = run_full_pipeline(
         _job(raw_mesh_path),
         use_case="viewing",
-        input_type="image_folder",
+        source_type="image_folder",
         refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
         deliverables_root=tmp_path / "deliverables",
     )
 
     assert result.pipeline_result.refined_mesh_path.exists()
-    assert result.deliverable.track == "B"
+    assert result.deliverable.track == "viewing"
     assert result.deliverable.output_path is not None
     assert Path(result.deliverable.output_path).exists()
     assert Path(result.deliverable.output_path).suffix == ".ply"
 
 
-def test_full_pipeline_editing_track(monkeypatch, tmp_path: Path) -> None:
+def test_full_pipeline_editing_track(fake_reconstruction, tmp_path: Path) -> None:
     raw_mesh_path = tmp_path / "mesh.obj"
-
-    def fake_reconstruction(job: ReconstructionJob) -> int:
-        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(raw_mesh_path))
-        return 0
-
-    monkeypatch.setattr(
-        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
-    )
+    fake_reconstruction(raw_mesh_path=raw_mesh_path)
 
     result = run_full_pipeline(
         _job(raw_mesh_path),
         use_case="editing",
-        input_type="image_folder",
+        source_type="image_folder",
         refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
         deliverables_root=tmp_path / "deliverables",
     )
 
     assert result.pipeline_result.refined_mesh_path.exists()
-    assert result.deliverable.track == "A"
+    assert result.deliverable.track == "editing"
     assert result.deliverable.output_path is not None
     assert Path(result.deliverable.output_path).exists()
     assert Path(result.deliverable.output_path).suffix == ".glb"
 
 
-def test_full_pipeline_rejects_bad_use_case_for_input_type(monkeypatch, tmp_path: Path) -> None:
+def test_full_pipeline_rejects_bad_use_case_for_source_type(monkeypatch, tmp_path: Path) -> None:
     raw_mesh_path = tmp_path / "mesh.obj"
 
     def fake_reconstruction(job: ReconstructionJob) -> int:
@@ -210,14 +189,14 @@ def test_full_pipeline_rejects_bad_use_case_for_input_type(monkeypatch, tmp_path
         run_full_pipeline(
             _job(raw_mesh_path),
             use_case="editing",
-            input_type="live_stream",
+            source_type="live_stream",
             refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
             deliverables_root=tmp_path / "deliverables",
         )
     except InvalidRoutingError:
         pass
     else:
-        raise AssertionError("expected invalid input_type/use_case combo to raise")
+        raise AssertionError("expected invalid source_type/use_case combo to raise")
 
 
 def test_full_pipeline_rejects_typoed_use_case_before_phase2(monkeypatch, tmp_path: Path) -> None:
@@ -236,7 +215,7 @@ def test_full_pipeline_rejects_typoed_use_case_before_phase2(monkeypatch, tmp_pa
         run_full_pipeline(
             _job(raw_mesh_path),
             use_case="liv",
-            input_type="image_folder",
+            source_type="image_folder",
             refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
             deliverables_root=tmp_path / "deliverables",
         )
@@ -262,7 +241,7 @@ def test_full_pipeline_rejects_live_use_case_before_phase2(monkeypatch, tmp_path
         run_full_pipeline(
             _job(raw_mesh_path),
             use_case="live",
-            input_type="live_stream",
+            source_type="live_stream",
             refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
             deliverables_root=tmp_path / "deliverables",
         )
@@ -272,32 +251,27 @@ def test_full_pipeline_rejects_live_use_case_before_phase2(monkeypatch, tmp_path
         raise AssertionError("expected live use case to fail before Phase 2")
 
 
-def test_full_pipeline_editing_track_with_glb_artifacts(monkeypatch, tmp_path: Path) -> None:
+def test_full_pipeline_editing_track_with_glb_artifacts(
+    fake_reconstruction, tmp_path: Path
+) -> None:
     import trimesh
 
     raw_mesh_path = tmp_path / "pipeline_out" / "mesh.glb"
 
-    def fake_reconstruction(job: ReconstructionJob) -> int:
-        output_path = Path(job.output_path or raw_mesh_path).resolve()
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+    def write_trimesh_sphere(path: Path) -> None:
         sphere = pv.Sphere(theta_resolution=16, phi_resolution=16)
         faces = sphere.faces.reshape(-1, 4)[:, 1:]
         colors = np.zeros((sphere.n_points, 4), dtype=np.uint8)
         colors[:, 0] = 255
         colors[:, 3] = 255
-        trimesh.Trimesh(vertices=sphere.points, faces=faces, vertex_colors=colors).export(
-            str(output_path)
-        )
-        return 0
+        trimesh.Trimesh(vertices=sphere.points, faces=faces, vertex_colors=colors).export(str(path))
 
-    monkeypatch.setattr(
-        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
-    )
+    fake_reconstruction(raw_mesh_path=raw_mesh_path, write_mesh=write_trimesh_sphere)
 
     result = run_full_pipeline(
         _job(raw_mesh_path),
         use_case="editing",
-        input_type="image_folder",
+        source_type="image_folder",
         refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
         deliverables_root=tmp_path / "deliverables",
     )
@@ -305,7 +279,7 @@ def test_full_pipeline_editing_track_with_glb_artifacts(monkeypatch, tmp_path: P
     assert result.pipeline_result.raw_mesh_path.suffix == ".glb"
     assert result.pipeline_result.refined_mesh_path.suffix == ".glb"
     assert result.pipeline_result.refined_mesh_path.exists()
-    assert result.deliverable.track == "A"
+    assert result.deliverable.track == "editing"
     assert result.deliverable.output_path is not None
     assert Path(result.deliverable.output_path).exists()
     assert Path(result.deliverable.output_path).suffix == ".glb"

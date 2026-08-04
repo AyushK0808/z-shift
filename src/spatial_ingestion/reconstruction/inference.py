@@ -5,6 +5,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from spatial_ingestion.reconstruction._deps import mast3r_dependency_error
+
 logger = logging.getLogger(__name__)
 
 _model_cache: dict[str, object] = {}
@@ -26,10 +28,7 @@ def load_model(model_name: str, device: str) -> object:
         return cached
 
     if AsymmetricMASt3R is None:
-        raise RuntimeError(
-            "MASt3R is not installed. Run scripts/setup-mast3r.sh or "
-            "pip install -e third_party/mast3r"
-        )
+        raise mast3r_dependency_error("MASt3R (AsymmetricMASt3R)")
 
     model = AsymmetricMASt3R.from_pretrained(model_name).to(device)
     model.eval()
@@ -39,9 +38,6 @@ def load_model(model_name: str, device: str) -> object:
 
 def load_images(image_paths: list[Path], image_size: int = 512) -> list[dict]:
     if dust3r_load_images is None:
-        raise RuntimeError(
-            "MASt3R (dust3r) is not installed. Run scripts/setup-mast3r.sh or "
-            "pip install -e third_party/mast3r/dust3r"
-        )
+        raise mast3r_dependency_error("MASt3R (dust3r image loading)")
 
     return dust3r_load_images([str(p) for p in image_paths], size=image_size)
