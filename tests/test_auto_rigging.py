@@ -1,4 +1,5 @@
 import json
+import struct
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -71,8 +72,12 @@ def test_auto_rigging_pipeline_exports_metadata(tmp_path: Path) -> None:
     assert result.rigged_mesh.vertex_count == len(mesh.vertices)
     assert result.skeleton_uri is not None
     assert result.weights_uri is not None
+    assert result.rigged_mesh_uri is not None
+    assert result.manifest_uri is not None
     assert _path_from_file_uri(result.skeleton_uri).exists()
     assert _path_from_file_uri(result.weights_uri).exists()
+    assert _path_from_file_uri(result.rigged_mesh_uri).exists()
+    assert _path_from_file_uri(result.manifest_uri).exists()
     assert result.warnings
     assert result.rigged_mesh.metadata["template_axis_convention"] == (
         "Y-up height, X forward/width, Z lateral/depth"
@@ -153,6 +158,30 @@ def test_auto_rigging_cli_honors_output_dir(
     assert exit_code == 0
     assert output_dir in _path_from_file_uri(payload["skeleton_uri"]).parents
     assert output_dir in _path_from_file_uri(payload["weights_uri"]).parents
+    assert output_dir in _path_from_file_uri(payload["rigged_mesh_uri"]).parents
+
+
+def test_auto_rigging_cli_honors_explicit_rigged_output(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mesh_path = tmp_path / "mesh.obj"
+    rigged_output = tmp_path / "paper" / "rigged.glb"
+    trimesh.creation.box().export(mesh_path)
+
+    exit_code = auto_rig_main(
+        [
+            str(mesh_path),
+            "--articulation",
+            "static",
+            "--rigged-output",
+            str(rigged_output),
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert _path_from_file_uri(payload["rigged_mesh_uri"]) == rigged_output
+    assert rigged_output.exists()
 
 
 def test_gltf_skin_payload_builder_packs_four_influences() -> None:
@@ -195,9 +224,44 @@ def test_gltf_skin_payload_builder_rejects_empty_influence_rows() -> None:
         GltfSkinPayloadBuilder().build(rigged_mesh)
 
 
+def test_skinned_glb_export_contains_skin_payload(tmp_path: Path) -> None:
+    mesh = trimesh.creation.icosphere(subdivisions=1, radius=1.0)
+    output_path = tmp_path / "rigged.glb"
+
+    result = AutoRiggingPipeline().rig_mesh(
+        mesh,
+        config=AutoRigConfig(
+            articulation_type=ArticulationType.BIPED,
+            rigged_output_path=output_path,
+        ),
+    )
+
+    gltf = _read_glb_json(output_path)
+    primitive = gltf["meshes"][0]["primitives"][0]
+    attributes = primitive["attributes"]
+
+    assert result.rigged_mesh_uri == output_path.as_uri()
+    assert "skins" in gltf
+    assert len(gltf["skins"][0]["joints"]) == len(result.rigged_mesh.skeleton.joints)
+    assert "JOINTS_0" in attributes
+    assert "WEIGHTS_0" in attributes
+    assert gltf["accessors"][attributes["POSITION"]]["count"] == len(mesh.vertices)
+    assert gltf["accessors"][primitive["indices"]]["count"] == len(mesh.faces.reshape(-1))
+
+
 def _path_from_file_uri(uri: str) -> Path:
     parsed = urlparse(uri)
     raw = unquote(parsed.path)
     if len(raw) >= 4 and raw[0] == "/" and raw[2] == ":":
         raw = raw.lstrip("/")
     return Path(raw)
+
+
+def _read_glb_json(path: Path) -> dict[str, object]:
+    data = path.read_bytes()
+    magic, version, _ = struct.unpack_from("<III", data, 0)
+    assert magic == 0x46546C67
+    assert version == 2
+    json_length, chunk_type = struct.unpack_from("<I4s", data, 12)
+    assert chunk_type == b"JSON"
+    return json.loads(data[20 : 20 + json_length].decode("utf-8"))

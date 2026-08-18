@@ -6,11 +6,13 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
+from spatial_ingestion.auto_rigging.models import AutoRigConfig
 from spatial_ingestion.batch_normalization.normalizer import BatchNormalizer
 from spatial_ingestion.final_pipeline.core import (
     FinalPipelineResult,
     FullPipelineResult,
     run_full_pipeline,
+    run_phase2_phase3_phase5_pipeline,
     run_phase2_phase3_pipeline,
 )
 from spatial_ingestion.media_classifier.router import (
@@ -81,6 +83,9 @@ def run_from_schema(
     output_path: Path | str | None = None,
     refinement_config: MeshCleaningConfig | None = None,
     refined_output_path: Path | str | None = None,
+    rigging_config: AutoRigConfig | None = None,
+    rigged_output_path: Path | str | None = None,
+    rig_output_dir: Path | str | None = None,
     deliverables_root: Path | str | None = None,
 ) -> FullPipelineResult | FinalPipelineResult:
     """Run the final pipeline from a Phase 1 payload.
@@ -102,6 +107,15 @@ def run_from_schema(
             refined_output_path=refined_output_path,
             deliverables_root=deliverables_root or DEFAULT_DELIVERABLES_ROOT,
         )
+    if rigging_config or rigged_output_path or rig_output_dir:
+        return run_phase2_phase3_phase5_pipeline(
+            job,
+            refinement_config,
+            rigging_config=rigging_config,
+            refined_output_path=refined_output_path,
+            rigged_output_path=rigged_output_path,
+            rig_output_dir=rig_output_dir,
+        )
     return run_phase2_phase3_pipeline(
         job,
         refinement_config,
@@ -121,6 +135,9 @@ def run_ingested_pipeline(
     output_path: Path | str | None = None,
     refinement_config: MeshCleaningConfig | None = None,
     refined_output_path: Path | str | None = None,
+    rigging_config: AutoRigConfig | None = None,
+    rigged_output_path: Path | str | None = None,
+    rig_output_dir: Path | str | None = None,
     deliverables_root: Path | str | None = None,
 ) -> FullPipelineResult | FinalPipelineResult:
     """Ingest a batch through Phase 1, then run the final pipeline."""
@@ -138,5 +155,8 @@ def run_ingested_pipeline(
         output_path=output_path,
         refinement_config=refinement_config,
         refined_output_path=refined_output_path,
+        rigging_config=rigging_config,
+        rigged_output_path=rigged_output_path,
+        rig_output_dir=rig_output_dir,
         deliverables_root=deliverables_root,
     )

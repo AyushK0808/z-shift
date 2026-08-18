@@ -7,6 +7,8 @@ from typing import Any
 
 import trimesh
 
+from spatial_ingestion.auto_rigging.models import AutoRigConfig
+from spatial_ingestion.auto_rigging.pipeline import AutoRiggingPipeline
 from spatial_ingestion.metadata.schema import SourceType
 from spatial_ingestion.outcomes_engine.engine import (
     DEFAULT_DELIVERABLES_ROOT,
@@ -45,6 +47,11 @@ class FinalPipelineResult:
     reconstruction_manifest_path: Path
     refinement_manifest_path: Path
     refinement_diagnostics: dict[str, Any]
+    rigged_mesh_path: Path | None = None
+    rigging_manifest_path: Path | None = None
+    skeleton_path: Path | None = None
+    skinning_weights_path: Path | None = None
+    rigging_warnings: list[str] | None = None
 
 
 def run_phase2_phase3_pipeline(
@@ -90,6 +97,52 @@ def run_phase2_phase3_pipeline(
         reconstruction_manifest_path=output_dir / "run_manifest.json",
         refinement_manifest_path=manifest_path,
         refinement_diagnostics=diagnostics,
+    )
+
+
+def run_phase2_phase3_phase5_pipeline(
+    job: ReconstructionJob,
+    refinement_config: MeshCleaningConfig | None = None,
+    rigging_config: AutoRigConfig | None = None,
+    *,
+    refined_output_path: Path | str | None = None,
+    rigged_output_path: Path | str | None = None,
+    rig_output_dir: Path | str | None = None,
+) -> FinalPipelineResult:
+    """Run Phase 2 reconstruction, Phase 3 cleanup, and Phase 5 skinned GLB export."""
+    result = run_phase2_phase3_pipeline(
+        job,
+        refinement_config,
+        refined_output_path=refined_output_path,
+    )
+    _, output_dir = _resolve_output_paths(job)
+    rig_config = (rigging_config or AutoRigConfig()).model_copy()
+    if rig_output_dir is not None:
+        rig_config.output_dir = Path(rig_output_dir).expanduser().resolve()
+    elif rig_config.output_dir is None:
+        rig_config.output_dir = output_dir / "rigging"
+    if rigged_output_path is not None:
+        rig_config.rigged_output_path = Path(rigged_output_path).expanduser().resolve()
+
+    refined_mesh = load_mesh_file(result.refined_mesh_path)
+    rig_input_mesh = to_trimesh(refined_mesh)
+    rig_result = AutoRiggingPipeline().rig_mesh(
+        rig_input_mesh,
+        config=rig_config,
+        mesh_uri=result.refined_mesh_path.resolve().as_uri(),
+    )
+    return FinalPipelineResult(
+        job_id=result.job_id,
+        raw_mesh_path=result.raw_mesh_path,
+        refined_mesh_path=result.refined_mesh_path,
+        reconstruction_manifest_path=result.reconstruction_manifest_path,
+        refinement_manifest_path=result.refinement_manifest_path,
+        refinement_diagnostics=result.refinement_diagnostics,
+        rigged_mesh_path=_path_from_uri(rig_result.rigged_mesh_uri),
+        rigging_manifest_path=_path_from_uri(rig_result.manifest_uri),
+        skeleton_path=_path_from_uri(rig_result.skeleton_uri),
+        skinning_weights_path=_path_from_uri(rig_result.weights_uri),
+        rigging_warnings=rig_result.warnings,
     )
 
 
@@ -158,8 +211,12 @@ def result_to_dict(result: FinalPipelineResult) -> dict[str, Any]:
         "refined_mesh_path",
         "reconstruction_manifest_path",
         "refinement_manifest_path",
+        "rigged_mesh_path",
+        "rigging_manifest_path",
+        "skeleton_path",
+        "skinning_weights_path",
     ):
-        data[key] = str(data[key])
+        data[key] = str(data[key]) if data[key] is not None else None
     return data
 
 
@@ -183,3 +240,11 @@ def _validate_raw_mesh(raw_mesh_path: Path) -> None:
 
 def _serializable_diagnostics(refinement_result: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in refinement_result.items() if key != "mesh"}
+
+
+def _path_from_uri(uri: str | None) -> Path | None:
+    if uri is None:
+        return None
+    from spatial_ingestion.reconstruction._io import uri_to_path
+
+    return uri_to_path(uri)

@@ -1,4 +1,8 @@
-from spatial_ingestion.auto_rigging.gltf import GltfSkinPayload, GltfSkinPayloadBuilder
+from spatial_ingestion.auto_rigging.gltf import (
+    GltfSkinPayload,
+    GltfSkinPayloadBuilder,
+    SkinnedGlbExporter,
+)
 from spatial_ingestion.auto_rigging.models import (
     ArticulationType,
     AutoRigConfig,
@@ -22,5 +26,6 @@ __all__ = [
     "Joint",
     "RiggedMesh",
     "Skeleton",
+    "SkinnedGlbExporter",
     "SkinningWeights",
 ]

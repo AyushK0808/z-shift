@@ -78,10 +78,13 @@ class AutoRigConfig(BaseModel):
     max_skinning_influences: int = Field(default=4, ge=1)
     normalize_mesh: bool = True
     output_dir: Path | None = None
+    rigged_output_path: Path | None = None
 
 
 class AutoRigResult(BaseModel):
     rigged_mesh: RiggedMesh
+    rigged_mesh_uri: str | None = None
     skeleton_uri: str | None = None
     weights_uri: str | None = None
+    manifest_uri: str | None = None
     warnings: list[str] = Field(default_factory=list)
