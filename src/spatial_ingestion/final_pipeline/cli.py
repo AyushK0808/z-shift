@@ -166,10 +166,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         label=label,
     )
     if args.use_case:
-        if args.rig:
+        if args.rig and args.use_case != "editing":
             parser.error(
-                "--rig cannot be combined with --use-case yet; "
-                "run Phase 5 on the refined mesh output"
+                "--rig can only be combined with --use-case editing "
+                "(rigging needs a mesh to bind a skeleton to)"
             )
         full_result = run_full_pipeline(
             job,
@@ -177,6 +177,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             input_type=args.input_type or payload.source_type.value,
             refinement_config=refinement_config,
             refined_output_path=args.refined_output,
+            rig=args.rig,
+            rigging_config=rigging_config,
+            rigged_output_path=args.rigged_output,
+            rig_output_dir=args.rig_output_dir,
         )
         print(json.dumps(full_result_to_dict(full_result), indent=2, sort_keys=True))
         return 0

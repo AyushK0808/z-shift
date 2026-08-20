@@ -403,3 +403,93 @@ def test_full_pipeline_editing_track_with_glb_artifacts(monkeypatch, tmp_path: P
     assert result.deliverable.output_path is not None
     assert Path(result.deliverable.output_path).exists()
     assert Path(result.deliverable.output_path).suffix == ".glb"
+
+
+def test_full_pipeline_editing_track_with_rig_delivers_skinned_glb(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import trimesh
+
+    from spatial_ingestion.auto_rigging.models import ArticulationType, AutoRigConfig
+
+    raw_mesh_path = tmp_path / "pipeline_out" / "mesh.glb"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        output_path = Path(job.output_path or raw_mesh_path).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sphere = pv.Sphere(theta_resolution=16, phi_resolution=16)
+        faces = sphere.faces.reshape(-1, 4)[:, 1:]
+        trimesh.Trimesh(vertices=sphere.points, faces=faces).export(str(output_path))
+        return 0
+
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
+
+    result = run_full_pipeline(
+        _job(raw_mesh_path),
+        use_case="editing",
+        input_type="image_folder",
+        refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+        deliverables_root=tmp_path / "deliverables",
+        rig=True,
+        rigging_config=AutoRigConfig(articulation_type=ArticulationType.BIPED),
+    )
+
+    assert result.pipeline_result.rigged_mesh_path is not None
+    assert result.pipeline_result.rigged_mesh_path.exists()
+    assert result.deliverable.track == "A"
+    assert result.deliverable.output_path is not None
+    delivered_path = Path(result.deliverable.output_path)
+    assert delivered_path.exists()
+    assert delivered_path.suffix == ".glb"
+    assert delivered_path.name.endswith("_rigged.glb")
+    # The delivered file must be the actual rigged GLB (copied byte-for-byte),
+    # not a trimesh re-export that would silently drop the skin data.
+    assert delivered_path.read_bytes() == result.pipeline_result.rigged_mesh_path.read_bytes()
+
+
+def test_full_pipeline_rejects_rig_with_viewing_use_case(monkeypatch, tmp_path: Path) -> None:
+    raw_mesh_path = tmp_path / "mesh.obj"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        raise AssertionError("Phase 2 should not run for an invalid --rig/use_case combo")
+
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
+
+    from spatial_ingestion.outcomes_engine.engine import InvalidRoutingError
+
+    try:
+        run_full_pipeline(
+            _job(raw_mesh_path),
+            use_case="viewing",
+            input_type="image_folder",
+            refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+            deliverables_root=tmp_path / "deliverables",
+            rig=True,
+        )
+    except InvalidRoutingError:
+        pass
+    else:
+        raise AssertionError("expected --rig combined with use_case='viewing' to fail")
+
+
+def test_pipeline_cli_rejects_rig_with_viewing_use_case(tmp_path: Path) -> None:
+    image_dir = tmp_path / "views"
+    image_dir.mkdir()
+    create_sample_image(image_dir / "front.png")
+    create_sample_image(image_dir / "side.png")
+
+    with pytest.raises(SystemExit):
+        final_pipeline_cli_main(
+            [
+                str(image_dir),
+                "-o",
+                str(tmp_path / "pipeline_out" / "mesh.glb"),
+                "--use-case",
+                "viewing",
+                "--rig",
+            ]
+        )

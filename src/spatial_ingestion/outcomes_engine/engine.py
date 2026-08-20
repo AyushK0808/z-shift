@@ -14,6 +14,7 @@ running the upstream models.
 from __future__ import annotations
 
 import os
+import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -98,6 +99,19 @@ def export_blender_ready(mesh_data: trimesh.Trimesh, job_id: str, output_root: P
     output_dir = _deliverable_dir(output_root, "blender_ready")
     file_path = output_dir / f"{job_id}_model.glb"
     mesh_data.export(str(file_path))
+    return str(file_path)
+
+
+def export_rigged_deliverable(rigged_glb_path: Path, job_id: str, output_root: Path) -> str:
+    """Copies an already-exported Phase 5 skinned .glb into the deliverables tree.
+
+    Deliberately a file copy, not a trimesh reload/export: trimesh does not
+    round-trip glTF skinning data (JOINTS_0/WEIGHTS_0, skin/joint nodes,
+    inverse bind matrices), so re-exporting would silently strip the rig.
+    """
+    output_dir = _deliverable_dir(output_root, "blender_ready")
+    file_path = output_dir / f"{job_id}_rigged.glb"
+    shutil.copyfile(rigged_glb_path, file_path)
     return str(file_path)
 
 

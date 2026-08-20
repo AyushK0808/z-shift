@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -13,8 +14,10 @@ from spatial_ingestion.metadata.schema import SourceType
 from spatial_ingestion.outcomes_engine.engine import (
     DEFAULT_DELIVERABLES_ROOT,
     DeliverableResult,
+    InvalidRoutingError,
     TrackNotImplementedError,
     deliverable_router,
+    export_rigged_deliverable,
     validate_routing,
 )
 from spatial_ingestion.reconstruction.models import ReconstructionJob
@@ -115,6 +118,25 @@ def run_phase2_phase3_phase5_pipeline(
         refinement_config,
         refined_output_path=refined_output_path,
     )
+    return _run_phase5_rigging(
+        job,
+        result,
+        rigging_config=rigging_config,
+        rigged_output_path=rigged_output_path,
+        rig_output_dir=rig_output_dir,
+    )
+
+
+def _run_phase5_rigging(
+    job: ReconstructionJob,
+    result: FinalPipelineResult,
+    *,
+    rigging_config: AutoRigConfig | None = None,
+    rigged_output_path: Path | str | None = None,
+    rig_output_dir: Path | str | None = None,
+) -> FinalPipelineResult:
+    """Runs Phase 5 rigging against an already-refined mesh and folds the
+    rig artifact paths into a copy of `result`."""
     _, output_dir = _resolve_output_paths(job)
     rig_config = (rigging_config or AutoRigConfig()).model_copy()
     if rig_output_dir is not None:
@@ -154,12 +176,27 @@ def run_full_pipeline(
     *,
     refined_output_path: Path | str | None = None,
     deliverables_root: Path | str = DEFAULT_DELIVERABLES_ROOT,
+    rig: bool = False,
+    rigging_config: AutoRigConfig | None = None,
+    rigged_output_path: Path | str | None = None,
+    rig_output_dir: Path | str | None = None,
 ) -> FullPipelineResult:
-    """Run Phase 2 -> Phase 3 -> Phase 4 as one command."""
-    validate_routing(input_type, use_case)
+    """Run Phase 2 -> Phase 3 -> Phase 4 as one command.
+
+    If `rig` is set, Phase 5 also runs on the refined mesh and its skinned
+    GLB (not the plain refined mesh) becomes the "editing" deliverable, so
+    Blender opens an already-rigged asset. Only "editing" has a mesh a
+    skeleton can bind to, so `rig` is rejected for "viewing"/"live".
+    """
+    source_type = validate_routing(input_type, use_case)
     if use_case == "live":
         raise TrackNotImplementedError(
             f"[{job.job_id}] Track C (real-time WebRTC/WebSocket delivery) is not implemented yet."
+        )
+    if rig and use_case != "editing":
+        raise InvalidRoutingError(
+            f"--rig requires use_case='editing' (rigging needs a mesh to bind a skeleton "
+            f"to); got use_case='{use_case}'."
         )
 
     pipeline_result = run_phase2_phase3_pipeline(
@@ -167,14 +204,43 @@ def run_full_pipeline(
     )
 
     if use_case == "editing":
-        refined_mesh = load_mesh_file(pipeline_result.refined_mesh_path)
-        mesh = to_trimesh(refined_mesh)
-        deliverable = deliverable_router(
-            input_type=input_type,
-            use_case="editing",
-            output_root=deliverables_root,
-            mesh=mesh,
-        )
+        if rig:
+            pipeline_result = _run_phase5_rigging(
+                job,
+                pipeline_result,
+                rigging_config=rigging_config,
+                rigged_output_path=rigged_output_path,
+                rig_output_dir=rig_output_dir,
+            )
+            if pipeline_result.rigged_mesh_path is None:
+                raise PipelineArtifactError(
+                    f"[{job.job_id}] Phase 5 rigging completed but produced no skinned GLB."
+                )
+            # Matches deliverable_router's own convention: a fresh delivery
+            # id independent of the Phase 2 reconstruction job id.
+            deliverable_job_id = f"JOB_{uuid.uuid4().hex[:6].upper()}"
+            deliverable_output_path = export_rigged_deliverable(
+                pipeline_result.rigged_mesh_path,
+                job_id=deliverable_job_id,
+                output_root=Path(deliverables_root),
+            )
+            deliverable = DeliverableResult(
+                job_id=deliverable_job_id,
+                track="A",
+                input_type=source_type.value,
+                use_case="editing",
+                output_path=deliverable_output_path,
+                message="Rigged, Blender-ready export packaged successfully.",
+            )
+        else:
+            refined_mesh = load_mesh_file(pipeline_result.refined_mesh_path)
+            mesh = to_trimesh(refined_mesh)
+            deliverable = deliverable_router(
+                input_type=input_type,
+                use_case="editing",
+                output_root=deliverables_root,
+                mesh=mesh,
+            )
     elif use_case == "viewing":
         point_cloud_path = pipeline_result.reconstruction_manifest_path.parent / "point_cloud.ply"
         if not point_cloud_path.exists():
