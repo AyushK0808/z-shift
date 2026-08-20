@@ -1,6 +1,7 @@
 import json
 import struct
 from pathlib import Path
+from typing import Any
 from urllib.parse import unquote, urlparse
 
 import pytest
@@ -257,7 +258,7 @@ def _path_from_file_uri(uri: str) -> Path:
     return Path(raw)
 
 
-def _read_glb_json(path: Path) -> dict[str, object]:
+def _read_glb_json(path: Path) -> dict[str, Any]:
     data = path.read_bytes()
     magic, version, _ = struct.unpack_from("<III", data, 0)
     assert magic == 0x46546C67
