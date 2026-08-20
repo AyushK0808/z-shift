@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -183,6 +184,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             rig_output_dir=args.rig_output_dir,
         )
         print(json.dumps(full_result_to_dict(full_result), indent=2, sort_keys=True))
+        if full_result.deliverable.output_path is not None:
+            print(
+                f"\nBlender-ready file: {full_result.deliverable.output_path}",
+                file=sys.stderr,
+            )
         return 0
 
     if args.rig:
@@ -195,6 +201,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             rig_output_dir=args.rig_output_dir,
         )
         print(json.dumps(result_to_dict(result), indent=2, sort_keys=True))
+        if result.rigged_mesh_path is not None:
+            print(f"\nRigged skinned GLB: {result.rigged_mesh_path}", file=sys.stderr)
         return 0
 
     result = run_phase2_phase3_pipeline(
