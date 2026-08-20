@@ -154,7 +154,11 @@ def test_pipeline_cli_rig_outputs_phase5_artifacts(monkeypatch, tmp_path: Path, 
     def fake_reconstruction(job: ReconstructionJob) -> int:
         output_path = Path(job.output_path or raw_mesh_path).resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(output_path))
+        sphere = pv.Sphere(theta_resolution=16, phi_resolution=16)
+        faces = sphere.faces.reshape(-1, 4)[:, 1:]
+        import trimesh
+
+        trimesh.Trimesh(vertices=sphere.points, faces=faces).export(str(output_path))
         return 0
 
     monkeypatch.setattr(
