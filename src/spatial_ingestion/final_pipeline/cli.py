@@ -69,7 +69,13 @@ def build_parser() -> argparse.ArgumentParser:
         "and large image sets)",
     )
     parser.add_argument("--image-size", type=int, default=512)
-    parser.add_argument("--tsdf-thresh", type=float, default=0)
+    parser.add_argument(
+        "--tsdf-thresh",
+        type=float,
+        default=0.2,
+        help="TSDF fusion threshold (0=disabled; 0.1-0.5 recommended; default 0.2 "
+        "suppresses flying-pixel streak artifacts from raw per-view depth meshing)",
+    )
     parser.add_argument("--min-conf-thr", type=float, default=1.5)
     parser.add_argument("--seed", type=int, default=None)
 
