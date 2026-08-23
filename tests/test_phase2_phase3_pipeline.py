@@ -12,6 +12,7 @@ from spatial_ingestion.final_pipeline.cli import main as final_pipeline_cli_main
 from spatial_ingestion.final_pipeline.core import (
     PipelineArtifactError,
     run_full_pipeline,
+    run_phase2_phase3_phase5_pipeline,
     run_phase2_phase3_pipeline,
 )
 from spatial_ingestion.reconstruction.cli import collect_input_images
@@ -72,7 +73,11 @@ def test_pipeline_cli_smoke_with_mocked_phase2(monkeypatch, tmp_path: Path, caps
     def fake_reconstruction(job: ReconstructionJob) -> int:
         output_path = Path(job.output_path or raw_mesh_path).resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        pv.Sphere(theta_resolution=16, phi_resolution=16).save(str(output_path))
+        sphere = pv.Sphere(theta_resolution=16, phi_resolution=16)
+        faces = sphere.faces.reshape(-1, 4)[:, 1:]
+        import trimesh
+
+        trimesh.Trimesh(vertices=sphere.points, faces=faces).export(str(output_path))
         return 0
 
     monkeypatch.setattr(
@@ -98,6 +103,95 @@ def test_pipeline_cli_smoke_with_mocked_phase2(monkeypatch, tmp_path: Path, caps
     assert Path(output["refined_mesh_path"]).exists()
     assert Path(output["refinement_manifest_path"]).exists()
     assert output["refinement_diagnostics"]["output_point_count"] > 0
+
+
+def test_pipeline_runs_phase5_after_refinement(monkeypatch, tmp_path: Path) -> None:
+    raw_mesh_path = tmp_path / "pipeline_out" / "mesh.glb"
+    rigged_output = tmp_path / "paper" / "rigged.glb"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        output_path = Path(job.output_path or raw_mesh_path).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sphere = pv.Sphere(theta_resolution=16, phi_resolution=16)
+        faces = sphere.faces.reshape(-1, 4)[:, 1:]
+        colors = np.zeros((sphere.n_points, 4), dtype=np.uint8)
+        colors[:, 1] = 255
+        colors[:, 3] = 255
+        import trimesh
+
+        trimesh.Trimesh(vertices=sphere.points, faces=faces, vertex_colors=colors).export(
+            str(output_path)
+        )
+        return 0
+
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
+
+    result = run_phase2_phase3_phase5_pipeline(
+        _job(raw_mesh_path),
+        MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+        rigged_output_path=rigged_output,
+        rig_output_dir=tmp_path / "paper",
+    )
+
+    assert result.refined_mesh_path.exists()
+    assert result.rigged_mesh_path == rigged_output
+    assert result.rigged_mesh_path.exists()
+    assert result.skeleton_path is not None and result.skeleton_path.exists()
+    assert result.skinning_weights_path is not None and result.skinning_weights_path.exists()
+    assert result.rigging_manifest_path is not None and result.rigging_manifest_path.exists()
+
+
+def test_pipeline_cli_rig_outputs_phase5_artifacts(monkeypatch, tmp_path: Path, capsys) -> None:
+    image_dir = tmp_path / "views"
+    image_dir.mkdir()
+    create_sample_image(image_dir / "front.png")
+    create_sample_image(image_dir / "side.png")
+    raw_mesh_path = tmp_path / "pipeline_out" / "mesh.glb"
+    rigged_output = tmp_path / "paper" / "rigged.glb"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        output_path = Path(job.output_path or raw_mesh_path).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sphere = pv.Sphere(theta_resolution=16, phi_resolution=16)
+        faces = sphere.faces.reshape(-1, 4)[:, 1:]
+        import trimesh
+
+        trimesh.Trimesh(vertices=sphere.points, faces=faces).export(str(output_path))
+        return 0
+
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
+
+    assert (
+        final_pipeline_cli_main(
+            [
+                str(image_dir),
+                "-o",
+                str(raw_mesh_path),
+                "--smoothing-iters",
+                "0",
+                "--no-watertight-check",
+                "--rig",
+                "--articulation",
+                "biped",
+                "--rig-output-dir",
+                str(tmp_path / "paper"),
+                "--rigged-output",
+                str(rigged_output),
+            ]
+        )
+        == 0
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert Path(output["raw_mesh_path"]).exists()
+    assert Path(output["refined_mesh_path"]).exists()
+    assert Path(output["rigged_mesh_path"]) == rigged_output
+    assert Path(output["rigged_mesh_path"]).exists()
+    assert Path(output["rigging_manifest_path"]).exists()
 
 
 @pytest.mark.real_pipeline
@@ -309,3 +403,93 @@ def test_full_pipeline_editing_track_with_glb_artifacts(monkeypatch, tmp_path: P
     assert result.deliverable.output_path is not None
     assert Path(result.deliverable.output_path).exists()
     assert Path(result.deliverable.output_path).suffix == ".glb"
+
+
+def test_full_pipeline_editing_track_with_rig_delivers_skinned_glb(
+    monkeypatch, tmp_path: Path
+) -> None:
+    import trimesh
+
+    from spatial_ingestion.auto_rigging.models import ArticulationType, AutoRigConfig
+
+    raw_mesh_path = tmp_path / "pipeline_out" / "mesh.glb"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        output_path = Path(job.output_path or raw_mesh_path).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sphere = pv.Sphere(theta_resolution=16, phi_resolution=16)
+        faces = sphere.faces.reshape(-1, 4)[:, 1:]
+        trimesh.Trimesh(vertices=sphere.points, faces=faces).export(str(output_path))
+        return 0
+
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
+
+    result = run_full_pipeline(
+        _job(raw_mesh_path),
+        use_case="editing",
+        input_type="image_folder",
+        refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+        deliverables_root=tmp_path / "deliverables",
+        rig=True,
+        rigging_config=AutoRigConfig(articulation_type=ArticulationType.BIPED),
+    )
+
+    assert result.pipeline_result.rigged_mesh_path is not None
+    assert result.pipeline_result.rigged_mesh_path.exists()
+    assert result.deliverable.track == "A"
+    assert result.deliverable.output_path is not None
+    delivered_path = Path(result.deliverable.output_path)
+    assert delivered_path.exists()
+    assert delivered_path.suffix == ".glb"
+    assert delivered_path.name.endswith("_rigged.glb")
+    # The delivered file must be the actual rigged GLB (copied byte-for-byte),
+    # not a trimesh re-export that would silently drop the skin data.
+    assert delivered_path.read_bytes() == result.pipeline_result.rigged_mesh_path.read_bytes()
+
+
+def test_full_pipeline_rejects_rig_with_viewing_use_case(monkeypatch, tmp_path: Path) -> None:
+    raw_mesh_path = tmp_path / "mesh.obj"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        raise AssertionError("Phase 2 should not run for an invalid --rig/use_case combo")
+
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
+
+    from spatial_ingestion.outcomes_engine.engine import InvalidRoutingError
+
+    try:
+        run_full_pipeline(
+            _job(raw_mesh_path),
+            use_case="viewing",
+            input_type="image_folder",
+            refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+            deliverables_root=tmp_path / "deliverables",
+            rig=True,
+        )
+    except InvalidRoutingError:
+        pass
+    else:
+        raise AssertionError("expected --rig combined with use_case='viewing' to fail")
+
+
+def test_pipeline_cli_rejects_rig_with_viewing_use_case(tmp_path: Path) -> None:
+    image_dir = tmp_path / "views"
+    image_dir.mkdir()
+    create_sample_image(image_dir / "front.png")
+    create_sample_image(image_dir / "side.png")
+
+    with pytest.raises(SystemExit):
+        final_pipeline_cli_main(
+            [
+                str(image_dir),
+                "-o",
+                str(tmp_path / "pipeline_out" / "mesh.glb"),
+                "--use-case",
+                "viewing",
+                "--rig",
+            ]
+        )

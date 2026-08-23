@@ -13,6 +13,7 @@ from spatial_ingestion.reconstruction.models import SyncViewGroup
 logger = logging.getLogger(__name__)
 
 _SUPPORTED_FORMATS = {".obj", ".glb", ".ply"}
+_tsdf_cuda_hardcode_patched = False
 
 
 def build_run_manifest(
@@ -97,6 +98,34 @@ def _dense_points_xyz_rgb(
     return np.concatenate(xyz_parts, axis=0), np.concatenate(rgb_parts, axis=0)
 
 
+def _patch_tsdf_cuda_hardcode() -> None:
+    """Work around a MASt3R vendor bug, not a design choice of ours.
+
+    `TSDFPostProcess._get_pixel_depths` calls `conf.cuda()` unconditionally
+    (mast3r/cloud_opt/tsdf_optimizer.py), even though every other tensor in
+    that method already follows `image_coords.device`. On a CPU-only torch
+    build this raises `AssertionError: Torch not compiled with CUDA
+    enabled` and crashes reconstruction outright. Only patch when CUDA is
+    genuinely unavailable, so `.cuda()` becomes a no-op returning the same
+    (already-CPU) tensor instead of raising -- a real CUDA machine is
+    untouched.
+    """
+    global _tsdf_cuda_hardcode_patched
+    if _tsdf_cuda_hardcode_patched:
+        return
+
+    import torch
+
+    if torch.cuda.is_available():
+        return
+
+    def _cuda_noop(self: Any, *args: Any, **kwargs: Any) -> Any:
+        return self
+
+    torch.Tensor.cuda = _cuda_noop  # type: ignore[method-assign]
+    _tsdf_cuda_hardcode_patched = True
+
+
 def export_scene_to_mesh(
     scene: Any,
     output_path: Path,
@@ -113,10 +142,11 @@ def export_scene_to_mesh(
     tsdf_fell_back = False
     imgs = to_numpy(scene.imgs)
     if tsdf_thresh > 0:
+        _patch_tsdf_cuda_hardcode()
         try:
             tsdf = TSDFPostProcess(scene, TSDF_thresh=tsdf_thresh)
             pts3d, _, confs = to_numpy(tsdf.get_dense_pts3d(clean_depth=True))
-        except (MemoryError, RuntimeError) as exc:
+        except (MemoryError, RuntimeError, AssertionError) as exc:
             logger.warning("TSDF fusion failed (%s), falling back to non-TSDF mode", exc)
             tsdf_fell_back = True
             pts3d, _, confs = to_numpy(scene.get_dense_pts3d(clean_depth=True))

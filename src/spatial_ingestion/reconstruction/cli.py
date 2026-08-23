@@ -46,8 +46,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tsdf-thresh",
         type=float,
-        default=0,
-        help="TSDF fusion threshold (0=disabled, 0.1-0.5 recommended)",
+        default=0.2,
+        help="TSDF fusion threshold (0=disabled; 0.1-0.5 recommended; default 0.2 "
+        "suppresses flying-pixel streak artifacts from raw per-view depth meshing)",
     )
     parser.add_argument(
         "--min-conf-thr",

@@ -63,7 +63,12 @@ class Mast3rRunParams(BaseModel):
     device: str = "auto"
     image_size: int = 512
     pairing_strategy: str = "complete"
-    tsdf_thresh: float = 0
+    # 0 disables TSDF fusion entirely, which meshes each view's raw per-pixel
+    # depth map independently and concatenates them -- depth disagreement
+    # between views (silhouette edges, reflective surfaces) then shows up as
+    # long "flying pixel" streak triangles. 0.2 sits in the middle of the
+    # 0.1-0.5 range MASt3R's own demo recommends for real (non-synthetic) captures.
+    tsdf_thresh: float = 0.2
     min_conf_thr: float = 1.5
     seed: int | None = None
     dry_run: bool = False

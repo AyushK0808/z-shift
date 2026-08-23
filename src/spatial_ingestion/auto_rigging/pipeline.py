@@ -64,7 +64,11 @@ class AutoRiggingPipeline:
                 if cfg.output_dir is not None
                 else self._exporter
             )
-            return exporter.export_result(result)
+            return exporter.export_bundle(
+                working_mesh,
+                result,
+                rigged_mesh_path=cfg.rigged_output_path,
+            )
         return result
 
     def rig_mesh_file(

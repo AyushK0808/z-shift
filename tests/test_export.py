@@ -6,7 +6,11 @@ from typing import Any
 import numpy as np
 import pytest
 
-from spatial_ingestion.reconstruction.export import _dense_points_xyz_rgb, export_scene_to_mesh
+from spatial_ingestion.reconstruction.export import (
+    _dense_points_xyz_rgb,
+    _patch_tsdf_cuda_hardcode,
+    export_scene_to_mesh,
+)
 
 
 class _FakeScene:
@@ -61,3 +65,23 @@ def test_export_scene_to_mesh_writes_mesh_and_point_cloud(tmp_path: Path) -> Non
     assert output.exists() and output.stat().st_size > 0
     assert (output_dir / "point_cloud.ply").exists()
     assert fell_back is False
+
+
+def test_patch_tsdf_cuda_hardcode_makes_cuda_a_noop_without_cuda() -> None:
+    """Regression test for a vendored MASt3R bug: TSDFPostProcess calls
+    `tensor.cuda()` unconditionally, which raises AssertionError on a
+    CPU-only torch build and crashed reconstruction outright."""
+    torch = pytest.importorskip("torch")
+    if torch.cuda.is_available():
+        pytest.skip("only meaningful on a CPU-only torch build")
+
+    tensor = torch.zeros(3)
+    with pytest.raises(AssertionError):
+        tensor.cuda()
+
+    _patch_tsdf_cuda_hardcode()
+    result = tensor.cuda()
+    assert result is tensor
+
+    _patch_tsdf_cuda_hardcode()  # idempotent: re-patching must not wrap twice
+    assert tensor.cuda() is tensor
