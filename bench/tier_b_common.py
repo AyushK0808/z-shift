@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
 import time
 from collections.abc import Iterable, Sequence
@@ -35,6 +36,42 @@ logger = logging.getLogger(__name__)
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 
+# A suffix filter cannot tell a photograph from a depth map -- .png is .png.
+# NeRF-synthetic ships r_0_depth_0000.png and r_0_normal_0000.png beside the RGB
+# frames; handing those to MASt3R as photographs corrupts the reconstruction
+# without failing anything, so they are excluded by filename and by folder.
+NON_PHOTO_RE = re.compile(
+    r"(?:^|[_-])(depth|normals?|masks?|alpha|segs?|segmentation)(?:[_-]|\d|$)",
+    re.IGNORECASE,
+)
+NON_PHOTO_DIRS = frozenset(
+    {"depth", "depths", "normal", "normals", "mask", "masks", "alpha", "seg", "segmentation"}
+)
+
+
+def is_photo(path: Path) -> bool:
+    """True for a file that is a photograph rather than a rendered map."""
+    if path.suffix.lower() not in IMAGE_SUFFIXES:
+        return False
+    if NON_PHOTO_RE.search(path.stem):
+        return False
+    return path.parent.name.lower() not in NON_PHOTO_DIRS
+
+
+def natural_key(path: Path) -> tuple[object, ...]:
+    """Sort key that reads digit runs as numbers.
+
+    Every B module treats this ordering as capture order. A plain lexical sort
+    breaks it on unpadded numbering -- r_109.png sorts before r_11.png -- which
+    scrambles the trajectory that B3's windowed pairing and B4's frame budget
+    both assume is sequential. re.split with a capture group always alternates
+    non-digit, digit, so positions stay type-consistent and comparable.
+    """
+    return tuple(
+        int(part) if part.isdigit() else part.lower() for part in re.split(r"(\d+)", path.name)
+    )
+
+
 # DTU's own evaluation convention. Restate tau on every row that reports an
 # F-score; a bare F-score is not interpretable.
 DTU_TAU_MM = 2.0
@@ -50,13 +87,21 @@ class Scene:
     tau: float = DTU_TAU_MM
     units: str = "mm"
     notes: str = ""
+    # Optional glob selecting which files in image_dir form the capture. DTU's
+    # Rectified/scanNN holds every viewpoint under 7 lighting conditions
+    # (rect_001_0_r5000.png .. rect_001_6_r5000.png); taking the directory
+    # whole feeds MASt3R seven near-duplicate copies of each pose, which
+    # inflates the pair count and tells the reconstruction nothing new.
+    image_glob: str | None = None
 
     def image_paths(self, limit: int | None = None) -> list[Path]:
-        paths = sorted(
-            path for path in self.image_dir.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES
+        candidates = (
+            self.image_dir.glob(self.image_glob) if self.image_glob else self.image_dir.iterdir()
         )
+        paths = sorted((path for path in candidates if is_photo(path)), key=natural_key)
         if not paths:
-            raise FileNotFoundError(f"no images under {self.image_dir}")
+            detail = f" matching {self.image_glob}" if self.image_glob else ""
+            raise FileNotFoundError(f"no images under {self.image_dir}{detail}")
         return paths[:limit] if limit else paths
 
 
@@ -85,6 +130,7 @@ class SceneSet:
                     tau=float(entry.get("tau", data.get("tau", DTU_TAU_MM))),
                     units=entry.get("units", data.get("units", "mm")),
                     notes=entry.get("notes", ""),
+                    image_glob=entry.get("image_glob") or data.get("image_glob"),
                 )
             )
         return cls(scenes=scenes)

@@ -792,6 +792,129 @@ def test_scene_image_paths_are_sorted_and_limited(tmp_path: Path) -> None:
     assert len(scene.image_paths(2)) == 2
 
 
+def test_image_paths_order_frames_numerically_not_lexically(tmp_path: Path) -> None:
+    # NeRF-synthetic numbers frames without padding, so a lexical sort puts
+    # r_109 before r_11. Every B module reads this order as capture order:
+    # B3 pairs within a window of it and B4 samples a budget from it.
+    from bench.tier_b_common import Scene
+
+    images = tmp_path / "unpadded"
+    images.mkdir()
+    for index in (0, 1, 2, 9, 10, 11, 100, 109, 110):
+        (images / f"r_{index}.png").write_bytes(b"not-a-real-png")
+
+    paths = Scene(name="x", image_dir=images).image_paths()
+    assert [p.name for p in paths] == [
+        "r_0.png",
+        "r_1.png",
+        "r_2.png",
+        "r_9.png",
+        "r_10.png",
+        "r_11.png",
+        "r_100.png",
+        "r_109.png",
+        "r_110.png",
+    ]
+
+
+def test_image_paths_exclude_depth_and_normal_maps(tmp_path: Path) -> None:
+    # A .png depth map is indistinguishable from a photograph by suffix, and
+    # MASt3R will happily consume one and produce a worse reconstruction
+    # without raising anything.
+    from bench.tier_b_common import Scene
+
+    images = tmp_path / "nerf"
+    images.mkdir()
+    for index in range(3):
+        (images / f"r_{index}.png").write_bytes(b"not-a-real-png")
+        (images / f"r_{index}_depth_0000.png").write_bytes(b"not-a-real-png")
+        (images / f"r_{index}_normal_0000.png").write_bytes(b"not-a-real-png")
+
+    paths = Scene(name="x", image_dir=images).image_paths()
+    assert [p.name for p in paths] == ["r_0.png", "r_1.png", "r_2.png"]
+
+
+def test_image_paths_keep_names_that_merely_contain_a_map_word(tmp_path: Path) -> None:
+    # DTU's rect_001_0_r5000.png and a file called depthscan_01.png are
+    # photographs; the exclusion must key on a delimited word, not a substring.
+    from bench.tier_b_common import Scene
+
+    images = tmp_path / "dtu"
+    images.mkdir()
+    for name in ("rect_001_0_r5000.png", "rect_002_0_r5000.png", "depthscan_01.png"):
+        (images / name).write_bytes(b"not-a-real-png")
+
+    paths = Scene(name="x", image_dir=images).image_paths()
+    assert [p.name for p in paths] == [
+        "depthscan_01.png",
+        "rect_001_0_r5000.png",
+        "rect_002_0_r5000.png",
+    ]
+
+
+def test_image_glob_selects_one_dtu_lighting_condition(tmp_path: Path) -> None:
+    # DTU photographs each viewpoint under 7 lighting conditions. Without a
+    # glob the scene hands MASt3R seven near-duplicate copies of every pose:
+    # the pair count multiplies and no new parallax arrives.
+    from bench.tier_b_common import Scene
+
+    images = tmp_path / "scan24"
+    images.mkdir()
+    for view in range(1, 4):
+        for light in range(7):
+            (images / f"rect_{view:03d}_{light}_r5000.png").write_bytes(b"not-a-real-png")
+
+    scene = Scene(name="scan24", image_dir=images)
+    assert len(scene.image_paths()) == 21
+
+    filtered = Scene(name="scan24", image_dir=images, image_glob="*_3_r5000.png")
+    assert [p.name for p in filtered.image_paths()] == [
+        "rect_001_3_r5000.png",
+        "rect_002_3_r5000.png",
+        "rect_003_3_r5000.png",
+    ]
+
+
+def test_image_glob_that_matches_nothing_fails_loudly(tmp_path: Path) -> None:
+    from bench.tier_b_common import Scene
+
+    images = tmp_path / "scan24"
+    images.mkdir()
+    (images / "rect_001_0_r5000.png").write_bytes(b"not-a-real-png")
+
+    scene = Scene(name="scan24", image_dir=images, image_glob="*_9_r5000.png")
+    with pytest.raises(FileNotFoundError, match="matching"):
+        scene.image_paths()
+
+
+def test_manifest_carries_image_glob(tmp_path: Path) -> None:
+    from bench.tier_b_common import SceneSet
+
+    images = tmp_path / "scan24"
+    images.mkdir()
+    for light in range(3):
+        (images / f"rect_001_{light}_r5000.png").write_bytes(b"not-a-real-png")
+    manifest = tmp_path / "m.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "scenes": [
+                    {
+                        "name": "scan24",
+                        "image_dir": "scan24",
+                        "image_glob": "*_1_r5000.png",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    scene = SceneSet.from_manifest(manifest).scenes[0]
+    assert scene.image_glob == "*_1_r5000.png"
+    assert [p.name for p in scene.image_paths()] == ["rect_001_1_r5000.png"]
+
+
 def test_scene_without_images_fails_loudly(tmp_path: Path) -> None:
     from bench.tier_b_common import Scene
 
