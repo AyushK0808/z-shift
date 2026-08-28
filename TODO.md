@@ -61,6 +61,27 @@ $10–30 there, and B4 drops to well under an hour a run.
       `gt_path=None`, so as of now it produces **zero rows**. The one 72-frame
       sequence you have (`data/normalized/ingest_74464a2b…`) has no ground truth
       — usable for a smoke test, not for a result.
+  - [x] The paths no longer have to be written out by hand.
+        `notebooks/tier_b_gpu.ipynb` §8 walks `/kaggle/input`, recognises the
+        DTU / BlendedMVS / COLMAP layouts, matches a GT cloud to its scene by
+        scan number (`Rectified/scan24/` ↔ `Points/stl/stl024_total.ply`) and
+        writes the manifest from what is actually mounted. Attach the dataset,
+        press Run All. No Kaggle slug is hardcoded — redistributions of DTU
+        come and go, so it reads the mount rather than a list of names.
+  - [x] §10 tests that data before anything expensive runs: header-checks
+        every image and fully decodes a sample, flags frame counts at or below
+        the 40-frame budget (where B4's three variants come out identical),
+        catches unpadded numbering (`frame10` sorting before `frame2` — the
+        ordering defect A5 measured), loads the GT through `load_gt_points`,
+        checks **tau against the GT bounding diagonal** (a metres-vs-mm mix-up
+        otherwise yields a perfectly plausible F-score that means nothing),
+        reports EXIF for B8, and round-trips the manifest through
+        `SceneSet.from_manifest`. Failures stop the notebook;
+        `logs/<run_id>/dataset_test.json` holds the full record.
+  - [ ] Still open: attach a dataset that actually carries ground truth.
+        Discovery cannot invent it — a mount of images with no `.ply` still
+        produces zero rows in B2/B4/B6/B8. The difference is that you now
+        learn that in the first minute rather than three hours in.
 - [ ] **Test the orchestration before renting a GPU.** `SceneSet`,
       `load_gt_points`, `clear_alignment_cache`, `build_job` and
       `align_to_reference` have tests. `run_reconstruction`, `score_against_gt`,
@@ -72,6 +93,10 @@ $10–30 there, and B4 drops to well under an hour a run.
   - [ ] add a `dry_run=True` walk — `Mast3rRunParams` already supports it — so
         each B module's scene loading, CLI and manifest path can be validated
         without touching MASt3R
+  - [x] the *data* half of this is covered: the notebook's §10 dataset test is
+        what stops a three-day run dying at row 1 on an unreadable frame or a
+        GT file trimesh cannot open. The eight `run()` functions themselves
+        are still untested.
 - [ ] **Fix the summary print in `exp_b4…main()`.** It indexes `row['f_score']`
       unconditionally, which takes down a *completed* run on any partial row.
 
@@ -201,9 +226,10 @@ candidate replacement for, or companion to, Fig. 3 in §V-B.
 1. P0 commit + `--quick` wiring + orchestration tests (half a day, no GPU).
 2. P1 CPU fixes: hole-fill guard, A6 variance axis, batched merge — each is a
    re-run of an existing experiment, so each produces a before/after result.
-3. Assemble a scene manifest and rent a GPU for one day. Run **B4 first**; it
-   closes A5 and is the paper's strongest claim. Then B6 (gives the real
-   `fig8`), B2, B7, and the rest.
+3. Attach the dataset on Kaggle and let §8 of the notebook build the manifest,
+   then rent a GPU for one day. §10 must come back green before you start the
+   meter. Run **B4 first**; it closes A5 and is the paper's strongest claim.
+   Then B6 (gives the real `fig8`), B2, B7, and the rest.
 4. Rewrite Table I / §V-C, §V-B and §IV-C against the finished CSVs.
 5. Apply the `_cap_frames` fix and flip its pinning test, reporting V1 and V2
    side by side.
