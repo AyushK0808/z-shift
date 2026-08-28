@@ -92,9 +92,7 @@ def run(
     scenes = iter_scenes(SceneSet.from_manifest(manifest), scene_names)
     root = output_root or (Path("data") / "bench" / EXP_ID)
 
-    ceiling_applied = (
-        set_address_space_limit(memory_ceiling_gb) if memory_ceiling_gb else False
-    )
+    ceiling_applied = set_address_space_limit(memory_ceiling_gb) if memory_ceiling_gb else False
     if memory_ceiling_gb and not ceiling_applied:
         logger.warning(
             "memory ceiling of %.1f GB requested but unsupported on %s; "
@@ -104,20 +102,14 @@ def run(
         )
 
     for scene in scenes:
-        gt_points = (
-            load_gt_points(scene.gt_path, seed=seed) if scene.gt_path else None
-        )
+        gt_points = load_gt_points(scene.gt_path, seed=seed) if scene.gt_path else None
         for n_images in frame_counts:
             if len(scene.image_paths()) < n_images:
                 continue
             image_paths = scene.image_paths(n_images)
             for threshold in thresholds:
-                params = Mast3rRunParams(
-                    image_size=image_size, tsdf_thresh=threshold, seed=seed
-                )
-                output_path = (
-                    root / scene.name / f"n{n_images}_t{threshold}" / "mesh.glb"
-                )
+                params = Mast3rRunParams(image_size=image_size, tsdf_thresh=threshold, seed=seed)
+                output_path = root / scene.name / f"n{n_images}_t{threshold}" / "mesh.glb"
                 job = build_job(
                     image_paths,
                     output_path,
@@ -153,9 +145,7 @@ def run(
                         },
                     )
                     if gt_points is not None:
-                        reconstruction = point_cloud_from_output(
-                            run_info["output_dir"], seed=seed
-                        )
+                        reconstruction = point_cloud_from_output(run_info["output_dir"], seed=seed)
                         row.update(
                             score_against_gt(
                                 reconstruction,

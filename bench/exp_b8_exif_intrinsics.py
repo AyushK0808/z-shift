@@ -91,9 +91,7 @@ def run(
         gt_points = load_gt_points(scene.gt_path, seed=seed) if scene.gt_path else None
 
         for exif_init in (True, False):
-            params = Mast3rRunParams(
-                image_size=image_size, tsdf_thresh=tsdf_thresh, seed=seed
-            )
+            params = Mast3rRunParams(image_size=image_size, tsdf_thresh=tsdf_thresh, seed=seed)
             output_path = root / scene.name / f"exif{int(exif_init)}" / "mesh.glb"
             job = build_job(
                 image_paths,

@@ -87,8 +87,7 @@ def read_rows(exp_id_or_path: str | Path, results_dir: Path | str | None = None)
         path = base / f"{exp_id_or_path}.csv"
     with path.open(newline="", encoding="utf-8") as handle:
         return [
-            {key: _coerce(value) for key, value in row.items()}
-            for row in csv.DictReader(handle)
+            {key: _coerce(value) for key, value in row.items()} for row in csv.DictReader(handle)
         ]
 
 

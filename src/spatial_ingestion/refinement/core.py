@@ -318,9 +318,7 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
     )
 
     if cfg.mode == "object":
-        filtered = run_step(
-            "component_filter", keep_object_components, mesh, stage_log=stage_log
-        )
+        filtered = run_step("component_filter", keep_object_components, mesh, stage_log=stage_log)
     else:
         filtered = run_step(
             "component_filter",
@@ -332,9 +330,7 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
 
     data_source = filtered if _has_recognized_color_data(filtered) else mesh
 
-    filled = run_step(
-        "fill_holes", fill_mesh_holes, filtered, cfg.hole_size, stage_log=stage_log
-    )
+    filled = run_step("fill_holes", fill_mesh_holes, filtered, cfg.hole_size, stage_log=stage_log)
 
     smoothed = run_step(
         "smooth",

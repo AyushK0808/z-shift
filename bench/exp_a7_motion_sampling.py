@@ -145,8 +145,7 @@ def _trial(
     total_frames = int(cv2.VideoCapture(str(video)).get(cv2.CAP_PROP_FRAME_COUNT))
     budget = max(len(adaptive_indices), 1)
     uniform_indices = [
-        int(round(position))
-        for position in np.linspace(0, max(total_frames - 1, 0), budget)
+        int(round(position)) for position in np.linspace(0, max(total_frames - 1, 0), budget)
     ]
     uniform_timestamps = [index / VIDEO_FPS * 1000.0 for index in uniform_indices]
 
@@ -203,9 +202,7 @@ def _summarise(writer: ResultWriter) -> None:
     )
     keys: list[tuple[Any, ...]] = []
     for row in writer.rows:
-        key = (
-            row["motion_fraction"], row["magnitude"], row["threshold_variant"], row["strategy"]
-        )
+        key = (row["motion_fraction"], row["magnitude"], row["threshold_variant"], row["strategy"])
         if key in keys:
             continue
         keys.append(key)

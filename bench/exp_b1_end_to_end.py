@@ -55,13 +55,9 @@ def _artifact_row(result: Any, rig: bool) -> dict[str, Any]:
     for name in wanted:
         path = getattr(pipeline_result, name, None)
         row[f"has_{name}"] = bool(path and Path(path).exists())
-        row[f"bytes_{name}"] = (
-            Path(path).stat().st_size if path and Path(path).exists() else 0
-        )
+        row[f"bytes_{name}"] = Path(path).stat().st_size if path and Path(path).exists() else 0
 
-    point_cloud = (
-        Path(pipeline_result.reconstruction_manifest_path).parent / "point_cloud.ply"
-    )
+    point_cloud = Path(pipeline_result.reconstruction_manifest_path).parent / "point_cloud.ply"
     row["has_point_cloud"] = point_cloud.exists()
     row["bytes_point_cloud"] = point_cloud.stat().st_size if point_cloud.exists() else 0
 
@@ -143,13 +139,9 @@ def run(
                 logger.exception("%s/%s failed", scene.name, use_case)
             writer.add(**row)
 
-            pipeline_result = getattr(
-                locals().get("result", None), "pipeline_result", None
-            )
+            pipeline_result = getattr(locals().get("result", None), "pipeline_result", None)
             if pipeline_result is not None:
-                clear_alignment_cache(
-                    Path(pipeline_result.reconstruction_manifest_path).parent
-                )
+                clear_alignment_cache(Path(pipeline_result.reconstruction_manifest_path).parent)
     return writer
 
 

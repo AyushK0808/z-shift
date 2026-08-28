@@ -110,11 +110,7 @@ def fig4_refine_scaling(results_dir: Path, figures_dir: Path) -> Path:
             color="C3",
             label="500-1000 components",
         )
-    connected = [
-        r
-        for r in triangles
-        if r["smoothing_iters"] == 0 and not r["verify_watertight"]
-    ]
+    connected = [r for r in triangles if r["smoothing_iters"] == 0 and not r["verify_watertight"]]
     stats = aggregate(connected, ["rung"], "seconds")
     if stats:
         right.errorbar(
@@ -130,9 +126,7 @@ def fig4_refine_scaling(results_dir: Path, figures_dir: Path) -> Path:
         )
     # Table I's reported observation, for direct comparison.
     right.axhline(7 * 60, color="black", linestyle="--", linewidth=1)
-    right.text(
-        6e4, 7 * 60 * 1.1, "Table I: ~7 min at ~2.6M tri", fontsize=6, va="bottom"
-    )
+    right.text(6e4, 7 * 60 * 1.1, "Table I: ~7 min at ~2.6M tri", fontsize=6, va="bottom")
     right.set_xlabel("input triangles")
     right.set_ylabel("clean_mesh wall clock (s)")
     right.set_title("(c) both axes together (Table I config)")
@@ -183,9 +177,7 @@ def fig5_refine_quality(results_dir: Path, figures_dir: Path) -> Path:
     ):
         for base in bases:
             for mode in ("object", "room"):
-                subset = [
-                    r for r in grid if r["base"] == base and r["mode"] == mode
-                ]
+                subset = [r for r in grid if r["base"] == base and r["mode"] == mode]
                 stats = aggregate(subset, ["noise_sigma"], key)
                 if not stats:
                     continue
@@ -426,9 +418,7 @@ def fig_a2_stage_profile(results_dir: Path, figures_dir: Path) -> Path:
             subset = [
                 r for r in rows if r["configuration"] == configuration and r["stage"] == stage
             ]
-            values.append(
-                sum(r["seconds"] for r in subset) / len(subset) if subset else 0.0
-            )
+            values.append(sum(r["seconds"] for r in subset) / len(subset) if subset else 0.0)
         axis.bar(configurations, values, bottom=bottom, label=stage)
         bottom = [b + v for b, v in zip(bottom, values, strict=True)]
 
@@ -460,9 +450,9 @@ def fig8_fragment_removal(results_dir: Path, figures_dir: Path) -> Path:
 
     # The fragment-free cell count is what "all debris removed" looks like;
     # panel (b) is only readable against it.
-    clean_cells = aggregate(
-        [r for r in rows if r["n_fragments_injected"] == 0], [], "out_cells"
-    )[()][0]
+    clean_cells = aggregate([r for r in rows if r["n_fragments_injected"] == 0], [], "out_cells")[
+        ()
+    ][0]
 
     figure, axes = plt.subplots(2, 2, figsize=(12, 8.4))
     panels = (
@@ -575,12 +565,22 @@ def fig8_fragment_removal(results_dir: Path, figures_dir: Path) -> Path:
             label="before refinement (shared input)",
         ),
         plt.Line2D(
-            [], [], marker="o", linestyle="none", color="C1",
-            markersize=7, label="after: object mode",
+            [],
+            [],
+            marker="o",
+            linestyle="none",
+            color="C1",
+            markersize=7,
+            label="after: object mode",
         ),
         plt.Line2D(
-            [], [], marker="o", linestyle="none", color="C0",
-            markersize=7, label="after: room mode",
+            [],
+            [],
+            marker="o",
+            linestyle="none",
+            color="C0",
+            markersize=7,
+            label="after: room mode",
         ),
     ]
     axes[0][0].legend(handles=handles, fontsize=7, loc="upper left", framealpha=0.9)

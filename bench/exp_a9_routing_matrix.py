@@ -65,9 +65,7 @@ def _classify(source_type: SourceType, use_case: str) -> dict[str, Any]:
     return row
 
 
-def run(
-    results_dir: Path | None = None, *, quick: bool = False, seed: int = 0
-) -> ResultWriter:
+def run(results_dir: Path | None = None, *, quick: bool = False, seed: int = 0) -> ResultWriter:
     """Enumerate the full matrix.
 
     `quick` and `seed` are accepted for a uniform experiment signature but do

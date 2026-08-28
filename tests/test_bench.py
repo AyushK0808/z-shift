@@ -90,9 +90,7 @@ def test_stage_log_totals_and_dump(tmp_path: Path) -> None:
     with log.stage("a"):
         pass
 
-    assert log.total_seconds == pytest.approx(
-        sum(s["seconds"] for s in log.stages), abs=1e-6
-    )
+    assert log.total_seconds == pytest.approx(sum(s["seconds"] for s in log.stages), abs=1e-6)
     assert set(log.by_stage()) == {"a", "b"}
 
     path = log.dump(tmp_path / "nested" / "stages.json")
@@ -302,9 +300,7 @@ def test_volume_ratio_detects_a_known_scale() -> None:
 def test_corrupt_mesh_noise_scales_with_the_bounding_diagonal() -> None:
     mesh = unit_normalize(trimesh.creation.icosphere(subdivisions=3))
     damaged = corrupt_mesh(mesh, noise_sigma=0.01, seed=0)
-    displacement = np.linalg.norm(
-        np.asarray(damaged.vertices) - np.asarray(mesh.vertices), axis=1
-    )
+    displacement = np.linalg.norm(np.asarray(damaged.vertices) - np.asarray(mesh.vertices), axis=1)
     # Norm of a 3-vector of N(0, sigma) has mean ~ sigma * sqrt(8/pi).
     assert displacement.mean() == pytest.approx(0.01 * np.sqrt(8 / np.pi), rel=0.2)
 
@@ -608,9 +604,7 @@ def test_a2_stage_profile_runs_without_the_profiler(tmp_path: Path) -> None:
     """cProfile is skipped here: it is slow and adds no coverage of the logic."""
     from bench import exp_a2_stage_profile
 
-    writer = exp_a2_stage_profile.run(
-        results_dir=tmp_path, quick=True, seed=0, profile=False
-    )
+    writer = exp_a2_stage_profile.run(results_dir=tmp_path, quick=True, seed=0, profile=False)
     assert len(writer) > 0
     assert {"component_filter", "finalize"} <= {row["stage"] for row in writer.rows}
 
@@ -635,9 +629,7 @@ def test_object_mode_keeps_every_fragment_it_is_given() -> None:
     mesh = corrupt_mesh(ladder_mesh("icosphere", 5_000), n_fragments=5, seed=0)
     assert len(mesh.split(only_watertight=False)) == 6
 
-    result = clean_mesh(
-        to_pyvista(mesh), MeshCleaningConfig(mode="object", smoothing_iters=0)
-    )
+    result = clean_mesh(to_pyvista(mesh), MeshCleaningConfig(mode="object", smoothing_iters=0))
     assert len(result["mesh"].split_bodies()) == 6
 
 

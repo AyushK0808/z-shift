@@ -108,9 +108,7 @@ def run(results_dir: Path | None = None, *, quick: bool = False, seed: int = 0) 
                     writer.add(
                         source=source,
                         smoothing_iters=smoothing,
-                        decimate_target_reduction=(
-                            decimation if decimation is not None else ""
-                        ),
+                        decimate_target_reduction=(decimation if decimation is not None else ""),
                         seed=trial_seed,
                         jnd_threshold=JND_THRESHOLD,
                         n_tri_nominal=MESH_TRIANGLES,
@@ -122,8 +120,7 @@ def run(results_dir: Path | None = None, *, quick: bool = False, seed: int = 0) 
 
 def _summarise(writer: ResultWriter) -> None:
     print(
-        f"  {'source':<16}{'smooth':>7}{'decim':>7}"
-        f"{'mean_err':>10}{'p95':>8}{'>JND':>8}{'nn_d':>9}"
+        f"  {'source':<16}{'smooth':>7}{'decim':>7}{'mean_err':>10}{'p95':>8}{'>JND':>8}{'nn_d':>9}"
     )
     keys: list[tuple[Any, ...]] = []
     for row in writer.rows:

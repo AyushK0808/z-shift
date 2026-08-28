@@ -123,9 +123,7 @@ def run(
             first_points, second_points = first["points"], second["points"]
             same_count = len(first_points) == len(second_points)
             max_displacement = (
-                float(np.abs(first_points - second_points).max())
-                if same_count
-                else float("nan")
+                float(np.abs(first_points - second_points).max()) if same_count else float("nan")
             )
 
             writer.add(
@@ -145,9 +143,7 @@ def run(
                 n_points_run2=len(second_points),
                 point_count_delta=len(first_points) - len(second_points),
                 identical_point_count=same_count,
-                max_per_point_displacement=(
-                    round(max_displacement, 9) if same_count else ""
-                ),
+                max_per_point_displacement=(round(max_displacement, 9) if same_count else ""),
                 chamfer_between_runs=round(chamfer_l1(first_points, second_points), 9),
                 glb_bytes_run1=first["mesh_bytes"],
                 glb_bytes_run2=second["mesh_bytes"],

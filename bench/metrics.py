@@ -60,9 +60,7 @@ def _sample(mesh: trimesh.Trimesh, n: int, seed: int) -> tuple[np.ndarray, np.nd
     if len(mesh.faces) == 0:
         raise ValueError("cannot sample a surface from a mesh with no faces")
     rng = np.random.default_rng(seed)
-    points, face_index = trimesh.sample.sample_surface(
-        mesh, n, seed=int(rng.integers(1 << 31))
-    )
+    points, face_index = trimesh.sample.sample_surface(mesh, n, seed=int(rng.integers(1 << 31)))
     return np.asarray(points, dtype=float), np.asarray(face_index, dtype=int)
 
 
@@ -78,22 +76,14 @@ def chamfer_l1(a: np.ndarray, b: np.ndarray) -> float:
 
 def hausdorff_95(a: np.ndarray, b: np.ndarray) -> float:
     """95th-percentile symmetric distance, so one outlier vertex cannot dominate."""
-    return float(
-        max(np.percentile(_dists(a, b), 95), np.percentile(_dists(b, a), 95))
-    )
+    return float(max(np.percentile(_dists(a, b), 95), np.percentile(_dists(b, a), 95)))
 
 
-def precision_recall_f(
-    pred: np.ndarray, gt: np.ndarray, tau: float
-) -> tuple[float, float, float]:
+def precision_recall_f(pred: np.ndarray, gt: np.ndarray, tau: float) -> tuple[float, float, float]:
     """MVS convention: accuracy = pred->gt, completeness = gt->pred."""
     precision = float((_dists(pred, gt) < tau).mean())
     recall = float((_dists(gt, pred) < tau).mean())
-    f_score = (
-        0.0
-        if precision + recall == 0
-        else 2 * precision * recall / (precision + recall)
-    )
+    f_score = 0.0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
     return precision, recall, f_score
 
 

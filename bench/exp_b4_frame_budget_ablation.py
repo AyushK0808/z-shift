@@ -131,9 +131,7 @@ def _run_variant(
 
     capture_index = np.array([frame.index for frame in selected], dtype=float)
     reconstruction = point_cloud_from_output(run_info["output_dir"], seed=seed)
-    scores = score_against_gt(
-        reconstruction, gt_points, tau=tau, with_scale=with_scale, seed=seed
-    )
+    scores = score_against_gt(reconstruction, gt_points, tau=tau, with_scale=with_scale, seed=seed)
 
     return {
         "scene": scene_name,

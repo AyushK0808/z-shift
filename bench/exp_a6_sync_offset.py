@@ -39,7 +39,17 @@ from spatial_ingestion.sync.multi_source import (
 EXP_ID = "a6_sync_offset"
 
 TRUE_OFFSETS_MS: tuple[float, ...] = (
-    0.0, 40.0, -40.0, 80.0, -80.0, 160.0, -160.0, 320.0, -320.0, 640.0, -640.0,
+    0.0,
+    40.0,
+    -40.0,
+    80.0,
+    -80.0,
+    160.0,
+    -160.0,
+    320.0,
+    -320.0,
+    640.0,
+    -640.0,
 )
 JITTERS_MS: tuple[float, ...] = (0.0, 5.0, 20.0)
 SOURCE_COUNTS: tuple[int, ...] = (2, 3, 4)
@@ -118,9 +128,7 @@ def _trial(
     else:
         sign_correct = (recovered > 0) == (true_offset_ms > 0)
 
-    complete = [
-        entry for entry in entries if len(entry.aligned_frames) == len(frames_by_source)
-    ]
+    complete = [entry for entry in entries if len(entry.aligned_frames) == len(frames_by_source)]
     return {
         "true_offset_ms": true_offset_ms,
         "jitter_ms": jitter_ms,
@@ -208,9 +216,7 @@ def main(argv: list[str] | None = None) -> int:
                 if abs(row["true_offset_ms"]) == offset and row["motion_noise"] == noise
             ]
             errors = [
-                r["offset_abs_error_ms"]
-                for r in subset
-                if not math.isnan(r["offset_abs_error_ms"])
+                r["offset_abs_error_ms"] for r in subset if not math.isnan(r["offset_abs_error_ms"])
             ]
             mean_error = float(np.mean(errors)) if errors else float("nan")
             print(

@@ -106,9 +106,7 @@ def mesh_at_triangle_count(
 
     reduction = 1.0 - (n_tri / current)
     poly = to_pyvista(working).triangulate()
-    decimated = poly.decimate_pro(
-        min(reduction, 0.999), preserve_topology=preserve_topology
-    )
+    decimated = poly.decimate_pro(min(reduction, 0.999), preserve_topology=preserve_topology)
     faces = np.asarray(decimated.faces).reshape(-1, 4)[:, 1:]
     return trimesh.Trimesh(
         vertices=np.asarray(decimated.points, dtype=float), faces=faces, process=False

@@ -51,9 +51,7 @@ logger = logging.getLogger(__name__)
 def _build(spec: dict[str, Any], seed: int) -> pv.PolyData:
     if spec["kind"] == "triangles":
         return to_pyvista(ladder_mesh("icosphere", int(spec["n_tri"]), seed=seed))
-    return to_pyvista(
-        fragmented_mesh(int(spec["n_tri"]), int(spec["n_components"]), seed=seed)
-    )
+    return to_pyvista(fragmented_mesh(int(spec["n_tri"]), int(spec["n_components"]), seed=seed))
 
 
 def _profile_to_text(mesh: pv.PolyData, config: MeshCleaningConfig, prof_path: Path) -> str:

@@ -53,9 +53,7 @@ class Scene:
 
     def image_paths(self, limit: int | None = None) -> list[Path]:
         paths = sorted(
-            path
-            for path in self.image_dir.iterdir()
-            if path.suffix.lower() in IMAGE_SUFFIXES
+            path for path in self.image_dir.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES
         )
         if not paths:
             raise FileNotFoundError(f"no images under {self.image_dir}")
@@ -83,9 +81,7 @@ class SceneSet:
                 Scene(
                     name=entry["name"],
                     image_dir=(root / entry["image_dir"]).resolve(),
-                    gt_path=(
-                        (root / entry["gt_path"]).resolve() if entry.get("gt_path") else None
-                    ),
+                    gt_path=((root / entry["gt_path"]).resolve() if entry.get("gt_path") else None),
                     tau=float(entry.get("tau", data.get("tau", DTU_TAU_MM))),
                     units=entry.get("units", data.get("units", "mm")),
                     notes=entry.get("notes", ""),
@@ -142,9 +138,7 @@ def build_job(
     )
 
 
-def run_reconstruction(
-    job: ReconstructionJob, *, clear_cache: bool = True
-) -> dict[str, Any]:
+def run_reconstruction(job: ReconstructionJob, *, clear_cache: bool = True) -> dict[str, Any]:
     """Run Phase 2 and return the manifest plus wall-clock and memory."""
     from spatial_ingestion.reconstruction.pipeline import _resolve_output_paths
     from spatial_ingestion.reconstruction.pipeline import run as run_phase2
@@ -160,9 +154,7 @@ def run_reconstruction(
 
     manifest_path = output_dir / "run_manifest.json"
     manifest = (
-        json.loads(manifest_path.read_text(encoding="utf-8"))
-        if manifest_path.exists()
-        else {}
+        json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
     )
     return {
         "exit_code": exit_code,
@@ -211,9 +203,7 @@ def score_against_gt(
     The alignment residual is reported alongside the metrics, not instead of
     them: a good Chamfer after a badly-fitted alignment means nothing.
     """
-    aligned, alignment = align_to_reference(
-        reconstruction_points, gt_points, with_scale=with_scale
-    )
+    aligned, alignment = align_to_reference(reconstruction_points, gt_points, with_scale=with_scale)
     precision, recall, f_score = precision_recall_f(aligned, gt_points, tau)
     from bench.metrics import _dists  # noqa: PLC0415 - internal helper, one call site
 

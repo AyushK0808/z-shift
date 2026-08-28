@@ -171,9 +171,7 @@ def _selection_stats(
     ordered_ts = np.sort(timestamps)
     largest_gap = float(np.diff(ordered_ts).max()) if ordered_ts.size > 1 else 0.0
 
-    motion = np.array(
-        [f.motion_score for f in selected if f.motion_score is not None], dtype=float
-    )
+    motion = np.array([f.motion_score for f in selected if f.motion_score is not None], dtype=float)
     return {
         "n_selected": len(selected),
         "kendall_tau_position_vs_index": tau,

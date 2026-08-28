@@ -57,9 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     results_dir = args.results_dir or RESULTS_DIR
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    selected = [
-        entry for entry in TIER_A if args.only is None or entry[0] in set(args.only)
-    ]
+    selected = [entry for entry in TIER_A if args.only is None or entry[0] in set(args.only)]
     if args.only:
         unknown = set(args.only) - {exp_id for exp_id, _ in TIER_A}
         if unknown:
@@ -95,8 +93,10 @@ def main(argv: list[str] | None = None) -> int:
             logger.exception("=== %s FAILED after %.1f s ===", exp_id, time.perf_counter() - start)
 
     elapsed = time.perf_counter() - overall_start
-    print(f"\nTier A finished in {elapsed / 60:.1f} min; {len(selected) - len(failures)}"
-          f"/{len(selected)} experiments produced CSVs in {results_dir}")
+    print(
+        f"\nTier A finished in {elapsed / 60:.1f} min; {len(selected) - len(failures)}"
+        f"/{len(selected)} experiments produced CSVs in {results_dir}"
+    )
     for exp_id, trace in failures:
         print(f"\n--- {exp_id} failed ---\n{trace}")
     return 1 if failures else 0

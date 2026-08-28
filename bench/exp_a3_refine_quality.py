@@ -196,9 +196,7 @@ def _trial(
     before = _score(damaged, clean_points, clean, seed)
     row.update({f"before_{key}": value for key, value in before.items()})
 
-    config = MeshCleaningConfig(
-        mode=mode, smoothing_iters=SMOOTHING_ITERS, verify_watertight=True
-    )
+    config = MeshCleaningConfig(mode=mode, smoothing_iters=SMOOTHING_ITERS, verify_watertight=True)
     row.update(_guard_probe(damaged_poly, mode, config.min_cell_count))
 
     try:
@@ -317,11 +315,7 @@ def _summarise(writer: ResultWriter) -> None:
     for key, (mean_delta, _, n) in aggregate(
         grid, ["base", "mode", "noise_sigma"], "chamfer_delta"
     ).items():
-        subset = [
-            r
-            for r in grid
-            if (r["base"], r["mode"], r["noise_sigma"]) == key
-        ]
+        subset = [r for r in grid if (r["base"], r["mode"], r["noise_sigma"]) == key]
         before = float(np.mean([r["before_chamfer_l1"] for r in subset]))
         after = float(np.mean([r["after_chamfer_l1"] for r in subset]))
         improved = float(np.mean([r["chamfer_improved"] for r in subset]))
@@ -386,8 +380,7 @@ def _summarise(writer: ResultWriter) -> None:
                     chamfer = float(np.mean([r["after_chamfer_l1"] for r in subset]))
                     ratio_text = f"{np.mean(ratios):.5f}" if ratios else "n/a (open)"
                     print(
-                        f"  {base:<16}{smoother:<12}{iterations:>6}"
-                        f"{ratio_text:>11}{chamfer:>10.5f}"
+                        f"  {base:<16}{smoother:<12}{iterations:>6}{ratio_text:>11}{chamfer:>10.5f}"
                     )
 
 

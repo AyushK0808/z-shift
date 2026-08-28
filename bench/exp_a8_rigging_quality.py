@@ -190,16 +190,12 @@ def _trial(
 ) -> dict[str, Any]:
     result = AutoRiggingPipeline().rig_mesh(
         mesh,
-        AutoRigConfig(
-            articulation_type=articulation, max_skinning_influences=max_influences
-        ),
+        AutoRigConfig(articulation_type=articulation, max_skinning_influences=max_influences),
         export_metadata=False,
     )
     rigged = result.rigged_mesh
     weights = np.asarray(rigged.skinning.weights, dtype=float)
-    joints = np.asarray(
-        [joint.position for joint in rigged.skeleton.joints], dtype=float
-    )
+    joints = np.asarray([joint.position for joint in rigged.skeleton.joints], dtype=float)
 
     # rig_mesh normalises internally; rebuild the same normalised mesh so edge
     # topology and joint positions live in one frame.
@@ -233,9 +229,7 @@ def run(results_dir: Path | None = None, *, quick: bool = False, seed: int = 0) 
     shapes = _shapes()
     if quick:
         shapes = dict(list(shapes.items())[:1])
-    articulations = (
-        (ArticulationType.BIPED,) if quick else tuple(ArticulationType)
-    )
+    articulations = (ArticulationType.BIPED,) if quick else tuple(ArticulationType)
     influences = MAX_INFLUENCES[:2] if quick else MAX_INFLUENCES
     rotations = ROTATIONS_DEG[:1] if quick else ROTATIONS_DEG
     joint_angles = JOINT_ROTATIONS_DEG[:1] if quick else JOINT_ROTATIONS_DEG

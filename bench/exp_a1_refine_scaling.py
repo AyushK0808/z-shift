@@ -152,7 +152,9 @@ def run(
                     if over_budget:
                         for repeat in range(n_repeats):
                             writer.add(
-                                **common, repeat=repeat, status="skipped_budget_exceeded",
+                                **common,
+                                repeat=repeat,
+                                status="skipped_budget_exceeded",
                                 cell_budget_s=cell_budget_s,
                             )
                         continue
@@ -161,9 +163,7 @@ def run(
                     sheet_like = bool(is_sheet_like(mesh))
                     for repeat in range(n_repeats):
                         try:
-                            measured = _measure(
-                                mesh, smoothing=smoothing, watertight=watertight
-                            )
+                            measured = _measure(mesh, smoothing=smoothing, watertight=watertight)
                         except MemoryError as exc:
                             measured = {"status": f"MemoryError: {exc}"}
                         writer.add(
@@ -228,21 +228,25 @@ def _summarise(writer: ResultWriter) -> None:
     )
     seen: list[tuple[Any, ...]] = []
     for row in writer.rows:
-        key = (row["ladder"], row["source"], row["rung"], row["smoothing_iters"],
-               row["verify_watertight"])
+        key = (
+            row["ladder"],
+            row["source"],
+            row["rung"],
+            row["smoothing_iters"],
+            row["verify_watertight"],
+        )
         if key in seen:
             continue
         seen.append(key)
         group = [
             r
             for r in writer.rows
-            if (r["ladder"], r["source"], r["rung"], r["smoothing_iters"],
-                r["verify_watertight"]) == key
+            if (r["ladder"], r["source"], r["rung"], r["smoothing_iters"], r["verify_watertight"])
+            == key
         ]
         values = [r["seconds"] for r in group if r.get("status") == "ok"]
         if not values:
-            print(f"  {key[0]:<11}{key[1]:<22}{key[2]:>9}{key[3]:>4}{str(key[4]):>4}"
-                  f"{'skipped':>9}")
+            print(f"  {key[0]:<11}{key[1]:<22}{key[2]:>9}{key[3]:>4}{str(key[4]):>4}{'skipped':>9}")
             continue
         mean, std, _ = mean_std(values)
         peak = max(r.get("peak_rss_mb") or 0 for r in group)
