@@ -1,0 +1,45 @@
+---
+config:
+  flowchart:
+    rankSpacing: 24
+    nodeSpacing: 20
+---
+flowchart TB
+  subgraph R1["Ingestion"]
+    direction LR
+    G["Gateway<br/>auth and<br/>rate limit"] --> C{"Classifier<br/>MIME and<br/>extension"}
+    C -- "mixed" --> X["Rejected"]
+    C -- "batch" --> BN["Batch normalization<br/>images: resize · EXIF<br/>videos: probe · motion<br/>sampling · timestamp sync"]
+    C -- "live" --> LB["Live buffer<br/>bounded ring<br/>accept or drop"]
+    BN --> T["Priority<br/>tagging"]
+    LB --> T
+    T --> SCH[("Unified spatial<br/>ingestion schema")]
+  end
+  subgraph R2["Reconstruction"]
+    direction LR
+    JB["Job builder<br/>multi-view<br/>video sequence<br/>sync views<br/>frame budget"] --> REJ["Rejected<br/>single view<br/>live stream"]
+    JB --> PAIR["Pairing<br/>cross-camera<br/>sliding window<br/>complete"]
+    PAIR --> AL["MASt3R sparse<br/>global alignment<br/>CUDA · CPU"]
+    AL -- "on" --> TF["TSDF<br/>fusion"]
+    AL -- "off" --> PM["Dense<br/>point map"]
+    TF -- "failure" --> PM
+    TF -- "success" --> EXP
+    PM --> EXP["Colored geometry<br/>point cloud<br/>run manifest"]
+  end
+  R1 --> R2
+
+  classDef ingest fill:#dbeafe,stroke:#2563eb,stroke-width:1.4px,color:#0f172a
+  classDef decide fill:#f1f5f9,stroke:#475569,stroke-width:1.4px,color:#0f172a
+  classDef reject fill:#fee2e2,stroke:#dc2626,stroke-width:1.4px,color:#7f1d1d
+  classDef schema fill:#fef3c7,stroke:#d97706,stroke-width:1.6px,color:#0f172a
+  classDef recon fill:#ede9fe,stroke:#7c3aed,stroke-width:1.4px,color:#0f172a
+  classDef fuse fill:#f3e8ff,stroke:#9333ea,stroke-width:1.4px,color:#0f172a
+
+  class G,BN,LB,T ingest
+  class C decide
+  class X,REJ reject
+  class SCH schema
+  class JB,PAIR,AL,EXP recon
+  class TF,PM fuse
+  style R1 fill:#f7fafd,stroke:#bfd3e6,stroke-width:1px
+  style R2 fill:#faf8fe,stroke:#d0c6ee,stroke-width:1px
