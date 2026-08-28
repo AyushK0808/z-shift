@@ -8,6 +8,8 @@ import numpy as np
 import pyvista as pv
 import trimesh
 
+from spatial_ingestion.instrumentation import StageLog
+
 logger = logging.getLogger(__name__)
 
 Mode = Literal["object", "room"]
@@ -132,7 +134,20 @@ def write_mesh_file(mesh: pv.DataSet, path: Path | str) -> None:
         mesh.save(str(path))
 
 
-def run_step(step_name: str, fn, *args, **kwargs):
+def run_step(step_name: str, fn, *args, stage_log: StageLog | None = None, **kwargs):
+    """Run one cleaning step, normalising failures and optionally timing it.
+
+    `stage_log` is threaded through rather than wrapped around the call site so
+    the timing boundary is exactly the step boundary, and so a step that raises
+    still records the seconds it burned before failing.
+    """
+    if stage_log is None:
+        return _invoke_step(step_name, fn, *args, **kwargs)
+    with stage_log.stage(step_name):
+        return _invoke_step(step_name, fn, *args, **kwargs)
+
+
+def _invoke_step(step_name: str, fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
     except MeshValidationError:
@@ -294,6 +309,7 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
         raise ValueError("Pass either config or keyword overrides, not both")
 
     cfg = config or MeshCleaningConfig(**overrides)
+    stage_log = StageLog()
     mesh = validate_mesh_input(mesh)
     warnings: list[str] = []
 
@@ -302,13 +318,23 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
     )
 
     if cfg.mode == "object":
-        filtered = run_step("component_filter", keep_object_components, mesh)
+        filtered = run_step(
+            "component_filter", keep_object_components, mesh, stage_log=stage_log
+        )
     else:
-        filtered = run_step("component_filter", filter_room_components, mesh, cfg.min_cell_count)
+        filtered = run_step(
+            "component_filter",
+            filter_room_components,
+            mesh,
+            cfg.min_cell_count,
+            stage_log=stage_log,
+        )
 
     data_source = filtered if _has_recognized_color_data(filtered) else mesh
 
-    filled = run_step("fill_holes", fill_mesh_holes, filtered, cfg.hole_size)
+    filled = run_step(
+        "fill_holes", fill_mesh_holes, filtered, cfg.hole_size, stage_log=stage_log
+    )
 
     smoothed = run_step(
         "smooth",
@@ -318,18 +344,32 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
         cfg.smoothing_iters,
         cfg.pass_band,
         cfg.feature_angle,
+        stage_log=stage_log,
     )
 
     final_mesh = run_step(
-        "finalize", finalize_mesh, smoothed, cfg.merge_tolerance, cfg.decimate_target_reduction
+        "finalize",
+        finalize_mesh,
+        smoothed,
+        cfg.merge_tolerance,
+        cfg.decimate_target_reduction,
+        stage_log=stage_log,
     )
     if _has_recognized_color_data(data_source):
-        final_mesh = run_step("transfer_data", preserve_data_arrays, data_source, final_mesh)
+        final_mesh = run_step(
+            "transfer_data",
+            preserve_data_arrays,
+            data_source,
+            final_mesh,
+            stage_log=stage_log,
+        )
 
     topology = {"boundary_edge_count": None, "non_manifold_edge_count": None}
     is_watertight = None
     if cfg.verify_watertight:
-        topology = run_step("watertight_check", count_topology_issues, final_mesh)
+        topology = run_step(
+            "watertight_check", count_topology_issues, final_mesh, stage_log=stage_log
+        )
         is_watertight = (
             topology["boundary_edge_count"] == 0 and topology["non_manifold_edge_count"] == 0
         )
@@ -369,6 +409,8 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
         "boundary_edge_count": topology["boundary_edge_count"],
         "non_manifold_edge_count": topology["non_manifold_edge_count"],
         "warnings": warnings,
+        "stage_timings": stage_log.as_list(),
+        "total_stage_seconds": stage_log.total_seconds,
     }
 
 
