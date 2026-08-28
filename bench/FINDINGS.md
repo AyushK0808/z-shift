@@ -286,6 +286,41 @@ than the current uniform "refinement improves everything".
 
 ---
 
+## 4c. `fig8_fragment_removal` draws findings 2, 3 and 4b as one figure
+
+**Source:** `a3_refine_quality.csv`
+
+`fig8` is the "reduction in stray nodules" plot. Regenerate with:
+
+```bash
+uv run python -m bench.plots --only fig8
+```
+
+It is drawn as **before → after arrows**, not paired bars: both modes see the
+same corrupted input, so the before value is a single shared grey ring and the
+arrow length *is* the finding. A zero-length change renders as a coloured dot
+inside the ring rather than vanishing. Four panels, each averaged over 3 bases ×
+4 sigmas × 3 hole counts × 3 seeds (n=108 per point, error bars are SEM):
+
+| panel | before | after: object | after: room |
+|---|---|---|---|
+| **(a)** connected components, 20 injected | 21.0 | **21.0** (ring, no change) | **1.0** |
+| **(b)** mesh cells, 20 injected | 21 434 | **21 629** (grows) | **19 892** (exactly the fragment-free level) |
+| **(c)** Chamfer-L1, 20 injected | 0.01107 | **0.01255** (worse) | **0.00280** (= the 0-fragment case) |
+| **(d)** boundary edges, 20 injected | 250 | **49** (holes filled) | **187** (guard fires, filling skipped) |
+
+Panel (b) is the cleanest single piece of evidence in the campaign: room mode
+lands on **19 892 cells regardless of how much debris was injected** — the exact
+fragment-free count — while object mode's cell count *rises* with the debris it
+retains. Panel (d) visualises finding 3 on its own: object mode's boundary edges
+fall 250 → 49 only because the injected debris widened the bounding box and
+disabled the sheet-like guard.
+
+Together the four panels carry findings 2, 3 and 4b in one figure. It is a
+candidate replacement for, or companion to, Fig. 3 in §V-B.
+
+---
+
 ## 5. Frame selection and pairing are working against each other (§IV-C)
 
 **Source:** `a5_frame_budget.csv`

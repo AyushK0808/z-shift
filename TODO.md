@@ -12,9 +12,9 @@ Ordered by what blocks what. P0 items block every long run; do them first.
 Tier B (B1–B8) is written and imports cleanly, but **this machine has no CUDA GPU**:
 
 ```
-torch 2.13.0+cpu    torch.cuda.is_available() = False    nvidia-smi: not found
+torch 2.11.0+cu128  torch.cuda.is_available() = False    nvidia-smi: not found
 GPU  Intel Iris Xe (integrated)
-CPU  i7-1255U, 12 logical cores       RAM 15.7 GB       Disk 22 GB free of 953 GB (98% full)
+CPU  i7-1255U, 12 logical cores       RAM 15.7 GB       Disk 16 GB free of 953 GB (99% full)
 ```
 
 Measured CPU cost of a MASt3R pair at 512 px: **~62 s**, from the forward-pass
@@ -41,62 +41,37 @@ $10–30 there, and B4 drops to well under an hour a run.
 
 ## P0 — blockers before any long run
 
-- [ ] **Commit everything.** 53 untracked files: all nine Tier A CSVs, `bench/`,
-      `paper/`, `src/spatial_ingestion/instrumentation.py`,
-      `tests/test_bench.py`, plus 8 modified sources. **6536 rows of results
-      exist only in the working tree.** One bad `git clean` or a full disk loses
-      the entire Tier A campaign.
 - [ ] **Wire `--quick` into the eight Tier B modules.** `experiment_parser` adds
       the flag, every `exp_a*.py` reads it, **no `exp_b*.py` does** —
       `bench/exp_b4_frame_budget_ablation.py:230` builds the parser and never
       passes `args.quick` to `run()`. Today you would type the smoke-test
       command and silently launch the full multi-day grid. This is the single
       most dangerous defect for an unattended run.
-- [ ] **Free disk.** 22 GB free. Each run's alignment cache is ~1.5 GB
-      (240 forward tensors × 6.3 MB); `clear_alignment_cache` stops it
+- [ ] **Free disk.** 16 GB free, down from the 22 GB this file was written
+      against. Each run's alignment cache is ~1.5 GB (240 forward tensors ×
+      6.3 MB); `clear_alignment_cache` stops it
       accumulating across runs, but `data/bench/` outputs do accumulate, and a
       DTU download needs room on top.
-- [ ] **Get a dataset.** `bench/scenes/` holds only `example.json`; nothing
-      named `dtu` or `scan24` exists anywhere in the tree. B4 skips scenes with
-      `gt_path=None`, so as of now it produces **zero rows**. The one 72-frame
-      sequence you have (`data/normalized/ingest_74464a2b…`) has no ground truth
-      — usable for a smoke test, not for a result.
-  - [x] The paths no longer have to be written out by hand.
-        `notebooks/tier_b_gpu.ipynb` §8 walks `/kaggle/input`, recognises the
-        DTU / BlendedMVS / COLMAP layouts, matches a GT cloud to its scene by
-        scan number (`Rectified/scan24/` ↔ `Points/stl/stl024_total.ply`) and
-        writes the manifest from what is actually mounted. Attach the dataset,
-        press Run All. No Kaggle slug is hardcoded — redistributions of DTU
-        come and go, so it reads the mount rather than a list of names.
-  - [x] §10 tests that data before anything expensive runs: header-checks
-        every image and fully decodes a sample, flags frame counts at or below
-        the 40-frame budget (where B4's three variants come out identical),
-        catches unpadded numbering (`frame10` sorting before `frame2` — the
-        ordering defect A5 measured), loads the GT through `load_gt_points`,
-        checks **tau against the GT bounding diagonal** (a metres-vs-mm mix-up
-        otherwise yields a perfectly plausible F-score that means nothing),
-        reports EXIF for B8, and round-trips the manifest through
-        `SceneSet.from_manifest`. Failures stop the notebook;
-        `logs/<run_id>/dataset_test.json` holds the full record.
-  - [ ] Still open: attach a dataset that actually carries ground truth.
-        Discovery cannot invent it — a mount of images with no `.ply` still
-        produces zero rows in B2/B4/B6/B8. The difference is that you now
-        learn that in the first minute rather than three hours in.
+- [ ] **Get a dataset with ground truth.** `bench/scenes/` holds only
+      `example.json`, and nothing named `dtu` or `scan24` exists in the tree.
+      B2/B4/B6/B8 skip scenes with `gt_path=None`, so as things stand they
+      produce **zero rows**. The one 72-frame sequence you have
+      (`data/normalized/ingest_74464a2b…`) has no ground truth — a smoke test,
+      not a result. Attaching a Kaggle dataset is now the whole job: §8 of
+      `notebooks/tier_b_gpu.ipynb` builds the manifest from whatever is mounted
+      and §10 tests it before any GPU time is spent. Neither can invent ground
+      truth — a mount of images with no `.ply` still yields zero rows.
 - [ ] **Test the orchestration before renting a GPU.** `SceneSet`,
       `load_gt_points`, `clear_alignment_cache`, `build_job` and
       `align_to_reference` have tests. `run_reconstruction`, `score_against_gt`,
       `_run_variant` and all eight `run()` functions do not. A three-day run
-      dying at row 1 on a `KeyError` is the predictable outcome. Two cheap
-      guards:
+      dying at row 1 on a `KeyError` is the predictable outcome. The notebook's
+      §10 covers the *data* half of this; these two cover the code half:
   - [ ] monkeypatch `run_phase2` and `point_cloud_from_output` so `_run_variant`
         is exercised end-to-end on CPU in seconds
   - [ ] add a `dry_run=True` walk — `Mast3rRunParams` already supports it — so
         each B module's scene loading, CLI and manifest path can be validated
         without touching MASt3R
-  - [x] the *data* half of this is covered: the notebook's §10 dataset test is
-        what stops a three-day run dying at row 1 on an unreadable frame or a
-        GT file trimesh cannot open. The eight `run()` functions themselves
-        are still untested.
 - [ ] **Fix the summary print in `exp_b4…main()`.** It indexes `row['f_score']`
       unconditionally, which takes down a *completed* run on any partial row.
 
@@ -157,51 +132,7 @@ These need no GPU and close real gaps.
 
 ---
 
-## Figures
-
-### Done
-
-| figure | source CSV | shows |
-|---|---|---|
-| `fig4_refine_scaling` | `a1_refine_scaling` | cost vs triangles, vs components, and both together |
-| `fig5_refine_quality` | `a3_refine_quality` | refinement **deltas** vs corruption sigma |
-| `fig6_pair_gaps` | `a5_frame_budget` | pair temporal gap by selection variant |
-| `fig7_sync_recovery` | `a6_sync_offset` | offset-recovery error |
-| `fig_a2_stage_profile` | `a2_stage_profile` | per-stage attribution by regime |
-| `fig_a7_sampling` | `a7_motion_sampling` | adaptive vs matched-uniform concentration |
-| `fig_a8_rigging` | `a8_rigging_quality` | weight smoothness, flipped faces, template sensitivity |
-| **`fig8_fragment_removal`** *(new)* | `a3_refine_quality` | **pre- vs post-refinement stray-fragment removal** |
-
-`fig8` is the "reduction in stray nodules" plot. Regenerate with:
-
-```bash
-uv run python -m bench.plots --only fig8
-```
-
-It is drawn as **before → after arrows**, not paired bars: both modes see the
-same corrupted input, so the before value is a single shared grey ring and the
-arrow length *is* the finding. A zero-length change renders as a coloured dot
-inside the ring rather than vanishing. Four panels, each averaged over 3 bases ×
-4 sigmas × 3 hole counts × 3 seeds (n=108 per point, error bars are SEM):
-
-| panel | before | after: object | after: room |
-|---|---|---|---|
-| **(a)** connected components, 20 injected | 21.0 | **21.0** (ring, no change) | **1.0** |
-| **(b)** mesh cells, 20 injected | 21 434 | **21 629** (grows) | **19 892** (exactly the fragment-free level) |
-| **(c)** Chamfer-L1, 20 injected | 0.01107 | **0.01255** (worse) | **0.00280** (= the 0-fragment case) |
-| **(d)** boundary edges, 20 injected | 250 | **49** (holes filled) | **187** (guard fires, filling skipped) |
-
-Panel (b) is the cleanest single piece of evidence in the campaign: room mode
-lands on **19 892 cells regardless of how much debris was injected** — the exact
-fragment-free count — while object mode's cell count *rises* with the debris it
-retains. Panel (d) visualises finding 3 on its own: object mode's boundary edges
-fall 250 → 49 only because the injected debris widened the bounding box and
-disabled the sheet-like guard.
-
-Together the four panels carry findings 2, 3 and 4b in one figure. It is a
-candidate replacement for, or companion to, Fig. 3 in §V-B.
-
-### Still needed — these require Tier B (GPU)
+## Figures still needed — these require Tier B (GPU)
 
 - [ ] **The same before/after plot on a real reconstruction** (B6). `fig8` uses
       synthetic injected fragments; the paper needs stray-fragment removal
@@ -223,7 +154,7 @@ candidate replacement for, or companion to, Fig. 3 in §V-B.
 
 ## Suggested order
 
-1. P0 commit + `--quick` wiring + orchestration tests (half a day, no GPU).
+1. P0 `--quick` wiring + orchestration tests (half a day, no GPU).
 2. P1 CPU fixes: hole-fill guard, A6 variance axis, batched merge — each is a
    re-run of an existing experiment, so each produces a before/after result.
 3. Attach the dataset on Kaggle and let §8 of the notebook build the manifest,
