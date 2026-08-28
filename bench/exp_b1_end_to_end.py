@@ -91,13 +91,15 @@ def run(
     tsdf_thresh: float = 0.2,
     use_cases: tuple[str, ...] = ("editing", "viewing"),
     rig: bool = True,
+    articulation: ArticulationType = ArticulationType.BIPED,
+    n_images: int | None = None,
     deliverables_root: Path | None = None,
 ) -> ResultWriter:
     writer = ResultWriter(EXP_ID, results_dir)
     scenes = iter_scenes(SceneSet.from_manifest(manifest), scene_names)
 
     for scene in scenes:
-        inputs = scene.image_paths()
+        inputs = scene.image_paths(limit=n_images)
         for use_case in use_cases:
             # Rigging only applies to the editing track; run_full_pipeline
             # rejects --rig for viewing, which is itself part of SIV-E.
@@ -107,6 +109,7 @@ def run(
                 "n_inputs": len(inputs),
                 "use_case": use_case,
                 "rig_requested": do_rig,
+                "articulation": articulation.value if do_rig else "",
                 "image_size": image_size,
                 "tsdf_thresh": tsdf_thresh,
                 "seed": seed,
@@ -122,9 +125,7 @@ def run(
                         ),
                         refinement_config=MeshCleaningConfig(mode="object"),
                         rigging_config=(
-                            AutoRigConfig(articulation_type=ArticulationType.BIPED)
-                            if do_rig
-                            else None
+                            AutoRigConfig(articulation_type=articulation) if do_rig else None
                         ),
                         deliverables_root=deliverables_root or DEFAULT_DELIVERABLES_ROOT,
                     )
@@ -152,6 +153,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--tsdf-thresh", type=float, default=0.2)
     parser.add_argument("--no-rig", action="store_true")
+    parser.add_argument(
+        "--articulation",
+        choices=[kind.value for kind in ArticulationType],
+        default=ArticulationType.BIPED.value,
+        help="skeleton template to fit; use 'static' for object captures",
+    )
+    parser.add_argument(
+        "--n-images",
+        type=int,
+        default=None,
+        help="cap inputs per scene; without it a 313-frame capture runs in full",
+    )
     parser.add_argument("--deliverables-root", type=Path, default=None)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
@@ -164,6 +177,8 @@ def main(argv: list[str] | None = None) -> int:
         image_size=args.image_size,
         tsdf_thresh=args.tsdf_thresh,
         rig=not args.no_rig,
+        articulation=ArticulationType(args.articulation),
+        n_images=args.n_images,
         deliverables_root=args.deliverables_root,
     )
     finish(writer)
@@ -171,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"  {row['scene']:<14}{row['use_case']:<9}{row['status']:<12}"
             f"{row.get('wall_seconds', 0):>8.1f}s  watertight={row.get('refined_is_watertight')}"
+            f"  rigged_glb={row.get('has_rigged_mesh_path', False)}"
         )
     return 0
 
