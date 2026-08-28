@@ -55,7 +55,10 @@ def create_live_frame(index: int) -> np.ndarray:
 def _panning_texture(width: int, height: int, seed: int) -> np.ndarray:
     """A wide, high-frequency backdrop for the camera to pan across."""
     rng = np.random.default_rng(seed)
-    texture = rng.integers(0, 255, (height, width, 3), dtype=np.uint8)
+    # Annotated loosely because numpy's dtype parameter is invariant: a
+    # `dtype[uint8]` array is not assignable to cv2's `MatLike`, which is
+    # `dtype[integer[Any] | floating[Any]]`.
+    texture: np.ndarray = rng.integers(0, 255, (height, width, 3), dtype=np.uint8)
     texture = cv2.GaussianBlur(texture, (0, 0), sigmaX=2.0)
     for _ in range(60):
         top_left = (int(rng.integers(0, width)), int(rng.integers(0, height)))
@@ -121,9 +124,7 @@ def create_motion_video(
             if texture is not None:
                 origin_x = pan_x % (texture.shape[1] - width)
                 origin_y = pan_y % (texture.shape[0] - height)
-                frame = texture[
-                    origin_y : origin_y + height, origin_x : origin_x + width
-                ].copy()
+                frame = texture[origin_y : origin_y + height, origin_x : origin_x + width].copy()
             else:
                 frame = np.full((height, width, 3), (18, 28, 36), np.uint8)
 
