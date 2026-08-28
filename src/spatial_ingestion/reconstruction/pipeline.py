@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
+from spatial_ingestion.instrumentation import StageLog
 from spatial_ingestion.reconstruction._io import uri_to_path, write_json
 from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
 from spatial_ingestion.reconstruction.device import resolve_device, set_seed
@@ -44,24 +45,40 @@ def run(job: ReconstructionJob) -> int:
         write_json(output_dir / "run_manifest.json", manifest)
         return 0
 
-    sparse_scene = run_sparse_alignment(
-        image_paths=image_paths,
-        output_dir=output_dir,
-        model_name=params.model_name,
-        device=device,
-        image_size=params.image_size,
-        pairing_strategy=params.pairing_strategy,
-        sync_view_groups=job.sync_view_groups or None,
-        frames=job.frames or None,
-    )
-    tsdf_fell_back = export_scene_to_mesh(
-        sparse_scene,
-        output_path,
-        output_dir,
-        tsdf_thresh=params.tsdf_thresh,
-        min_conf_thr=params.min_conf_thr,
-    )
+    stage_log = StageLog()
+    outputs: dict[str, object] = {}
+
+    with stage_log.stage("sparse_alignment", n_images=len(image_paths)):
+        sparse_scene = run_sparse_alignment(
+            image_paths=image_paths,
+            output_dir=output_dir,
+            model_name=params.model_name,
+            device=device,
+            image_size=params.image_size,
+            pairing_strategy=params.pairing_strategy,
+            sync_view_groups=job.sync_view_groups or None,
+            frames=job.frames or None,
+            stats=outputs,
+        )
+
+    with stage_log.stage("export_scene_to_mesh", tsdf_thresh=params.tsdf_thresh):
+        tsdf_fell_back = export_scene_to_mesh(
+            sparse_scene,
+            output_path,
+            output_dir,
+            tsdf_thresh=params.tsdf_thresh,
+            min_conf_thr=params.min_conf_thr,
+            stats=outputs,
+        )
+
     manifest["tsdf_fallback"] = tsdf_fell_back
+    manifest["stage_timings"] = stage_log.as_list()
+    manifest["total_stage_seconds"] = stage_log.total_seconds
+    existing_outputs = manifest.get("outputs")
+    manifest["outputs"] = {
+        **(existing_outputs if isinstance(existing_outputs, dict) else {}),
+        **outputs,
+    }
     write_json(output_dir / "run_manifest.json", manifest)
 
     if not output_path.exists():
