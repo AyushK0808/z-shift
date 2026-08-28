@@ -79,23 +79,32 @@ ignore = [
 "scripts/*" = ["S101"]
 "src/spatial_ingestion/test_harness/*" = ["S101"]
 "src/spatial_ingestion/batch_normalization/ffmpeg_tools.py" = ["S603"]
+# Experiment modules print result tables and probe private pipeline
+# internals on purpose; that is the job.
+"bench/*" = ["S101", "T201"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["spatial_ingestion"]
+known-first-party = ["bench", "spatial_ingestion"]
 
 [tool.ty.environment]
 python-version = "3.11"
 python-platform = "Linux"
 
 [tool.ty.src]
-include = ["src", "tests"]
+include = ["src", "tests", "bench"]
 
 [tool.ty.analysis]
-allowed-unresolved-imports = ["mast3r.**", "dust3r.**"]
+# rtree is an optional trimesh extra used only by the exact
+# normal-consistency path in bench/metrics.py, which falls back with a clear
+# error when it is absent.
+allowed-unresolved-imports = ["mast3r.**", "dust3r.**", "rtree"]
 
 [tool.pytest.ini_options]
+# "." puts the repo root on sys.path so tests can import the `bench`
+# harness, which is a development tree and is deliberately not installed
+# as part of the package.
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 markers = [
   "real_pipeline: runs the real Phase 2 MASt3R reconstruction and Phase 3 refinement on user-provided images",
 ]
