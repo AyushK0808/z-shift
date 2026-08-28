@@ -30,7 +30,15 @@ def build_run_manifest(
     seed: int | None = None,
     dry_run: bool,
     sync_view_groups: list[SyncViewGroup] | None = None,
+    outputs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Record the configuration *and* the measured shape of a reconstruction run.
+
+    `outputs` carries the output-side counters (frames used, pairs built,
+    vertices/faces produced, confidence-mask retention) that a results table
+    needs; without them a manifest describes only what was asked for, never
+    what came back.
+    """
     manifest: dict[str, Any] = {
         "backend": "mast3r",
         "model_name": model_name,
@@ -48,6 +56,7 @@ def build_run_manifest(
     if sync_view_groups:
         manifest["sync_pairing_enabled"] = True
         manifest["sync_group_count"] = len(sync_view_groups)
+    manifest["outputs"] = {"n_frames_used": len(image_paths), **(outputs or {})}
     manifest["reproducibility"] = reproducibility_metadata()
     return manifest
 
@@ -132,7 +141,15 @@ def export_scene_to_mesh(
     output_dir: Path,
     tsdf_thresh: float = 0,
     min_conf_thr: float = 1.5,
+    stats: dict[str, Any] | None = None,
 ) -> bool:
+    """Fuse a scene into a mesh + point cloud; return whether TSDF fell back.
+
+    `stats`, when given, is populated in place with the output-side counters
+    (vertex/face counts, points before and after confidence masking) so the
+    caller can fold them into its manifest. Kept as an out-parameter rather
+    than a widened return type so existing callers keep working unchanged.
+    """
     try:
         from dust3r.utils.device import to_numpy
         from mast3r.cloud_opt.tsdf_optimizer import TSDFPostProcess
@@ -166,6 +183,20 @@ def export_scene_to_mesh(
 
     xyz, rgb = _dense_points_xyz_rgb(imgs, pts3d, confs, min_conf_thr)
     write_ply(output_dir / "point_cloud.ply", xyz, rgb)
+
+    if stats is not None:
+        total_points = int(sum(int(np.prod(img.shape[:2])) for img in imgs))
+        masked_points = int(len(xyz))
+        stats.update(
+            {
+                "n_vertices": int(len(mesh.vertices)),
+                "n_faces": int(len(mesh.faces)),
+                "n_points_pre_mask": total_points,
+                "n_points_post_mask": masked_points,
+                "conf_retention": round(masked_points / max(total_points, 1), 4),
+                "tsdf_fallback": tsdf_fell_back,
+            }
+        )
 
     logger.info(
         "Exported %s (vertex colors: %s)", output_path, mesh.visual.vertex_colors is not None
