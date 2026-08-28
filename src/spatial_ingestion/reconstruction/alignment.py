@@ -31,7 +31,15 @@ def run_sparse_alignment(
     pairing_strategy: str = "complete",
     sync_view_groups: list[SyncViewGroup] | None = None,
     frames: list[HandoffFrame] | None = None,
+    stats: dict[str, Any] | None = None,
 ) -> object:
+    """Run MASt3R sparse global alignment over `image_paths`.
+
+    `stats`, when given, is populated in place with the pairing counters
+    (`n_images`, `n_pairs`, `pairing_strategy_used`) the run manifest needs;
+    an out-parameter keeps the scene the sole return value for callers that
+    do not care.
+    """
     if sparse_global_alignment is None:
         raise RuntimeError(
             "MASt3R is not installed. Run scripts/setup-mast3r.sh or "
@@ -53,6 +61,17 @@ def run_sparse_alignment(
             pairs = build_pairs(images, strategy=pairing_strategy)
     else:
         pairs = build_pairs(images, strategy=pairing_strategy)
+
+    if stats is not None:
+        stats.update(
+            {
+                "n_images": len(images),
+                "n_pairs": len(pairs),
+                "pairing_strategy_used": (
+                    "sync" if sync_view_groups and len(pairs) else pairing_strategy
+                ),
+            }
+        )
 
     cache_path = str((output_dir / "cache").resolve())
     str_paths = [str(path) for path in image_paths]

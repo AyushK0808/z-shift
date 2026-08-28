@@ -1,0 +1,44 @@
+---
+config:
+  flowchart:
+    rankSpacing: 24
+    nodeSpacing: 20
+---
+flowchart TB
+  subgraph R1["Mesh refinement"]
+    direction LR
+    V["Validation<br/>unwrap container<br/>reject empty<br/>or non-finite"] --> M{"Mode"}
+    M -- "object" --> CO["Largest<br/>component"]
+    M -- "room" --> CR["Components<br/>above threshold<br/>merged"]
+    CO --> FH
+    CR --> FH
+    FH["Hole filling<br/>Taubin smoothing<br/>merge · triangulate<br/>decimate · normals<br/>colour transfer"] --> RM["Refined mesh<br/>and manifest<br/>watertightness<br/>flagged"]
+  end
+  subgraph R2["Rigging and delivery"]
+    direction LR
+    Q{"Rig<br/>requested?"} -- "yes" --> TPL["Articulation<br/>template<br/>static · biped<br/>quadruped<br/>winged"]
+    TPL --> SK["Inverse-distance<br/>skinning<br/>glTF skin packing<br/>skinned GLB"]
+    SK --> RT
+    Q -- "no" --> RT{"Routing<br/>validation"}
+    RT -- "editing" --> D1["Model<br/>GLB"]
+    RT -- "editing<br/>and rig" --> D2["Rigged<br/>GLB"]
+    RT -- "viewing" --> D3["Colored<br/>PLY"]
+    RT -- "live or<br/>invalid" --> D4["Rejected"]
+  end
+  R1 --> R2
+
+  classDef refine fill:#ccfbf1,stroke:#0d9488,stroke-width:1.4px,color:#0f172a
+  classDef decide fill:#f1f5f9,stroke:#475569,stroke-width:1.4px,color:#0f172a
+  classDef mesh fill:#fef3c7,stroke:#d97706,stroke-width:1.6px,color:#0f172a
+  classDef rig fill:#fce7f3,stroke:#db2777,stroke-width:1.4px,color:#0f172a
+  classDef deliver fill:#ffedd5,stroke:#ea580c,stroke-width:1.4px,color:#0f172a
+  classDef reject fill:#fee2e2,stroke:#dc2626,stroke-width:1.4px,color:#7f1d1d
+
+  class V,CO,CR,FH refine
+  class M,Q,RT decide
+  class RM mesh
+  class TPL,SK rig
+  class D1,D2,D3 deliver
+  class D4 reject
+  style R1 fill:#f5fdfb,stroke:#a7ded4,stroke-width:1px
+  style R2 fill:#fff9f5,stroke:#f2cfb0,stroke-width:1px

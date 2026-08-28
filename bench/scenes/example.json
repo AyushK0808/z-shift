@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "Scene manifest for Tier B. Paths are relative to this file.",
+    "Copy this, point it at a real dataset, and pass it as --manifest.",
+    "tau is the F-score threshold in the dataset's own units; DTU's convention",
+    "is 2 mm. State it in every table -- an F-score without a tau is not",
+    "interpretable. If gt_path is a COLMAP dense reconstruction rather than",
+    "sensor ground truth, say so in notes and label it pseudo-GT in the paper.",
+    "For B4, image_dir must hold an extracted video sequence in capture order",
+    "with more than MAX_RECONSTRUCTION_FRAMES (40) frames, otherwise the",
+    "budget never fires and all three variants are identical."
+  ],
+  "tau": 2.0,
+  "units": "mm",
+  "scenes": [
+    {
+      "name": "scan24",
+      "image_dir": "dtu/scan24/images",
+      "gt_path": "dtu/scan24/stl024_total.ply",
+      "notes": "DTU eval subset; sensor ground truth"
+    },
+    {
+      "name": "scan37",
+      "image_dir": "dtu/scan37/images",
+      "gt_path": "dtu/scan37/stl037_total.ply",
+      "notes": "DTU eval subset; sensor ground truth"
+    },
+    {
+      "name": "own_capture_video",
+      "image_dir": "captures/desk_orbit/frames",
+      "gt_path": "captures/desk_orbit/colmap_dense.ply",
+      "tau": 0.01,
+      "units": "scene units (COLMAP)",
+      "notes": "pseudo-GT from COLMAP dense; label as such. 120 extracted frames, suitable for B4."
+    }
+  ]
+}

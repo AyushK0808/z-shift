@@ -1,0 +1,249 @@
+"""Shared plumbing for Tier B, which needs MASt3R weights and a GPU.
+
+Nothing in this module runs during Tier A. It is imported lazily by the
+exp_b*.py modules so that importing `bench` on a CPU-only laptop never pulls in
+torch weights or dust3r.
+
+Scene loading, GT loading and the reconstruct-and-score loop are factored out
+here because B2, B3, B4, B6 and B8 differ only in which knob they turn.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import shutil
+import time
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from bench.gt_align import align_to_reference
+from bench.instrument import peak_rss_mb
+from bench.metrics import chamfer_l1, precision_recall_f, sample_points
+from spatial_ingestion.instrumentation import StageLog
+from spatial_ingestion.reconstruction.models import (
+    Mast3rRunParams,
+    ReconstructionJob,
+    ReconstructionMode,
+)
+
+logger = logging.getLogger(__name__)
+
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+
+# DTU's own evaluation convention. Restate tau on every row that reports an
+# F-score; a bare F-score is not interpretable.
+DTU_TAU_MM = 2.0
+
+
+@dataclass
+class Scene:
+    """One capture plus, optionally, its ground truth."""
+
+    name: str
+    image_dir: Path
+    gt_path: Path | None = None
+    tau: float = DTU_TAU_MM
+    units: str = "mm"
+    notes: str = ""
+
+    def image_paths(self, limit: int | None = None) -> list[Path]:
+        paths = sorted(
+            path for path in self.image_dir.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES
+        )
+        if not paths:
+            raise FileNotFoundError(f"no images under {self.image_dir}")
+        return paths[:limit] if limit else paths
+
+
+@dataclass
+class SceneSet:
+    """A Tier B dataset described by a small JSON manifest.
+
+    Keeping the dataset out of the code means B1-B8 do not hardcode DTU paths,
+    and a reviewer can point the same experiments at Tanks and Temples or at a
+    local capture with COLMAP pseudo-GT by editing one file.
+    """
+
+    scenes: list[Scene] = field(default_factory=list)
+
+    @classmethod
+    def from_manifest(cls, path: Path | str) -> SceneSet:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        root = Path(path).resolve().parent
+        scenes = []
+        for entry in data["scenes"]:
+            scenes.append(
+                Scene(
+                    name=entry["name"],
+                    image_dir=(root / entry["image_dir"]).resolve(),
+                    gt_path=((root / entry["gt_path"]).resolve() if entry.get("gt_path") else None),
+                    tau=float(entry.get("tau", data.get("tau", DTU_TAU_MM))),
+                    units=entry.get("units", data.get("units", "mm")),
+                    notes=entry.get("notes", ""),
+                )
+            )
+        return cls(scenes=scenes)
+
+
+def load_gt_points(path: Path, max_points: int = 500_000, seed: int = 0) -> np.ndarray:
+    """Load a GT point cloud or mesh as a point array, subsampled for tractability."""
+    import trimesh
+
+    loaded = trimesh.load(str(path))
+    if isinstance(loaded, trimesh.PointCloud):
+        points = np.asarray(loaded.vertices, dtype=float)
+    elif isinstance(loaded, trimesh.Trimesh):
+        points = sample_points(loaded, min(max_points, 500_000), seed)
+    else:
+        raise ValueError(f"unsupported ground-truth artifact: {path}")
+
+    if len(points) > max_points:
+        rng = np.random.default_rng(seed)
+        points = points[rng.choice(len(points), max_points, replace=False)]
+    return points
+
+
+def clear_alignment_cache(output_dir: Path) -> None:
+    """Delete the sparse-alignment cache.
+
+    `run_sparse_alignment` reuses `<output_dir>/cache`, so without this a repeat
+    run silently replays the first one and any determinism or ablation result is
+    vacuous. Called before every independent run in Tier B.
+    """
+    cache = output_dir / "cache"
+    if cache.exists():
+        shutil.rmtree(cache)
+        logger.info("cleared alignment cache: %s", cache)
+
+
+def build_job(
+    image_paths: Sequence[Path],
+    output_path: Path,
+    *,
+    params: Mast3rRunParams,
+    mode: ReconstructionMode = ReconstructionMode.MULTI_VIEW,
+    label: str = "tier_b",
+) -> ReconstructionJob:
+    return ReconstructionJob(
+        mode=mode,
+        image_uris=[path.resolve().as_uri() for path in image_paths],
+        label=label,
+        output_path=str(output_path.resolve()),
+        metadata=params.model_dump(),
+    )
+
+
+def run_reconstruction(job: ReconstructionJob, *, clear_cache: bool = True) -> dict[str, Any]:
+    """Run Phase 2 and return the manifest plus wall-clock and memory."""
+    from spatial_ingestion.reconstruction.pipeline import _resolve_output_paths
+    from spatial_ingestion.reconstruction.pipeline import run as run_phase2
+
+    output_path, output_dir = _resolve_output_paths(job)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if clear_cache:
+        clear_alignment_cache(output_dir)
+
+    stage_log = StageLog()
+    with stage_log.stage("phase2_total"):
+        exit_code = run_phase2(job)
+
+    manifest_path = output_dir / "run_manifest.json"
+    manifest = (
+        json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
+    )
+    return {
+        "exit_code": exit_code,
+        "manifest": manifest,
+        "manifest_path": manifest_path,
+        "output_path": output_path,
+        "output_dir": output_dir,
+        "wall_seconds": stage_log.total_seconds,
+        "peak_rss_mb": peak_rss_mb(),
+        "gpu_peak_mb": gpu_peak_mb(),
+    }
+
+
+def gpu_peak_mb() -> float | None:
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return None
+        return round(torch.cuda.max_memory_allocated() / 1024**2, 1)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def reset_gpu_peak() -> None:
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+    except Exception as exc:  # noqa: BLE001 - resetting a counter must never
+        # take down a benchmark run; a missing GPU stat is a blank cell.
+        logger.debug("could not reset GPU peak stats: %s", exc)
+
+
+def score_against_gt(
+    reconstruction_points: np.ndarray,
+    gt_points: np.ndarray,
+    *,
+    tau: float,
+    with_scale: bool = False,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Align to GT, then report accuracy/completeness/F-score and the residual.
+
+    The alignment residual is reported alongside the metrics, not instead of
+    them: a good Chamfer after a badly-fitted alignment means nothing.
+    """
+    aligned, alignment = align_to_reference(reconstruction_points, gt_points, with_scale=with_scale)
+    precision, recall, f_score = precision_recall_f(aligned, gt_points, tau)
+    from bench.metrics import _dists  # noqa: PLC0415 - internal helper, one call site
+
+    return {
+        "tau": tau,
+        "chamfer_l1": round(chamfer_l1(aligned, gt_points), 6),
+        "accuracy_mean": round(float(_dists(aligned, gt_points).mean()), 6),
+        "completeness_mean": round(float(_dists(gt_points, aligned).mean()), 6),
+        "precision": round(precision, 4),
+        "recall": round(recall, 4),
+        "f_score": round(f_score, 4),
+        "n_reconstruction_points": int(len(aligned)),
+        "n_gt_points": int(len(gt_points)),
+        "seed": seed,
+        **alignment.as_row(),
+    }
+
+
+def point_cloud_from_output(output_dir: Path, max_points: int = 500_000, seed: int = 0):
+    """Read the point_cloud.ply Phase 2 writes next to its mesh."""
+    return load_gt_points(output_dir / "point_cloud.ply", max_points=max_points, seed=seed)
+
+
+def timed(label: str) -> Any:
+    """Small helper so B-modules can time an inline block without a StageLog."""
+
+    class _Timer:
+        def __enter__(self) -> _Timer:
+            self.start = time.perf_counter()
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            self.seconds = round(time.perf_counter() - self.start, 4)
+            logger.info("%s: %.2f s", label, self.seconds)
+
+    return _Timer()
+
+
+def iter_scenes(scene_set: SceneSet, names: Iterable[str] | None = None) -> list[Scene]:
+    if names is None:
+        return list(scene_set.scenes)
+    wanted = set(names)
+    return [scene for scene in scene_set.scenes if scene.name in wanted]

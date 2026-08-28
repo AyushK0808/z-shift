@@ -1,0 +1,34 @@
+flowchart LR
+  A1["Single<br/>image"] --> ING
+  A2["Image<br/>folder"] --> ING
+  A3["Single<br/>video"] --> ING
+  A4["Video<br/>folder"] --> ING
+  A5["Live<br/>frames"] --> ING
+  ING["Ingestion<br/>classify<br/>normalize<br/>sample<br/>synchronize"]
+  ING --> SCH[("Unified<br/>spatial<br/>schema")]
+  SCH --> REC["Reconstruction<br/>MASt3R<br/>alignment<br/>fusion or<br/>point map"]
+  REC --> REF["Mesh<br/>refinement<br/>clean<br/>smooth<br/>recolour"]
+  REF --> RIG["Skeleton<br/>and<br/>skinning"]
+  REF --> OUT{"Outcomes<br/>router"}
+  RIG --> OUT
+  OUT --> D1["Model<br/>GLB"]
+  OUT --> D2["Rigged<br/>GLB"]
+  OUT --> D3["Colored<br/>PLY"]
+
+  classDef src fill:#e0f2fe,stroke:#0284c7,stroke-width:1.4px,color:#0c2233
+  classDef ingest fill:#dbeafe,stroke:#2563eb,stroke-width:1.4px,color:#0f172a
+  classDef schema fill:#fef3c7,stroke:#d97706,stroke-width:1.6px,color:#0f172a
+  classDef recon fill:#ede9fe,stroke:#7c3aed,stroke-width:1.4px,color:#0f172a
+  classDef refine fill:#ccfbf1,stroke:#0d9488,stroke-width:1.4px,color:#0f172a
+  classDef rig fill:#fce7f3,stroke:#db2777,stroke-width:1.4px,color:#0f172a
+  classDef route fill:#f1f5f9,stroke:#475569,stroke-width:1.4px,color:#0f172a
+  classDef deliver fill:#ffedd5,stroke:#ea580c,stroke-width:1.4px,color:#0f172a
+
+  class A1,A2,A3,A4,A5 src
+  class ING ingest
+  class SCH schema
+  class REC recon
+  class REF refine
+  class RIG rig
+  class OUT route
+  class D1,D2,D3 deliver

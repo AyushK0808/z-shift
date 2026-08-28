@@ -10,3 +10,8 @@ __pycache__/
 .ruff_cache/
 third_party/
 
+# Benchmark figures and profiles regenerate from the committed CSVs
+# (bench/plots.py), so only the CSVs are tracked.
+bench/figures/
+bench/results/*.prof
+bench/results/*.log

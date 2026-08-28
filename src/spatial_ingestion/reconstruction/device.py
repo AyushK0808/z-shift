@@ -44,7 +44,17 @@ def memory_summary(device: str) -> str:
     return "n/a"
 
 
+DETERMINISTIC_ALGORITHMS_REQUESTED = False
+
+
 def set_seed(seed: int) -> None:
+    """Seed every RNG the pipeline touches and ask torch for determinism.
+
+    `warn_only=True` because several MASt3R/dust3r kernels have no
+    deterministic implementation; failing the run outright would be worse than
+    a warned-but-nondeterministic op, and B7 measures what that costs.
+    """
+    global DETERMINISTIC_ALGORITHMS_REQUESTED
     import random
 
     random.seed(seed)
@@ -55,6 +65,11 @@ def set_seed(seed: int) -> None:
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
+        try:
+            torch.use_deterministic_algorithms(True, warn_only=True)
+            DETERMINISTIC_ALGORITHMS_REQUESTED = True
+        except (RuntimeError, AttributeError) as exc:
+            logger.warning("Could not enable deterministic algorithms: %s", exc)
     except ImportError:
         pass
 
@@ -75,4 +90,5 @@ def reproducibility_metadata() -> dict[str, object]:
     with contextlib.suppress(AttributeError):
         meta["numpy_version"] = np.__version__
     meta["mast3r_commit"] = MAST3R_COMMIT
+    meta["deterministic_algorithms"] = DETERMINISTIC_ALGORITHMS_REQUESTED
     return meta

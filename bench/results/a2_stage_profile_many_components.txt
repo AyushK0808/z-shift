@@ -1,0 +1,33 @@
+         8016099 function calls (6783837 primitive calls) in 9.403 seconds
+
+   Ordered by: cumulative time
+   List reduced from 440 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    9.403    9.403 C:\Users\theof\projects\personal\z-shift\src\spatial_ingestion\refinement\core.py:306(clean_mesh)
+        5    0.000    0.000    9.401    1.880 C:\Users\theof\projects\personal\z-shift\src\spatial_ingestion\refinement\core.py:137(run_step)
+        5    0.008    0.002    9.401    1.880 C:\Users\theof\projects\personal\z-shift\src\spatial_ingestion\refinement\core.py:150(_invoke_step)
+        1    0.006    0.006    9.228    9.228 C:\Users\theof\projects\personal\z-shift\src\spatial_ingestion\refinement\core.py:200(keep_object_components)
+20037/2011    0.130    0.000    9.206    0.005 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\_deprecate_positional_args.py:191(inner_f)
+        1    0.003    0.003    5.985    5.985 C:\Users\theof\projects\personal\z-shift\src\spatial_ingestion\refinement\core.py:178(get_component_pieces)
+        1    0.056    0.056    4.703    4.703 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\data_set.py:2673(split_bodies)
+     1000    0.035    0.000    4.240    0.004 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\data_set.py:765(threshold)
+     3008    0.010    0.000    3.277    0.001 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\__init__.py:40(_update_alg)
+     3008    3.252    0.001    3.252    0.001 {method 'Update' of 'vtkmodules.vtkCommonExecutionModel.vtkStreamingDemandDrivenPipeline' objects}
+        1    0.107    0.107    3.238    3.238 C:\Users\theof\projects\personal\z-shift\src\spatial_ingestion\refinement\core.py:190(merge_components)
+      999    0.424    0.000    3.103    0.003 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\poly_data.py:437(merge)
+1252136/390574    0.833    0.000    2.967    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\_vtk_utilities.py:144(__getattribute__)
+     3008    0.187    0.000    2.753    0.001 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\__init__.py:69(_get_output)
+    49083    0.097    0.000    1.887    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\utilities\misc.py:441(__call__)
+      999    0.031    0.000    1.591    0.002 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\data_set.py:5874(merge)
+     3010    0.023    0.000    1.443    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\dataset.py:909(copy_meta_from)
+233449/233429    0.203    0.000    1.281    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\utilities\misc.py:528(__setattr__)
+     1001    0.004    0.000    1.233    0.001 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\data_object.py:4028(extract_surface)
+     1001    0.031    0.000    1.223    0.001 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\data_set.py:5655(_extract_surface)
+     1001    0.021    0.000    1.191    0.001 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\data_set.py:1461(_geometry_filter)
+1293195/1000685    0.587    0.000    1.060    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\_vtk_utilities.py:116(check_attribute)
+     6003    0.114    0.000    0.967    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\utilities\arrays.py:503(_assoc_array)
+   233449    0.378    0.000    0.871    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\utilities\misc.py:493(_check_new_attribute)
+    40064    0.055    0.000    0.859    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\datasetattributes.py:154(__init__)
+
+

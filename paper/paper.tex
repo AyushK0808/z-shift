@@ -1,0 +1,604 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{A Unified Ingestion-to-Deliverable Pipeline for\\
+Converting Heterogeneous 2D Media into Rigged 3D Assets}
+
+% Author block is laid out 3 + 3. The \linebreak after the third author forces
+% the second row; without it IEEEtran fits only two blocks per row, because the
+% department line is wide. The department is split over two lines for the same
+% reason -- if you restore it to a single line, three blocks will not fit.
+\author{\IEEEauthorblockN{Sidhant Kishore}
+\IEEEauthorblockA{\textit{School of Computer Science} \\
+\textit{and Engineering} \\
+\textit{Vellore Institute of Technology}\\
+Vellore, India \\
+email@vitstudent.ac.in}
+\and
+\IEEEauthorblockN{Rakshit Mathur}
+\IEEEauthorblockA{\textit{School of Computer Science} \\
+\textit{and Engineering} \\
+\textit{Vellore Institute of Technology}\\
+Vellore, India \\
+email@vitstudent.ac.in}
+\and
+\IEEEauthorblockN{Jhanvi Vashishth}
+\IEEEauthorblockA{\textit{School of Computer Science} \\
+\textit{and Engineering} \\
+\textit{Vellore Institute of Technology}\\
+Vellore, India \\
+email@vitstudent.ac.in}
+\linebreak
+\IEEEauthorblockN{Shardul Parag}
+\IEEEauthorblockA{\textit{School of Computer Science} \\
+\textit{and Engineering} \\
+\textit{Vellore Institute of Technology}\\
+Vellore, India \\
+email@vitstudent.ac.in}
+\and
+\IEEEauthorblockN{Ayush Kumar}
+\IEEEauthorblockA{\textit{School of Computer Science} \\
+\textit{and Engineering} \\
+\textit{Vellore Institute of Technology}\\
+Vellore, India \\
+email@vitstudent.ac.in}
+\and
+\IEEEauthorblockN{Given Name Surname}
+\IEEEauthorblockA{\textit{School of Computer Science} \\
+\textit{and Engineering} \\
+\textit{Vellore Institute of Technology}\\
+Vellore, India \\
+email@vitstudent.ac.in}
+}
+
+\maketitle
+
+\begin{abstract}
+Recent advances in computer vision have substantially improved 3D reconstruction
+from two-dimensional observations. However, practical 2D-to-3D systems must
+address challenges beyond reconstruction inference, including heterogeneous input
+formats, frame selection, camera metadata, temporal synchronization, computational
+constraints, geometric refinement, and application-specific delivery. This paper
+presents z-shift, a modular end-to-end pipeline that transforms images, image
+collections, videos, synchronized video collections, and live frames into 3D
+representations. The system normalizes heterogeneous inputs into a unified spatial
+schema, constructs reconstruction jobs, performs multi-view reconstruction using
+MASt3R, optionally applies TSDF fusion, and refines reconstructed meshes through
+component filtering, hole filling, Taubin smoothing, decimation, normal correction,
+and color preservation. A downstream outcomes engine generates application-specific
+GLB or point-cloud deliverables. The implementation further incorporates
+frame-selection strategies, synchronization, reproducibility metadata, and
+computational fallbacks. The current system demonstrates functional integration from
+media ingestion to refined 3D assets, while exposing limitations in real-time
+delivery, large-scale mesh processing, and quantitative reconstruction evaluation.
+The work provides a practical framework for integrating modern learned reconstruction
+methods into a reproducible heterogeneous-media 3D generation workflow.
+\end{abstract}
+
+\begin{IEEEkeywords}
+3D reconstruction, multi-view stereo, MASt3R, computer vision, mesh processing,
+point clouds, 2D-to-3D generation, spatial computing
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Recovering three-dimensional structure from two-dimensional images is a fundamental
+problem in computer vision and graphics. Classical structure-from-motion (SfM) and
+multi-view stereo (MVS) methods estimate camera geometry, correspondences, depth, and
+surfaces from multiple observations \cite{b1}--\cite{b5}. These approaches established
+the geometric foundations of image-based reconstruction but can be sensitive to
+viewpoint coverage, image quality, scene texture, and correspondence reliability.
+
+Learning-based methods have considerably expanded the capabilities of 3D
+reconstruction. Neural Radiance Fields (NeRF) introduced a continuous neural scene
+representation for view synthesis \cite{b6}, while subsequent methods investigated
+faster rendering \cite{b7}, explicit representations \cite{b8}, large-scale
+reconstruction \cite{b9}, and generalized reconstruction \cite{b10}--\cite{b13}.
+DUSt3R introduced dense 3D reconstruction from image pairs without requiring a
+conventional calibrated pipeline \cite{b14}, and MASt3R strengthened this paradigm
+through improved image matching and 3D correspondence \cite{b15}. These methods
+provide powerful reconstruction engines, but deploying them within a practical
+2D-to-3D workflow introduces additional data-management and geometric-processing
+requirements.
+
+Real-world input is heterogeneous. A system may receive photographs, image
+directories, videos, synchronized multi-camera captures, or continuous frame streams.
+z-shift addresses this problem through a unified ingestion architecture that
+classifies input media, normalizes images and videos, extracts available camera
+metadata, samples video frames, synchronizes multi-source captures, and produces a
+common unified spatial ingestion schema.
+
+Large video collections also introduce redundancy and computational cost. Rather than
+processing every frame, z-shift performs motion-adaptive sampling and limits the
+number of frames passed to reconstruction. It further provides complete and
+sliding-window pairing strategies, favoring the latter for videos and larger image
+sets.
+
+Raw reconstruction is not necessarily a production-ready asset. Reconstructed surfaces
+may contain disconnected components, holes, noise, duplicated points, and inconsistent
+normals. Mesh-processing research provides established solutions for smoothing and
+simplification \cite{b16}--\cite{b20}. z-shift incorporates these operations into a
+dedicated refinement stage while preserving vertex colors.
+
+The principal objective of this work is therefore to integrate established 3D vision
+and geometry-processing methods into an end-to-end, reproducible pipeline rather than
+propose another standalone reconstruction network. The resulting architecture connects
+heterogeneous media ingestion, learned reconstruction, geometric refinement, and
+application-specific delivery. In summary, this work contributes: (1) a unified
+ingestion schema that normalizes heterogeneous batch and live visual media; (2) a
+frame-selection and pairing strategy that bounds reconstruction cost for large image
+and video collections; (3) an orchestration layer that integrates MASt3R reconstruction
+with optional TSDF fusion and a robust point-map fallback; (4) a mesh-refinement stage
+that produces color-preserving, application-ready geometry; and (5) an
+outcomes-routing layer that generates editing- and viewing-specific deliverables,
+together with reproducibility manifests.
+
+\section{Related Work}
+
+\subsection{Multi-View Reconstruction}
+
+Classical SfM reconstructs camera poses and sparse structure from multiple images
+\cite{b1}, \cite{b2}, while MVS estimates dense geometry using multiple observations
+\cite{b3}--\cite{b5}. Furukawa and Hern\'andez \cite{b4} reviewed the development of
+dense MVS, highlighting the importance of correspondence, visibility, and surface
+consistency. Sch\"onberger and Frahm \cite{b2} demonstrated scalable SfM through robust
+image matching and reconstruction. These methods remain important foundations for
+modern learned systems.
+
+Deep learning has introduced alternative representations. NeRF \cite{b6} models a
+continuous radiance field, while Instant-NGP \cite{b7} substantially accelerates neural
+field optimization. 3D Gaussian Splatting \cite{b8} replaces implicit fields with
+explicit Gaussian primitives for efficient rendering. PixelNeRF \cite{b11}, MVSNeRF
+\cite{b10}, and related generalized approaches \cite{b12}, \cite{b13} investigate
+reconstruction and view synthesis across multiple scenes rather than optimizing
+independently for every scene.
+
+DUSt3R \cite{b14} and MASt3R \cite{b15} are particularly relevant to the present work
+because they directly address geometric reconstruction and image matching. z-shift
+employs MASt3R as its principal reconstruction engine and adds an orchestration layer
+for input normalization, frame selection, pairing, synchronization, fusion, and export.
+
+\subsection{Volumetric and Geometric Reconstruction}
+
+Volumetric fusion is an established strategy for combining multiple depth observations.
+Curless and Levoy \cite{b21} introduced signed-distance volumetric integration, while
+KinectFusion \cite{b22} demonstrated real-time TSDF reconstruction. Poisson surface
+reconstruction \cite{b23} provides another established approach for converting oriented
+points into surfaces.
+
+Mesh quality is equally important for downstream applications. Taubin smoothing
+\cite{b16} reduces surface noise while limiting shrinkage, Garland and Heckbert
+\cite{b17} introduced quadric-error simplification, and Kazhdan et al. \cite{b23}
+demonstrated Poisson reconstruction. MeshLab \cite{b18} and related geometry-processing
+frameworks further demonstrate the importance of post-reconstruction processing.
+
+z-shift incorporates optional TSDF fusion followed by mesh refinement, including
+component filtering, hole filling, smoothing, triangulation, optional decimation,
+normal correction, and watertightness checking.
+
+\subsection{Streaming and Representation}
+
+Video and live reconstruction require additional mechanisms for frame sampling,
+synchronization, buffering, and latency control. Streaming reconstruction systems such
+as KinectFusion \cite{b22} demonstrate the feasibility of real-time processing, while
+neural rendering approaches such as Gaussian Splatting \cite{b8} emphasize efficient
+visualization.
+
+z-shift currently supports WebSocket-based live frame ingestion with bounded buffering
+and backpressure, but its real-time delivery pathway remains unfinished. Its
+implemented viewing output is a colored PLY point cloud rather than a full Gaussian
+Splatting representation.
+
+\subsection{Automatic Rigging}
+
+Converting reconstructed geometry into animation-ready assets requires skeleton
+estimation and skinning. Baran and Popovi\'c \cite{b24} presented automatic rigging and
+skinning for 3D characters, while later work investigated learning-based correspondence
+and human-model reconstruction \cite{b25}--\cite{b27}. z-shift contains an auto-rigging
+module supporting multiple articulation categories, and this module is wired into the
+main pipeline so that a rigged asset can be produced as a deliverable.
+
+\section{Research Gap and Problem Statement}
+
+Existing research provides strong solutions for individual components of 3D generation:
+SfM/MVS addresses geometric reconstruction \cite{b1}--\cite{b5}, neural fields and
+explicit neural representations address learned scene modeling \cite{b6}--\cite{b15},
+volumetric methods address depth integration \cite{b21}, \cite{b22}, and mesh-processing
+techniques improve geometric quality \cite{b16}--\cite{b20}, \cite{b23}. However, these
+components are commonly studied independently.
+
+A practical 2D-to-3D system must additionally determine how heterogeneous observations
+should be classified, normalized, sampled, synchronized, reconstructed, refined, and
+packaged. These requirements become particularly important when inputs originate from
+different sources or when computational resources are limited.
+
+The problem addressed in this work is therefore: how can heterogeneous 2D visual media
+be transformed into clean, reproducible, application-ready 3D representations through an
+integrated pipeline combining learned multi-view reconstruction, data normalization,
+geometric refinement, and use-case-specific delivery?
+
+The research gap is consequently not the absence of reconstruction algorithms, but the
+lack of a unified workflow connecting these algorithms to practical media ingestion and
+downstream asset generation. z-shift addresses this systems-level gap through five
+modular stages.
+
+\begin{figure*}[t]
+\centerline{\includegraphics[width=\textwidth]{figures/fig1-overview.png}}
+\caption{End-to-end flow. Heterogeneous media converge on a unified spatial schema,
+which drives reconstruction, refinement, optional skeleton fitting, and
+use-case-specific delivery.}
+\label{fig:overview}
+\end{figure*}
+
+\section{System Architecture}
+
+The z-shift architecture is organized into five modular stages: media ingestion,
+multi-view reconstruction, mesh refinement, outcome routing, and automatic rigging.
+The stages communicate only through explicit, serializable artifacts -- a unified
+schema, a reconstruction job, a mesh file, and a set of manifests -- so that any single
+stage can be replaced or evaluated in isolation. Fig.~\ref{fig:overview} summarizes the
+main end-to-end flow. Fig.~\ref{fig:pipeline} then details ingestion and reconstruction,
+and Fig.~\ref{fig:geometry} details refinement, rigging, and delivery; each stage is
+described against those figures below.
+
+\subsection{Media Ingestion}
+
+The ingestion stage accepts single images, image folders, single videos, video folders,
+and live WebSocket frames through an HTTP and WebSocket gateway with pluggable
+authentication and a per-subject rate limiter. A classifier applies a decision matrix
+over MIME types and file extensions to determine the source type and select a
+processing track. Payloads that mix image and video content, or that contain
+unrecognized files, are rejected as an unknown source type rather than being partially
+processed.
+
+The batch track normalizes uploaded files. Images are resized while preserving aspect
+ratio -- frames are never padded to a square canvas or stretched -- and available EXIF
+camera metadata, including make, model, and focal length, is extracted. Videos are
+probed with FFmpeg and sampled by a motion-adaptive sampler that measures inter-frame
+difference on downscaled grayscale frames and shortens the sampling interval during
+motion while lengthening it across static spans, subject to a minimum interval between
+samples.
+
+For video folders, a multi-source synchronizer first estimates a constant clock offset
+per source by matching motion signatures between each source and the source with the
+most frames, then aligns frames to that anchor by nearest adjusted timestamp within a
+tolerance. Groups in which every source contributes a frame become entries in a
+synchronization map, so multi-camera captures remain temporally coherent downstream.
+
+The live track buffers real-time frames in a bounded ring buffer. Every pushed frame
+receives an explicit backpressure decision: oversized or undecodable payloads are
+refused, and when the buffer is full the oldest frame is evicted and the drop is
+reported to the producer, so a fast producer cannot exhaust memory. A latency-aware
+resource tagger finally assigns each input a normalized compute-priority score, with
+live streams receiving top priority and batch scores varying by source type and payload
+size. The upper band of Fig.~\ref{fig:pipeline} illustrates the batch and live tracks
+and their convergence into the unified schema.
+
+\begin{figure*}[t]
+\centerline{\includegraphics[width=\textwidth]{figures/fig2-ingestion-reconstruction.png}}
+\caption{Ingestion and reconstruction. Batch and live tracks converge into the unified
+spatial ingestion schema (upper band), which drives job construction, frame selection,
+pairing, and MASt3R alignment with optional TSDF fusion and a point-map fallback (lower
+band).}
+\label{fig:pipeline}
+\end{figure*}
+
+\subsection{Unified Spatial Representation}
+
+Both processing tracks converge into a single unified spatial ingestion schema, which
+decouples ingestion from downstream reconstruction. The schema records the source type,
+the track that produced it, resolution, frame count, camera intrinsics, the
+compute-priority score, and a list of frame references. Each frame reference carries its
+own normalized asset location, ordering index, capture timestamp, motion score,
+resolution, and any per-frame intrinsics, together with the synchronization map for
+multi-camera captures.
+
+Because the schema is a self-contained, serializable representation, previously
+generated ingestion runs can be persisted and replayed. Reconstruction experiments can
+therefore be repeated against a fixed set of normalized frames, separating algorithmic
+evaluation from the original data-capture process.
+
+\subsection{Multi-View Reconstruction}
+
+The reconstruction stage converts the unified schema into an explicit reconstruction
+job. Each source type maps to a reconstruction mode: an image folder becomes a
+multi-view job, a single video becomes a video-sequence job, and a video folder becomes
+a synchronized-views job. Single images and live streams do not map to a supported mode
+and are rejected, since sparse alignment requires at least two views of the same subject.
+
+Frames are ordered deterministically by source, index, and identifier, and the job is
+capped at a configurable frame budget; when the budget is exceeded, the highest-motion
+frames are retained in preference to a uniform subsample. For synchronized captures the
+budget is applied to whole synchronization groups, scaled by the average number of
+cameras per group, so that cross-camera groups are never split.
+
+Pairing then determines which image pairs enter alignment. A complete scene graph
+compares every pair, while a sliding-window strategy bounds the pair count and is
+preferred for videos and for image sets beyond a threshold size. For synchronized-views
+jobs, cross-camera pairs are generated within each synchronization group so that
+simultaneous observations are matched directly; if no such pairs can be resolved, the
+configured strategy is used instead.
+
+The pipeline resolves an execution device across CUDA, CPU, and Metal backends, and when
+a seed is supplied it seeds the Python, NumPy, and PyTorch generators and records the
+library versions. Where EXIF reports a 35~mm-equivalent focal length, it is converted
+into a pixel focal length and used to initialize the per-image intrinsic matrix supplied
+to alignment. MASt3R then performs sparse global alignment, caching intermediate results
+on disk so repeated runs over the same frames reuse prior work.
+
+Geometry export is optionally preceded by TSDF fusion. When fusion is disabled, or when
+it fails under memory or runtime pressure, the pipeline falls back to a dense point-map
+export and records the fallback in the run manifest; this is a robustness mechanism
+rather than a novel fusion algorithm. The exporter writes a colored mesh -- GLB by
+default, with OBJ and PLY also supported -- applying a confidence threshold to discard
+low-confidence points, and additionally writes a confidence-masked dense point cloud.
+A run manifest records the model, device, input resolution, pairing strategy,
+thresholds, seed, and reproducibility metadata. The lower band of
+Fig.~\ref{fig:pipeline} details job construction, frame selection, pairing, alignment,
+and the conditional fusion and point-map paths.
+
+\subsection{Mesh Refinement}
+
+The refinement stage converts raw reconstruction output into cleaner geometry. It first
+validates its input, unwrapping multi-primitive container formats such as GLB scenes and
+rejecting meshes that are empty or contain non-finite coordinates.
+
+Component handling then depends on the refinement mode. Object mode retains only the
+largest connected component, discarding stray fragments, while room mode splits the mesh
+into bodies, keeps every component above a minimum cell count, and merges the survivors
+so that scenes legitimately composed of several pieces are preserved. Boundary holes are
+then closed up to a maximum size that, when not specified, is derived from the bounding
+box diagonal so that the threshold scales with the model.
+
+Surfaces are smoothed with Taubin smoothing, which suppresses noise without the
+shrinkage introduced by repeated Laplacian passes; in room mode, feature edges and
+boundaries above a configurable feature angle are preserved. Finalization merges
+coincident points within a relative tolerance, triangulates the result, optionally
+decimates it to a target reduction, and recomputes consistent outward-facing normals.
+
+Because smoothing and decimation rewrite the vertex set, vertex color arrays are carried
+onto the cleaned mesh by nearest-point transfer, so appearance survives the geometric
+operations. A final check counts open boundary edges and flags the mesh as watertight or
+not; a non-watertight result is reported as a warning rather than terminating the
+workflow, since many downstream uses do not require a closed surface. The refined mesh
+is written alongside a refinement manifest recording input and output point and cell
+counts, the watertightness result, and any warnings. The upper band of
+Fig.~\ref{fig:geometry} shows the complete sequence.
+
+\begin{figure*}[t]
+\centerline{\includegraphics[width=\textwidth]{figures/fig3-refinement-delivery.png}}
+\caption{Refinement, rigging, and delivery. Component selection, hole filling,
+smoothing, and color transfer produce the refined mesh (upper band), which is optionally
+rigged and then routed to an editing, rigged, or viewing deliverable; live and invalid
+combinations are rejected explicitly (lower band).}
+\label{fig:geometry}
+\end{figure*}
+
+\subsection{Application-Specific Deliverables}
+
+The outcomes stage routes refined geometry according to its intended use. Routing is
+validated against the source type before anything is exported: the editing use case
+accepts image, image-folder, video, and video-folder inputs; the viewing use case accepts
+image-folder, single-video, and video-folder inputs; and the live use case accepts only
+live-stream inputs. Any other combination is rejected with an explicit routing error
+rather than silently falling through to a default.
+
+The editing pathway exports a Blender-ready GLB for assets destined for a
+digital-content-creation tool. The viewing pathway packages the confidence-masked point
+cloud produced during reconstruction into a colored PLY. As shown in the lower band of
+Fig.~\ref{fig:geometry}, this viewing deliverable is a conventional colored point cloud:
+it does not encode Gaussian covariance, spherical harmonics, opacity, or a temporal
+dimension, and is therefore distinct from a full Gaussian Splatting representation. A
+live delivery pathway is defined at the routing level and rejects requests explicitly.
+
+When a rigged asset is requested together with the editing use case, the skinned export
+produced by the rigging stage becomes the editing deliverable. That file is copied
+verbatim into the deliverables tree rather than being reloaded and re-exported, because
+a general-purpose mesh exporter does not round-trip glTF skinning data -- joint indices,
+weights, skin and joint nodes, and inverse bind matrices -- and re-exporting would
+silently strip the rig.
+
+\subsection{Automatic Rigging}
+
+The rigging stage fits a skeleton and skinning weights to a refined mesh. The mesh is
+first centered on its bounding box and scaled to unit size, so that template proportions
+are expressed relative to the model rather than in absolute units.
+
+A template skeleton is then fitted to the mesh bounding box according to the requested
+articulation type. The static template places a single root joint at the centroid; the
+biped template places hips, spine, head, paired hands, and paired feet along the vertical
+axis; the quadruped template places a body, neck, head, and four limb ends; and the winged
+template places a body, head, paired wing tips, and a tail. Each template defines both the
+joint hierarchy and the bones connecting them.
+
+Skinning weights are then assigned by inverse distance. For a vertex $v_i$ and joint
+$j$ at Euclidean distance $d_{ij}$, only the $k$ strongest influences are retained, and
+the surviving weights are normalized to a partition of unity:
+\begin{equation}
+w_{ij}=\frac{1/d_{ij}}{\sum_{m \in \mathcal{K}_i} 1/d_{im}},\quad j \in \mathcal{K}_i
+\label{eq}
+\end{equation}
+where $\mathcal{K}_i$ denotes the set of retained joints for vertex $i$ and $k =
+|\mathcal{K}_i|$ is the configured influence limit. Distances in \eqref{eq} are clamped
+away from zero so that a vertex coincident with a joint does not produce an unbounded
+weight.
+
+The weights are finally packed into the glTF skinning convention, in which each vertex
+carries at most four joint indices and four corresponding weights; the retained
+influences are re-normalized after packing so that each row still sums to one, and rows
+with no positive influence are rejected rather than being silently bound to the first
+joint. The stage emits a skinned GLB together with the skeleton, the weight matrix, and a
+rig manifest, and its skinned output feeds the editing deliverable described above. The
+lower band of Fig.~\ref{fig:geometry} shows this path and the point at which it rejoins
+routing.
+
+\section{Results and Discussion}
+
+\subsection{Functional Validation}
+
+The current implementation demonstrates functional integration of the principal offline
+workflow from heterogeneous input through reconstruction, refinement, and
+application-specific output. A complete pipeline can execute ingestion, MASt3R
+reconstruction, mesh refinement, and optional deliverable routing, as summarized
+architecturally in Figs.~\ref{fig:overview}--\ref{fig:geometry}. Previously generated
+ingestion schemas can also be replayed, enabling reconstruction experiments to be
+separated from the original ingestion process.
+
+\begin{table}[htbp]
+\caption{Computational Observations (Reported Values Only)}
+\begin{center}
+\begin{tabular}{|p{4.9cm}|c|}
+\hline
+\textbf{Observation} & \textbf{Value} \\
+\hline
+Mesh size in reported refinement run & $\sim$2.6M triangles \\
+\hline
+Refinement time (smoothing disabled, watertightness check skipped) & $\sim$7 minutes \\
+\hline
+Refinement time, default smoothing config. & Substantially slower \\
+\hline
+\end{tabular}
+\label{tab1}
+\end{center}
+\end{table}
+
+\subsection{Reconstruction and Geometry Quality}
+
+The refinement stage addresses several defects that can occur in raw learned
+reconstruction. Component filtering removes isolated fragments, hole filling improves
+surface completeness, Taubin smoothing reduces local irregularity, and normal
+recomputation improves surface consistency. Vertex-color transfer allows the refined mesh
+to retain the visual appearance of the reconstructed geometry. The frame-selection
+strategy provides a practical mechanism for controlling computational cost: instead of
+processing arbitrarily large video sequences, the pipeline limits reconstruction frames
+and preferentially retains high-motion observations. Synchronized multi-camera inputs can
+also be converted into cross-camera view groups using timestamp information.
+
+\subsection{Computational Performance}
+
+The implementation also reveals important computational constraints, summarized in
+Table~\ref{tab1}. The project reports that refinement of a mesh containing approximately
+2.6 million triangles can take around seven minutes even with smoothing disabled and
+watertightness checking skipped; this figure is reported as a single implementation
+observation rather than a controlled benchmark. The default smoothing configuration is
+substantially slower. The refinement stage is consequently a major scalability bottleneck
+and motivates GPU-based or more efficient mesh-processing approaches. TSDF fusion can
+similarly become expensive for large reconstructions; the implemented fallback to dense
+point-map export provides graceful degradation when fusion fails because of memory or
+runtime constraints. This improves robustness but also means that the output
+representation can depend on available computational resources.
+
+\subsection{Robustness and Reproducibility}
+
+Run manifests record the reconstruction model, execution device, pairing strategy, random
+seed, and reconstruction configuration, supporting reproducible re-execution of a given
+job. The TSDF-to-point-map fallback and the explicit non-watertight warning are further
+robustness mechanisms that allow the pipeline to complete even when an individual stage
+underperforms or fails.
+
+\subsection{Discussion}
+
+The current implementation should be regarded as systems-level validation rather than a
+quantitative reconstruction benchmark. The project documentation does not report
+standardized geometric metrics such as Chamfer distance, completeness, precision, recall,
+or F-score, nor does it provide controlled comparisons against alternative reconstruction
+systems. Accordingly, the results establish functional integration and practical behavior
+but do not support claims of superior reconstruction accuracy.
+
+\section{Conclusions}
+
+This paper presented z-shift, a modular pipeline for converting heterogeneous
+two-dimensional visual media into 3D representations. The system integrates media
+classification and normalization, motion-aware sampling, multi-source synchronization,
+MASt3R-based reconstruction, optional TSDF fusion, mesh refinement, and
+application-specific delivery. The main contribution is the integration of these stages
+into a reproducible workflow rather than a new reconstruction network. The architecture
+explicitly separates ingestion, reconstruction, refinement, and delivery, enabling
+individual components to be modified or evaluated independently. The implementation
+demonstrates a functional offline path from heterogeneous input to refined GLB and
+point-cloud assets. The results also expose practical limitations: large mesh refinement
+remains computationally expensive, real-time delivery is incomplete, and quantitative
+reconstruction evaluation has not yet been performed. Nevertheless, the system provides a
+foundation for investigating the transition from isolated state-of-the-art reconstruction
+algorithms toward complete 2D-to-3D asset-generation systems.
+
+\section{Limitations}
+
+The current system has several limitations. First, the reconstruction stage requires
+multiple views and does not support single-image reconstruction. Second, RTSP and WebRTC
+are not implemented, and although WebSocket live ingestion is available, the live outcome
+pathway remains incomplete. Third, mesh refinement is CPU-bound and becomes expensive for
+large reconstructions. Fourth, TSDF fusion can impose substantial memory and runtime
+requirements. Fifth, the current viewing pathway exports a conventional colored point
+cloud rather than a full Gaussian Splatting representation. Finally, auto-rigging fits
+template skeletons to the mesh bounding box rather than predicting joints from geometry,
+which assumes an axis-aligned, upright input, and the system lacks a formal quantitative
+benchmark against competing reconstruction approaches. The current authentication,
+rate-limiting, and streaming state are also in-memory and single-process, reflecting the
+project's research-prototype status.
+
+\section{Future Work}
+
+Future work should first establish a quantitative evaluation framework using public
+multi-view datasets and metrics such as Chamfer distance, point-to-surface error,
+completeness, precision, recall, and F-score. Comparisons with classical MVS, DUSt3R, and
+MASt3R pipelines would help isolate the benefits of the proposed orchestration and
+preprocessing stages. A second priority is real-time reconstruction: the existing live
+ingestion and backpressure mechanisms provide a starting point for WebRTC-based delivery,
+incremental reconstruction, adaptive frame rates, and latency-aware processing. Third, GPU
+acceleration and more efficient spatial algorithms should be investigated for mesh
+refinement, and frame selection could be extended beyond motion scores by jointly
+considering viewpoint diversity, image quality, feature richness, and reconstruction
+uncertainty. Fourth, the viewing pathway could be extended toward 3D Gaussian Splatting
+\cite{b8}, while the auto-rigging component could advance from template fitting toward
+learned skeleton prediction to improve animation quality. Finally, future evaluation
+should consider not only geometric accuracy but also downstream asset usability, rendering
+performance, editing complexity, watertightness, and animation quality.
+
+\begin{thebibliography}{00}
+\bibitem{b1} R. Hartley and A. Zisserman, Multiple View Geometry in Computer Vision, 2nd ed. Cambridge, U.K.: Cambridge Univ. Press, 2004.
+\bibitem{b2} J. L. Sch\"onberger and J.-M. Frahm, ``Structure-from-motion revisited,'' in Proc. IEEE CVPR, 2016, pp. 4104--4113.
+\bibitem{b3} S. M. Seitz, B. Curless, J. Diebel, D. Scharstein, and R. Szeliski, ``A comparison and evaluation of multi-view stereo reconstruction algorithms,'' in Proc. IEEE CVPR, 2006, pp. 519--528.
+\bibitem{b4} Y. Furukawa and C. Hern\'andez, ``Multi-view stereo: A tutorial,'' Foundations and Trends in Computer Graphics and Vision, vol. 9, no. 1--2, pp. 1--148, 2015.
+\bibitem{b5} M. Goesele, B. Curless, and S. M. Seitz, ``Multi-view stereo revisited,'' in Proc. IEEE CVPR, 2006, pp. 2402--2409.
+\bibitem{b6} B. Mildenhall, P. P. Srinivasan, M. Tancik, J. T. Barron, R. Ramamoorthi, and R. Ng, ``NeRF: Representing scenes as neural radiance fields for view synthesis,'' in Proc. ECCV, 2020, pp. 405--421.
+\bibitem{b7} T. M\"uller, A. Evans, C. Schied, and A. Keller, ``Instant neural graphics primitives with a multiresolution hash encoding,'' ACM Trans. Graph., vol. 41, no. 4, 2022.
+\bibitem{b8} B. Kerbl, G. Kopanas, T. Leimk\"uhler, and G. Drettakis, ``3D Gaussian splatting for real-time radiance field rendering,'' ACM Trans. Graph., vol. 42, no. 4, 2023.
+\bibitem{b9} J. T. Barron et al., ``Mip-NeRF 360: Unbounded anti-aliased neural radiance fields,'' in Proc. IEEE/CVF CVPR, 2022, pp. 5470--5479.
+\bibitem{b10} A. Chen et al., ``MVSNeRF: Fast generalizable radiance field reconstruction from multi-view stereo,'' in Proc. IEEE/CVF ICCV, 2021, pp. 14124--14133.
+\bibitem{b11} A. Yu et al., ``pixelNeRF: Neural radiance fields from one or few images,'' in Proc. IEEE/CVF CVPR, 2021, pp. 4578--4587.
+\bibitem{b12} Q. Wang et al., ``IBRNet: Learning multi-view image-based rendering,'' in Proc. IEEE/CVF CVPR, 2021, pp. 4690--4699.
+\bibitem{b13} A. Trevithick and B. Yang, ``GRF: Learning a general radiance field for 3D representation and rendering,'' in Proc. IEEE/CVF ICCV, 2021, pp. 15182--15192.
+\bibitem{b14} S. Wang, V. Leroy, Y. Cabon, B. Chidlovskii, and J. Revaud, ``DUSt3R: Geometric 3D vision made easy,'' in Proc. IEEE/CVF CVPR, 2024.
+\bibitem{b15} V. Leroy, Y. Cabon, and J. Revaud, ``Grounding image matching in 3D with MASt3R,'' in Proc. IEEE/CVF ECCV, 2024.
+\bibitem{b16} G. Taubin, ``A signal processing approach to fair surface design,'' in Proc. ACM SIGGRAPH, 1995, pp. 351--358.
+\bibitem{b17} M. Garland and P. S. Heckbert, ``Surface simplification using quadric error metrics,'' in Proc. ACM SIGGRAPH, 1997, pp. 209--216.
+\bibitem{b18} P. Cignoni, M. Callieri, M. Corsini, M. Dellepiane, F. Ganovelli, and G. Ranzuglia, ``MeshLab: An open-source mesh processing tool,'' in Proc. Eurographics Italian Chapter Conference, 2008, pp. 129--136.
+\bibitem{b19} M. Botsch et al., Polygon Mesh Processing. Natick, MA, USA: A K Peters/CRC Press, 2010.
+\bibitem{b20} L. P. Kobbelt, S. Campagna, J. Vorsatz, and H.-P. Seidel, ``Interactive multi-resolution modeling on arbitrary meshes,'' in Proc. ACM SIGGRAPH, 1998, pp. 105--114.
+\bibitem{b21} B. Curless and M. Levoy, ``A volumetric method for building complex models from range images,'' in Proc. ACM SIGGRAPH, 1996, pp. 303--312.
+\bibitem{b22} R. A. Newcombe et al., ``KinectFusion: Real-time dense surface mapping and tracking,'' in Proc. IEEE ISMAR, 2011, pp. 127--136.
+\bibitem{b23} M. Kazhdan, M. Bolitho, and H. Hoppe, ``Poisson surface reconstruction,'' in Proc. Eurographics Symposium on Geometry Processing, 2006, pp. 61--70.
+\bibitem{b24} I. Baran and J. Popovi\'c, ``Automatic rigging and animation of 3D characters,'' ACM Trans. Graph., vol. 26, no. 3, 2007.
+\bibitem{b25} T. Groueix et al., ``Joint reconstruction and segmentation of 3D human body parts from point clouds,'' in Proc. IEEE CVPR, 2018.
+\bibitem{b26} A. Kanazawa, M. J. Black, D. W. Jacobs, and J. Malik, ``End-to-end recovery of human shape and pose,'' in Proc. IEEE CVPR, 2018, pp. 7122--7131.
+\bibitem{b27} N. Neverova et al., ``Continuous 3D human pose estimation in the wild,'' in Proc. IEEE/CVF ICCV, 2019.
+\bibitem{b28} C. R. Harris et al., ``Array programming with NumPy,'' Nature, vol. 585, pp. 357--362, 2020.
+\bibitem{b29} M. Abadi et al., ``TensorFlow: A system for large-scale machine learning,'' in Proc. 12th USENIX OSDI, 2016, pp. 265--283.
+\bibitem{b30} A. Paszke et al., ``PyTorch: An imperative style, high-performance deep learning library,'' in Advances in Neural Information Processing Systems, vol. 32, 2019.
+\bibitem{b31} K. He, X. Zhang, S. Ren, and J. Sun, ``Deep residual learning for image recognition,'' in Proc. IEEE CVPR, 2016, pp. 770--778.
+\bibitem{b32} J. Shotton et al., ``Real-time human pose recognition in parts from single depth images,'' in Proc. IEEE CVPR, 2011, pp. 1297--1304.
+\bibitem{b33} G. Pavlakos et al., ``Learning 3D human pose and shape via model-fitting in the loop,'' in Proc. IEEE/CVF ICCV, 2019, pp. 2252--2261.
+\bibitem{b34} A. Dai et al., ``ScanNet: Richly-annotated 3D reconstructions of indoor scenes,'' in Proc. IEEE CVPR, 2017, pp. 5828--5839.
+\end{thebibliography}
+
+\end{document}
