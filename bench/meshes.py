@@ -150,7 +150,8 @@ def fragmented_mesh(n_tri: int, n_components: int, seed: int = 0) -> trimesh.Tri
     A fused MASt3R pointmap is not one connected surface: each view contributes
     its own sheet and confidence masking punches them into many disconnected
     islands. Component count is therefore an independent axis from triangle
-    count, and `keep_object_components` walks every piece.
+    count, and component-filter's `split_bodies()` walks every piece
+    regardless of how many survive filtering afterward.
     """
     if n_components < 1:
         raise ValueError("n_components must be >= 1")

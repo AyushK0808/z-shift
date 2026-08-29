@@ -201,8 +201,13 @@ def merge_components(pieces: Sequence[pv.PolyData]) -> pv.PolyData:
 
 
 def keep_object_components(mesh: pv.DataSet) -> pv.PolyData:
+    # Keeps the single largest piece by cell count and discards the rest --
+    # object-mode captures are one subject, and stray fragments below the
+    # main body are debris, not additional geometry to preserve (bench/
+    # FINDINGS.md #2; the architecture text already described this behaviour
+    # before the code implemented it).
     pieces = get_component_pieces(mesh)
-    return merge_components(pieces)
+    return max(pieces, key=lambda piece: piece.n_cells)
 
 
 def filter_room_components(mesh: pv.DataSet, min_cell_count: int) -> pv.PolyData:

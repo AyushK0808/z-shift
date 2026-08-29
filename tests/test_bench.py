@@ -616,13 +616,13 @@ def test_a2_stage_profile_runs_without_the_profiler(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_object_mode_keeps_every_fragment_it_is_given() -> None:
-    """A3's expected negative result, pinned.
+def test_object_mode_keeps_only_the_largest_component() -> None:
+    """A3's finding, fixed and pinned (bench/FINDINGS.md #2).
 
-    SIV-D/SV-B say component filtering "removes isolated fragments". In object
-    mode `keep_object_components` merges every piece and drops none. If this
-    test starts failing, the code was changed to match the paper -- update
-    A3's commentary and the paper text together.
+    SIV-D/SV-B say component filtering "removes isolated fragments".
+    `keep_object_components` used to merge every piece and drop none; it now
+    keeps only the single largest piece by cell count. If this test starts
+    failing, check whether the code regressed or the paper text changed.
     """
     from spatial_ingestion.refinement import MeshCleaningConfig, clean_mesh
 
@@ -630,7 +630,7 @@ def test_object_mode_keeps_every_fragment_it_is_given() -> None:
     assert len(mesh.split(only_watertight=False)) == 6
 
     result = clean_mesh(to_pyvista(mesh), MeshCleaningConfig(mode="object", smoothing_iters=0))
-    assert len(result["mesh"].split_bodies()) == 6
+    assert len(result["mesh"].split_bodies()) == 1
 
 
 def test_hole_filling_is_skipped_on_sheet_like_input() -> None:

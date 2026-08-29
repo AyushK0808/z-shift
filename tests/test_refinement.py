@@ -78,14 +78,14 @@ def test_room_mode_keeps_major_sheet_and_drops_small_debris() -> None:
     assert result["non_manifold_edge_count"] == 0
 
 
-def test_multi_sheet_object_mode_keeps_all_components() -> None:
+def test_multi_sheet_object_mode_keeps_only_the_largest_component() -> None:
     mesh = _make_disjoint_sheets()
 
     result = clean_mesh(
         mesh, MeshCleaningConfig(mode="object", smoothing_iters=0, verify_watertight=False)
     )
 
-    assert len(result["mesh"].split_bodies()) == 2
+    assert len(result["mesh"].split_bodies()) == 1
 
 
 def test_nan_rejection() -> None:
