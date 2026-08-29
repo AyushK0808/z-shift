@@ -188,9 +188,12 @@ def get_component_pieces(mesh: pv.DataSet) -> list[pv.PolyData]:
 
 
 def merge_components(pieces: Sequence[pv.PolyData]) -> pv.PolyData:
-    merged = pieces[0].copy(deep=True)
-    for piece in pieces[1:]:
-        merged = merged.merge(piece, merge_points=False)
+    # A per-piece `merged.merge(piece)` loop re-copies the whole accumulated
+    # mesh on every iteration -- O(k^2) in piece count. Passing the rest of
+    # the list to a single `merge()` call appends them all in one pass
+    # instead (bench/FINDINGS.md #1: ~64x faster at 1000 components, same
+    # output, since merge_points=False makes this a pure concatenation).
+    merged = pieces[0].merge(list(pieces[1:]), merge_points=False)
     surface = merged.extract_surface(algorithm=None)
     if surface.n_cells == 0:
         raise MeshProcessingError("Component fusion produced an empty surface")

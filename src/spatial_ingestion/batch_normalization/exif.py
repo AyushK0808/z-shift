@@ -17,6 +17,13 @@ class ExifExtractor:
                 for tag_id, value in exif.items():
                     name = ExifTags.TAGS.get(tag_id, str(tag_id))
                     raw[name] = self._json_safe(value)
+                # FocalLength, FocalLengthIn35mmFilm and LensModel live in the
+                # Exif SubIFD (pointed to by IFD0 tag 0x8769), not IFD0 itself --
+                # exif.items() alone never yields them, so every real camera
+                # photo looked eligible-free regardless of what it carried.
+                for tag_id, value in exif.get_ifd(ExifTags.IFD.Exif).items():
+                    name = ExifTags.TAGS.get(tag_id, str(tag_id))
+                    raw[name] = self._json_safe(value)
         except Exception:
             return CameraIntrinsics()
 

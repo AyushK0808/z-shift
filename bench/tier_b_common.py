@@ -214,6 +214,26 @@ def run_reconstruction(job: ReconstructionJob, *, clear_cache: bool = True) -> d
     }
 
 
+def require_cuda_device() -> str:
+    """Resolve the device Tier B must run on: CUDA, no fallback.
+
+    Tier B reports wall-clock time and peak memory. A silent CPU or MPS
+    fallback (what `Mast3rRunParams(device="auto")` resolves to when CUDA is
+    missing) would produce numbers that look like results but measure the
+    wrong hardware, so B1-B6 and B8 call this instead of accepting "auto".
+    """
+    import torch
+
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "Tier B benchmarks require a CUDA GPU. torch.cuda.is_available() "
+            "is False on this machine -- run on a CUDA-enabled host, or use "
+            "the Phase 2 CLI directly (spatial_ingestion.reconstruction.cli) "
+            "with --device cpu for non-benchmark reconstruction."
+        )
+    return "cuda"
+
+
 def gpu_peak_mb() -> float | None:
     try:
         import torch

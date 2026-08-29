@@ -72,7 +72,7 @@ def run(
     image_size: int = 512,
     tsdf_thresh: float = 0.2,
     n_images: int = 8,
-    device: str = "auto",
+    device: str = "cuda",
     deterministic_modes: tuple[bool, ...] = (True, False),
     clear_cache: bool = True,
     output_root: Path | None = None,
@@ -93,6 +93,7 @@ def run(
                     tsdf_thresh=tsdf_thresh,
                     seed=seed,
                     device=device,
+                    deterministic=deterministic,
                 )
                 output_path = (
                     root / scene.name / f"det{int(deterministic)}" / f"run{repeat}" / "mesh.glb"
@@ -161,7 +162,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--tsdf-thresh", type=float, default=0.2)
     parser.add_argument("--n-images", type=int, default=8)
-    parser.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda", "mps"])
+    parser.add_argument(
+        "--device",
+        default="cuda",
+        choices=["auto", "cpu", "cuda", "mps"],
+        help="defaults to cuda, since B1-B6/B8 are CUDA-only; override to cpu/mps "
+        "for this experiment's documented cross-device determinism comparison",
+    )
     parser.add_argument(
         "--keep-cache",
         action="store_true",

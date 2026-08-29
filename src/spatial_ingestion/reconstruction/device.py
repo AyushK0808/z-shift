@@ -47,8 +47,8 @@ def memory_summary(device: str) -> str:
 DETERMINISTIC_ALGORITHMS_REQUESTED = False
 
 
-def set_seed(seed: int) -> None:
-    """Seed every RNG the pipeline touches and ask torch for determinism.
+def set_seed(seed: int, deterministic: bool = True) -> None:
+    """Seed every RNG the pipeline touches and set torch's determinism mode.
 
     `warn_only=True` because several MASt3R/dust3r kernels have no
     deterministic implementation; failing the run outright would be worse than
@@ -66,10 +66,10 @@ def set_seed(seed: int) -> None:
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
         try:
-            torch.use_deterministic_algorithms(True, warn_only=True)
-            DETERMINISTIC_ALGORITHMS_REQUESTED = True
+            torch.use_deterministic_algorithms(deterministic, warn_only=True)
+            DETERMINISTIC_ALGORITHMS_REQUESTED = deterministic
         except (RuntimeError, AttributeError) as exc:
-            logger.warning("Could not enable deterministic algorithms: %s", exc)
+            logger.warning("Could not set deterministic algorithms=%s: %s", deterministic, exc)
     except ImportError:
         pass
 

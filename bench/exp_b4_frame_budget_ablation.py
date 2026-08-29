@@ -38,6 +38,7 @@ from bench.tier_b_common import (
     iter_scenes,
     load_gt_points,
     point_cloud_from_output,
+    require_cuda_device,
     reset_gpu_peak,
     run_reconstruction,
     score_against_gt,
@@ -165,7 +166,11 @@ def run(
     scenes = iter_scenes(SceneSet.from_manifest(manifest), scene_names)
     root = output_root or (Path("data") / "bench" / EXP_ID)
     params = Mast3rRunParams(
-        image_size=image_size, tsdf_thresh=tsdf_thresh, seed=seed, pairing_strategy="swin"
+        image_size=image_size,
+        tsdf_thresh=tsdf_thresh,
+        seed=seed,
+        pairing_strategy="swin",
+        device=require_cuda_device(),
     )
 
     for scene_index, scene in enumerate(scenes):

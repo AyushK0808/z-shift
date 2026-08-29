@@ -32,6 +32,7 @@ from bench.tier_b_common import (
     iter_scenes,
     load_gt_points,
     point_cloud_from_output,
+    require_cuda_device,
     reset_gpu_peak,
     run_reconstruction,
     score_against_gt,
@@ -67,7 +68,9 @@ def run(
             continue
 
         image_paths = scene.image_paths(n_images)
-        params = Mast3rRunParams(image_size=image_size, tsdf_thresh=tsdf_thresh, seed=seed)
+        params = Mast3rRunParams(
+            image_size=image_size, tsdf_thresh=tsdf_thresh, seed=seed, device=require_cuda_device()
+        )
         output_path = root / scene.name / f"{scene.name}.glb"
         job = build_job(image_paths, output_path, params=params, label=scene.name)
 

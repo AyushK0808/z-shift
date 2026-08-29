@@ -71,6 +71,7 @@ class Mast3rRunParams(BaseModel):
     tsdf_thresh: float = 0.2
     min_conf_thr: float = 1.5
     seed: int | None = None
+    deterministic: bool = True
     dry_run: bool = False
 
 

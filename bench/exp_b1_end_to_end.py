@@ -22,7 +22,13 @@ from typing import Any
 from bench.csvio import ResultWriter
 from bench.harness import experiment_parser, finish
 from bench.instrument import peak_rss_mb
-from bench.tier_b_common import SceneSet, clear_alignment_cache, iter_scenes, timed
+from bench.tier_b_common import (
+    SceneSet,
+    clear_alignment_cache,
+    iter_scenes,
+    require_cuda_device,
+    timed,
+)
 from spatial_ingestion.auto_rigging.models import ArticulationType, AutoRigConfig
 from spatial_ingestion.final_pipeline.handoff import run_ingested_pipeline
 from spatial_ingestion.outcomes_engine.engine import DEFAULT_DELIVERABLES_ROOT
@@ -121,7 +127,10 @@ def run(
                         inputs,
                         use_case=use_case,
                         mast3r_params=Mast3rRunParams(
-                            image_size=image_size, tsdf_thresh=tsdf_thresh, seed=seed
+                            image_size=image_size,
+                            tsdf_thresh=tsdf_thresh,
+                            seed=seed,
+                            device=require_cuda_device(),
                         ),
                         refinement_config=MeshCleaningConfig(mode="object"),
                         rigging_config=(

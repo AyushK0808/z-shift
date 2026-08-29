@@ -14,6 +14,20 @@ logger = logging.getLogger(__name__)
 
 _SUPPORTED_FORMATS = {".obj", ".glb", ".ply"}
 _tsdf_cuda_hardcode_patched = False
+_tsdf_sample_budget_patched = False
+
+# `TSDFPostProcess._refine_depths_with_TSDF` allocates H*W*nsamples float
+# tensors per image *before* `TSDF_batchsize` chunking ever applies (its
+# vendor default is nsamples=1000, not exposed through __init__). At
+# image_size=512 that alone needs several GiB, on top of whatever the
+# alignment stage already holds -- on a 16GB T4 with MASt3R loaded, B7/B2
+# runs measured as little as ~1.7GiB free at that point, so TSDF fusion
+# OOM'd and fell back to the unfused per-view path on every single run.
+# These two constants are the levers that keep it inside that budget:
+# nsamples bounds the per-image allocation, TSDF_batchsize bounds the
+# later per-point query (which also multiplies by n_imgs internally).
+_TSDF_SAMPLE_BUDGET = 150
+_TSDF_QUERY_BATCHSIZE = 200_000
 
 
 def build_run_manifest(
@@ -135,6 +149,28 @@ def _patch_tsdf_cuda_hardcode() -> None:
     _tsdf_cuda_hardcode_patched = True
 
 
+def _patch_tsdf_sample_budget(nsamples: int = _TSDF_SAMPLE_BUDGET) -> None:
+    """Lower the vendor's per-pixel Monte Carlo sample count for TSDF refinement.
+
+    `nsamples` isn't a `TSDFPostProcess.__init__` parameter -- it's a default
+    baked into `_refine_depths_with_TSDF`, which `torch.no_grad()` wraps.
+    Assigning `__defaults__` on the decorated method is a no-op (the wrapper
+    calls through a closure over the original function, not its own
+    attributes); the original is reachable via `__wrapped__`, which is what
+    actually needs patching. Fewer samples means a coarser Monte Carlo depth
+    search, not a biased one -- an acceptable trade for a run that otherwise
+    always falls back to the unfused path (see `_TSDF_SAMPLE_BUDGET` above).
+    """
+    global _tsdf_sample_budget_patched
+    if _tsdf_sample_budget_patched:
+        return
+
+    from mast3r.cloud_opt.tsdf_optimizer import TSDFPostProcess
+
+    TSDFPostProcess._refine_depths_with_TSDF.__wrapped__.__defaults__ = (1, nsamples)
+    _tsdf_sample_budget_patched = True
+
+
 def export_scene_to_mesh(
     scene: Any,
     output_path: Path,
@@ -160,8 +196,15 @@ def export_scene_to_mesh(
     imgs = to_numpy(scene.imgs)
     if tsdf_thresh > 0:
         _patch_tsdf_cuda_hardcode()
+        _patch_tsdf_sample_budget()
         try:
-            tsdf = TSDFPostProcess(scene, TSDF_thresh=tsdf_thresh)
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            tsdf = TSDFPostProcess(
+                scene, TSDF_thresh=tsdf_thresh, TSDF_batchsize=_TSDF_QUERY_BATCHSIZE
+            )
             pts3d, _, confs = to_numpy(tsdf.get_dense_pts3d(clean_depth=True))
         except (MemoryError, RuntimeError, AssertionError) as exc:
             logger.warning("TSDF fusion failed (%s), falling back to non-TSDF mode", exc)

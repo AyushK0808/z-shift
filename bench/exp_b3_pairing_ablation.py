@@ -25,6 +25,7 @@ from bench.tier_b_common import (
     iter_scenes,
     load_gt_points,
     point_cloud_from_output,
+    require_cuda_device,
     reset_gpu_peak,
     run_reconstruction,
     score_against_gt,
@@ -79,6 +80,7 @@ def run(
                     tsdf_thresh=tsdf_thresh,
                     seed=seed,
                     pairing_strategy=strategy,
+                    device=require_cuda_device(),
                 )
                 output_path = root / scene.name / f"n{n_images}" / strategy / "mesh.glb"
                 job = build_job(

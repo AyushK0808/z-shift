@@ -30,7 +30,7 @@ def run(job: ReconstructionJob) -> int:
 
     device = resolve_device(params.device)
     if params.seed is not None:
-        set_seed(params.seed)
+        set_seed(params.seed, deterministic=params.deterministic)
 
     manifest = _build_manifest(
         image_paths=image_paths,
