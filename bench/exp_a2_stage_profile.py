@@ -86,7 +86,17 @@ def run(
 
     for name, spec in configurations.items():
         mesh = _build(spec, seed)
-        config = MeshCleaningConfig(mode="object", smoothing_iters=15, verify_watertight=True)
+        # many_components needs every fragment kept so component_filter is
+        # measured against the full mesh, not the single largest piece object
+        # mode now retains (bench/FINDINGS.md #2); big_triangles is a single
+        # component, so mode makes no difference there and stays "object".
+        mode = "room" if spec["kind"] == "components" else "object"
+        config = MeshCleaningConfig(
+            mode=mode,
+            smoothing_iters=15,
+            verify_watertight=True,
+            min_cell_count=0 if mode == "room" else 500,
+        )
 
         for repeat in range(n_repeats):
             start = time.perf_counter()

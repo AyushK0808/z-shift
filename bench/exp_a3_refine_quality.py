@@ -9,18 +9,20 @@ The trick that makes this cheap: damage a known-good mesh by a known amount,
 then score the refined output against the *original*. No reconstruction ground
 truth is needed, so this runs on a laptop.
 
-Two negative results are expected by construction and are reported rather than
-hidden:
+Two defects were found here and have since been fixed in the code
+(bench/FINDINGS.md #2 and #3); this experiment still records both signals so
+a regression shows up as a result, not a silent behaviour change:
 
-  fragments   `keep_object_components` calls
-              `merge_components(get_component_pieces(mesh))` -- it merges every
-              piece and drops none, and a test asserts this deliberately. Object
-              mode should therefore show fragments-in == fragments-out.
+  fragments   `keep_object_components` used to merge every piece and drop
+              none. It now keeps only the single largest piece by cell count,
+              so object mode should show components-out == 1 regardless of
+              how many fragments were injected.
   hole filling `fill_mesh_holes` returns early when `hole_size is None and
-              is_sheet_like(mesh)`. The trigger rate of that guard is recorded
-              per cell, because if it fires on sheet-like inputs -- which is
-              what fused pointmaps are -- then the hole-filling claim describes
-              a branch that rarely executes.
+              is_sheet_like(...)`. The check now runs against the raw,
+              pre-component-filter mesh rather than the filtered one, so the
+              guard reflects whether the *capture* is inherently thin and
+              open rather than an artifact of what filtering happened to
+              leave behind. The trigger rate is recorded per cell either way.
 
 part="refinement"        the corruption grid
 part="smoothing_baseline" Taubin vs Laplacian at matched iterations, which is
@@ -133,9 +135,12 @@ def _score(
 def _guard_probe(poly: pv.PolyData, mode: Mode, min_cell_count: int) -> dict[str, Any]:
     """Reproduce the component-filter step so the hole-fill guard can be observed.
 
-    `fill_mesh_holes` tests `is_sheet_like` on the *filtered* mesh, not the raw
-    input, so checking the input would mis-report the trigger rate.
+    `fill_mesh_holes` now tests `is_sheet_like` on the raw, pre-filter mesh
+    (`poly`), not the filtered one -- so the guard result is independent of
+    `mode` and of `filtered`, which is only computed here to also report
+    `filtered_components`.
     """
+    guard_fires = bool(is_sheet_like(poly))
     try:
         filtered = (
             keep_object_components(poly)
@@ -145,10 +150,15 @@ def _guard_probe(poly: pv.PolyData, mode: Mode, min_cell_count: int) -> dict[str
     except Exception as exc:  # noqa: BLE001 - room mode legitimately refuses
         # `filter_room_components` raises when no component clears
         # min_cell_count. That is a real outcome for a heavily fragmented
-        # input, not a harness bug, so record it and move on.
-        return {"holefill_guard_fires": None, "guard_probe_error": str(exc)[:120]}
+        # input, not a harness bug, so record it and move on; the guard
+        # result itself is unaffected since it no longer depends on filtering.
+        return {
+            "holefill_guard_fires": guard_fires,
+            "filtered_components": None,
+            "guard_probe_error": str(exc)[:120],
+        }
     return {
-        "holefill_guard_fires": bool(is_sheet_like(filtered)),
+        "holefill_guard_fires": guard_fires,
         "filtered_components": _n_components(filtered),
     }
 
@@ -324,7 +334,7 @@ def _summarise(writer: ResultWriter) -> None:
             f"{improved:>10.2f}  (n={n}, delta={mean_delta:+.5f})"
         )
 
-    print("\n  Fragment removal (object mode is expected to remove none)")
+    print("\n  Fragment removal (object mode keeps only the largest component)")
     print(f"  {'base':<16}{'mode':<8}{'injected':>9}{'comp_in':>9}{'comp_out':>10}")
     for base in dict.fromkeys(r["base"] for r in grid):
         for mode in dict.fromkeys(r["mode"] for r in grid):
@@ -344,7 +354,7 @@ def _summarise(writer: ResultWriter) -> None:
                     f"{np.mean([r['components_out'] for r in subset]):>10.1f}"
                 )
 
-    print("\n  Hole-fill guard trigger rate (is_sheet_like on the filtered mesh)")
+    print("\n  Hole-fill guard trigger rate (is_sheet_like on the raw, pre-filter mesh)")
     for base in dict.fromkeys(r["base"] for r in grid):
         for mode in dict.fromkeys(r["mode"] for r in grid):
             subset = [

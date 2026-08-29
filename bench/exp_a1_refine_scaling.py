@@ -12,8 +12,16 @@ cost surface instead, on two axes:
 The second axis exists because a pilot run showed triangle count alone cannot
 reproduce the reported cost: 500k triangles in one component refines in about
 3 s on this machine. A fused MASt3R pointmap is not one connected surface, and
-`keep_object_components` walks and merges every piece, so component count is
-an independent -- and far steeper -- cost driver.
+component-filtering's `split_bodies()` walks every piece regardless of how
+many survive filtering, so component count is an independent -- and far
+steeper -- cost driver.
+
+The "components" and "interaction" ladders run in room mode with
+`min_cell_count=0`, not object mode: object mode now keeps only the largest
+component (bench/FINDINGS.md #2), which would shrink the mesh handed to
+smoothing and finalization as the fragment count rose, confounding the very
+axis this experiment holds fixed. Room mode with no minimum keeps every
+fragment, same as object mode used to before that fix.
 
 The interaction ladder exists because neither axis alone reaches the reported
 cost, but together they are strongly super-additive: 2.5M triangles in one
@@ -38,7 +46,7 @@ from bench.harness import experiment_parser, finish
 from bench.meshes import SOURCES, fragmented_mesh, ladder_mesh, to_pyvista
 from spatial_ingestion.instrumentation import peak_rss_mb
 from spatial_ingestion.refinement import MeshCleaningConfig, clean_mesh
-from spatial_ingestion.refinement.core import is_sheet_like
+from spatial_ingestion.refinement.core import Mode, is_sheet_like
 
 EXP_ID = "a1_refine_scaling"
 
@@ -75,10 +83,20 @@ def _measure(
     *,
     smoothing: int,
     watertight: bool,
+    mode: Mode = "object",
 ) -> dict[str, Any]:
     """One timed `clean_mesh` call. Cleaning is timed; mesh building is not."""
     config = MeshCleaningConfig(
-        mode="object", smoothing_iters=smoothing, verify_watertight=watertight
+        mode=mode,
+        smoothing_iters=smoothing,
+        verify_watertight=watertight,
+        # Room mode with min_cell_count=0 keeps every fragment, same as object
+        # mode used to before it was fixed to keep only the largest component
+        # (bench/FINDINGS.md #2). The "components" and "interaction" ladders
+        # need every fragment kept so component count stays the cost driver
+        # being measured, rather than being confounded by how much geometry
+        # object mode now discards.
+        min_cell_count=0 if mode == "room" else 500,
     )
     start = time.perf_counter()
     result = clean_mesh(mesh, config)
@@ -161,9 +179,12 @@ def run(
 
                     mesh = _build(ladder, source, rung, seed)
                     sheet_like = bool(is_sheet_like(mesh))
+                    ladder_mode = "room" if ladder == "components" else "object"
                     for repeat in range(n_repeats):
                         try:
-                            measured = _measure(mesh, smoothing=smoothing, watertight=watertight)
+                            measured = _measure(
+                                mesh, smoothing=smoothing, watertight=watertight, mode=ladder_mode
+                            )
                         except MemoryError as exc:
                             measured = {"status": f"MemoryError: {exc}"}
                         writer.add(
@@ -195,6 +216,7 @@ def run(
                     mesh,
                     smoothing=INTERACTION_SMOOTHING,
                     watertight=INTERACTION_WATERTIGHT,
+                    mode="room",
                 )
             except MemoryError as exc:
                 measured = {"status": f"MemoryError: {exc}"}
