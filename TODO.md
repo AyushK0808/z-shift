@@ -161,8 +161,14 @@ These need no GPU and close real gaps.
       turns "bounds reconstruction cost" into a defensible number.
 - [ ] **TSDF fallback characterisation** (B5), including how often
       `_patch_tsdf_cuda_hardcode` was applied.
-- [ ] **Determinism bound** (B7) — §V-D currently claims reproducibility with
-      manifest backing but no measured run-to-run spread.
+- [x] **Determinism bound** (B7) — done. `bench/results/b7_determinism.csv`
+      (3 scenes x 2 modes x 2 repeats, Tesla T4): 0.0 Hausdorff-95/Chamfer and
+      byte-identical GLBs on every row, whether or not
+      `deterministic_requested` was set. The flag costs a fixed ~20 s (~21%)
+      per run and did not change the measured reproducibility on this
+      hardware. See FINDINGS §11 for the numbers and caveats (single GPU
+      model, single seed, no CPU/cross-device rows) and the suggested §V-D
+      wording.
 
 ---
 
