@@ -10,10 +10,14 @@ here because B2, B3, B4, B6 and B8 differ only in which knob they turn.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
+import pickle
 import re
 import shutil
+import tempfile
 import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -159,11 +163,65 @@ class SceneSet:
         return cls(scenes=scenes)
 
 
+# B2, B3, B5 and B6 each run as their own subprocess (section 13 of the Tier B
+# notebook), and B6 additionally loads its GT file a second time for face
+# connectivity -- so with no cache, DTU's raw structured-light scans (tens of
+# millions of points before subsampling) get trimesh.load()'d from scratch up
+# to five times per scene for a byte-identical result every time (same file,
+# same seed). Cached to disk, keyed on the source file's own size/mtime so a
+# changed mount can't serve a stale array; ZSHIFT_GT_CACHE_DIR overrides the
+# location, e.g. to survive across Kaggle sessions on a persisted output
+# volume.
+_GT_CACHE_DIR = Path(
+    os.environ.get("ZSHIFT_GT_CACHE_DIR", Path(tempfile.gettempdir()) / "zshift_gt_cache")
+)
+
+
+def _gt_cache_key(resolved: Path, *parts: object) -> Path:
+    stat = resolved.stat()
+    digest = hashlib.sha256(
+        "|".join(
+            [str(resolved), str(stat.st_size), str(stat.st_mtime_ns), *map(str, parts)]
+        ).encode()
+    ).hexdigest()
+    return _GT_CACHE_DIR / digest
+
+
+def load_gt_object(path: Path) -> Any:
+    """Load a GT point cloud or mesh via trimesh, cached once per source file.
+
+    `load_gt_points` only needs points, but B6 separately needs face
+    connectivity (for `normal_consistency`) and used to call `trimesh.load`
+    on the same GT file a second time, uncached, on top of whatever
+    `load_gt_points` was already doing. Both now come through here. Pickled
+    rather than re-exported, so a cache hit skips trimesh's own parse/validate
+    pass entirely instead of just moving where it happens.
+    """
+    resolved = Path(path).resolve()
+    cache_path = _gt_cache_key(resolved, "raw").with_suffix(".pkl")
+    if cache_path.exists():
+        with cache_path.open("rb") as handle:
+            return pickle.load(handle)  # noqa: S301 - our own cache, not external input
+
+    import trimesh
+
+    loaded = trimesh.load(str(resolved))
+    _GT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    with cache_path.open("wb") as handle:
+        pickle.dump(loaded, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    return loaded
+
+
 def load_gt_points(path: Path, max_points: int = 500_000, seed: int = 0) -> np.ndarray:
     """Load a GT point cloud or mesh as a point array, subsampled for tractability."""
     import trimesh
 
-    loaded = trimesh.load(str(path))
+    resolved = Path(path).resolve()
+    cache_path = _gt_cache_key(resolved, max_points, seed).with_suffix(".npy")
+    if cache_path.exists():
+        return np.load(cache_path)
+
+    loaded = load_gt_object(resolved)
     if isinstance(loaded, trimesh.PointCloud):
         points = np.asarray(loaded.vertices, dtype=float)
     elif isinstance(loaded, trimesh.Trimesh):
@@ -174,6 +232,9 @@ def load_gt_points(path: Path, max_points: int = 500_000, seed: int = 0) -> np.n
     if len(points) > max_points:
         rng = np.random.default_rng(seed)
         points = points[rng.choice(len(points), max_points, replace=False)]
+
+    _GT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    np.save(cache_path, points)
     return points
 
 

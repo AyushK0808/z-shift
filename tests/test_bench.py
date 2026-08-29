@@ -960,6 +960,44 @@ def test_load_gt_points_handles_point_clouds_and_meshes(tmp_path: Path) -> None:
     assert sampled.shape == (1_000, 3)
 
 
+def test_load_gt_points_and_load_gt_object_hit_disk_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression test for B2/B3/B5/B6 each re-parsing the same DTU scan.
+
+    Every GT-scoring experiment runs in its own subprocess and calls
+    load_gt_points on the same scene with the same seed; B6 also called
+    trimesh.load directly a second time for face connectivity. Both are
+    deterministic given (path, size, mtime, seed), so a second call -- in
+    this process or another -- must not re-invoke trimesh.load at all.
+    """
+    import bench.tier_b_common as tier_b_common
+
+    monkeypatch.setattr(tier_b_common, "_GT_CACHE_DIR", tmp_path / "gt_cache")
+
+    mesh_path = tmp_path / "mesh.ply"
+    trimesh.creation.icosphere(subdivisions=2).export(str(mesh_path))
+
+    calls = []
+    real_load = trimesh.load
+
+    def counting_load(*args, **kwargs):
+        calls.append(args)
+        return real_load(*args, **kwargs)
+
+    monkeypatch.setattr(trimesh, "load", counting_load)
+
+    first = tier_b_common.load_gt_points(mesh_path, max_points=200, seed=0)
+    assert len(calls) == 1
+    second = tier_b_common.load_gt_points(mesh_path, max_points=200, seed=0)
+    assert len(calls) == 1, "second call should hit the .npy cache, not re-parse"
+    np.testing.assert_array_equal(first, second)
+
+    obj = tier_b_common.load_gt_object(mesh_path)
+    assert len(calls) == 1, "load_gt_object should hit the .pkl cache load_gt_points already warmed"
+    assert isinstance(obj, trimesh.Trimesh)
+
+
 def test_clear_alignment_cache_removes_the_cache_and_tolerates_absence(tmp_path: Path) -> None:
     """Without this, a repeat run replays the cached alignment and B7 is vacuous."""
     from bench.tier_b_common import clear_alignment_cache

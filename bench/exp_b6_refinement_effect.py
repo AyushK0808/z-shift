@@ -27,6 +27,7 @@ from bench.tier_b_common import (
     SceneSet,
     build_job,
     iter_scenes,
+    load_gt_object,
     load_gt_points,
     reconstruction_scale_for,
     require_cuda_device,
@@ -78,7 +79,7 @@ def run(
             logger.warning("scene %s has no ground truth; skipping", scene.name)
             continue
         gt_points = load_gt_points(scene.gt_path, seed=seed)
-        gt_mesh = trimesh.load(str(scene.gt_path))
+        gt_mesh = load_gt_object(scene.gt_path)
         gt_is_mesh = isinstance(gt_mesh, trimesh.Trimesh)
 
         image_paths = scene.image_paths(n_images)
