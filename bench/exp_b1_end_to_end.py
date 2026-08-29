@@ -159,6 +159,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = experiment_parser(EXP_ID, __doc__ or "")
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--scenes", nargs="*", default=None)
+    parser.add_argument(
+        "--use-cases",
+        nargs="*",
+        default=["editing", "viewing"],
+        help="run_ingested_pipeline reconstructs the scene fresh per use case, so "
+        "trimming this list is the direct lever on B1's cost; 'editing' alone still "
+        "covers rigging, 'viewing' alone still covers run_full_pipeline rejecting "
+        "--rig for that track",
+    )
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--tsdf-thresh", type=float, default=0.2)
     parser.add_argument("--no-rig", action="store_true")
@@ -185,6 +194,7 @@ def main(argv: list[str] | None = None) -> int:
         seed=args.seed,
         image_size=args.image_size,
         tsdf_thresh=args.tsdf_thresh,
+        use_cases=tuple(args.use_cases),
         rig=not args.no_rig,
         articulation=ArticulationType(args.articulation),
         n_images=args.n_images,
