@@ -357,7 +357,9 @@ largest connected component, discarding stray fragments, while room mode splits 
 into bodies, keeps every component above a minimum cell count, and merges the survivors
 so that scenes legitimately composed of several pieces are preserved. Boundary holes are
 then closed up to a maximum size that, when not specified, is derived from the bounding
-box diagonal so that the threshold scales with the model.
+box diagonal so that the threshold scales with the model; this closure step is skipped
+when the captured geometry is itself thin and open along one axis, so that an
+intentionally one-sided or planar capture is not inappropriately sealed.
 
 Surfaces are smoothed with Taubin smoothing, which suppresses noise without the
 shrinkage introduced by repeated Laplacian passes; in room mode, feature edges and

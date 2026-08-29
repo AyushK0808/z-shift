@@ -79,15 +79,26 @@ $10–30 there, and B4 drops to well under an hour a run.
 
 ## P1 — paper decisions you deferred
 
-You were right to leave these open. They resolve differently.
-
-- [ ] **Finding 2 (object mode keeps every fragment).** Take option (b), change
-      the text. The behaviour is deliberate and already asserted by
-      `test_multi_sheet_object_mode_keeps_all_components`; option (a) breaks a
-      test that encodes a design decision, in order to make one sentence true.
-      §IV-D/§V-B/Fig. 3 should say component filtering is a **room-mode**
-      operation and that object mode deliberately preserves all components.
-- [ ] **Finding 5 (`_cap_frames` discards capture order).** Fix it in code —
+- [x] **Finding 2 (object mode keeps every fragment).** Reversed the call
+      below — took option (a) instead, fixed the code.
+      `keep_object_components` now keeps only the largest component by
+      `n_cells`, matching what §IV-D already said. Renamed
+      `test_multi_sheet_object_mode_keeps_all_components` to
+      `..._keeps_only_the_largest_component` and rewrote its assertion rather
+      than leaving it pinning the old behaviour. A1/A2's component-count
+      ladders relied on object mode keeping every fragment to hold triangle
+      count fixed while sweeping component count; they now run in room mode
+      with `min_cell_count=0` instead — see the comments in
+      `bench/exp_a1_refine_scaling.py` and `bench/exp_a2_stage_profile.py`.
+      A1/A2/A3's CSVs were regenerated against the fixed code.
+      ~~Take option (b), change the text. The behaviour is deliberate and
+      already asserted by `test_multi_sheet_object_mode_keeps_all_components`;
+      option (a) breaks a test that encodes a design decision, in order to
+      make one sentence true. §IV-D/§V-B/Fig. 3 should say component
+      filtering is a **room-mode** operation and that object mode
+      deliberately preserves all components.~~
+- [ ] **Finding 5 (`_cap_frames` discards capture order).** Still deferred, as
+      planned. Fix it in code —
       `src/spatial_ingestion/reconstruction/jobs.py:102`, re-sort by index after
       the cap — but **after B4 runs**. A5/B4 implement V1 and V2 independently of
       the shipped code, so measurement doesn't depend on current behaviour, and
@@ -100,11 +111,14 @@ You were right to leave these open. They resolve differently.
       components, super-additive by 5.5×), name `split_bodies` /
       `merge_components` / `finalize_mesh` with their per-regime shares, and
       drop the generic "GPU acceleration" future-work item in favour of the
-      batched-merge fix.
-- [ ] **Finding 3 (inverted hole-fill guard).** This is a real bug, not a text
-      problem, and it's CPU-testable: move the sheet-like check to the raw input
-      rather than the component-filtered mesh, re-run A3 in minutes, and you
-      have a clean before/after.
+      batched-merge fix (already landed in code; FINDINGS §1's prose and
+      numbers still describe the pre-fix cost and need re-measuring against
+      the regenerated `a1_refine_scaling.csv`/`a2_stage_profile.csv`).
+- [x] **Finding 3 (inverted hole-fill guard).** Fixed as planned:
+      `fill_mesh_holes` now takes a `guard_mesh` argument and `clean_mesh`
+      passes the raw, pre-filter mesh, so `is_sheet_like` no longer depends on
+      what component filtering happened to leave behind. Re-ran A3 against the
+      fixed code; see `bench/FINDINGS.md` #3 for the before/after.
 - [ ] **§VII additions:** `compute_priority_score` is recorded but unconsumed;
       `_patch_tsdf_cuda_hardcode` patches `torch.Tensor.cuda` process-wide.
 

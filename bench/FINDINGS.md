@@ -119,6 +119,27 @@ so it bounds the whole run rather than attributing memory to one cell.
 
 ## 2. Object mode does not remove fragments; room mode removes all of them
 
+**Status: fixed.** `keep_object_components` now keeps only the single largest
+piece by `n_cells` and discards the rest, matching what §IV-D already said
+before the code did it. This is option (a) below, not (b) — the earlier
+recommendation in this document and in `TODO.md` to change the text instead
+was superseded by that call. `tests/test_bench.py::test_object_mode_keeps_only_the_largest_component`
+and `tests/test_refinement.py::test_multi_sheet_object_mode_keeps_only_the_largest_component`
+now pin the fixed behaviour. `a3_refine_quality.csv` has been regenerated
+against the fixed code:
+
+| mode | injected | components in | components out | removed |
+|---|---|---|---|---|
+| object | 0 | 1.0 | 1.0 | 0.0 |
+| object | 5 | 6.0 | 1.0 | **5.0** |
+| object | 20 | 21.0 | 1.0 | **20.0** |
+| room | 0 | 1.0 | 1.0 | 0.0 |
+| room | 5 | 6.0 | 1.0 | **5.0** |
+| room | 20 | 21.0 | 1.0 | **20.0** |
+
+Object and room mode now agree exactly. The CSV rows and prose below this
+point are the pre-fix measurement, kept for the record.
+
 **Source:** `a3_refine_quality.csv` (648 refinement cells, all `status=ok`),
 columns `n_fragments_injected`, `components_in`, `components_out`,
 `fragments_removed`
@@ -152,13 +173,39 @@ same object rather than debris.
 - (b) change §IV-D/§V-B/Fig. 3 to say component filtering is a *room*-mode
   operation, and that object mode deliberately preserves all components.
 
-Do not publish the current text with the current code.
-`tests/test_bench.py::test_object_mode_keeps_every_fragment_it_is_given` pins
-today's behaviour so it cannot change silently.
+This has been reconciled: see the fixed-behaviour note above.
 
 ---
 
 ## 3. The hole-fill guard is inverted with respect to what you would want
+
+**Status: fixed.** `fill_mesh_holes` now takes an explicit `guard_mesh`
+argument and `clean_mesh` passes it the raw, pre-component-filter mesh, so
+`is_sheet_like` is evaluated against the actual capture rather than against
+whatever component filtering happened to leave behind. A real MASt3R
+pointmap is fragmented into many islands by confidence masking (finding 1),
+so on production input this reliably reads as non-sheet-like and hole
+filling proceeds; the single-piece synthetic `pointmap_sheet` fixture used
+below still reads as sheet-like on its own, which is correct — a mesh that
+really is thin and open both before and after filtering should still skip.
+`tests/test_bench.py::test_hole_filling_is_skipped_on_a_sheet_like_raw_input`
+and `test_hole_filling_uses_the_raw_mesh_for_the_guard_not_the_filtered_one`
+pin the fixed behaviour. Regenerated against the fixed code:
+
+| base | mode | guard fires |
+|---|---|---|
+| icosphere | either | 0% |
+| torus | either | 0% |
+| pointmap_sheet | either | **33%** (exactly the `n_fragments_injected=0` rows) |
+
+The guard now depends only on the raw input, so object and room mode agree
+exactly (they see the same raw mesh before filtering diverges them) — the
+mode-dependent split in the pre-fix table below is gone. It fires only when
+the sheet has zero injected fragments; with any debris present (5 or 20
+fragments, the more realistic case, since a real pointmap is fragmented by
+confidence masking per finding 1) the raw input is already non-sheet-like and
+filling proceeds. The rows and prose below this point are the pre-fix
+measurement, kept for the record.
 
 **Source:** `a3_refine_quality.csv`, column `holefill_guard_fires`
 
@@ -181,11 +228,11 @@ fragments in and their spread fattens the bounding box out of the sheet-like
 regime. Room mode drops the fragments first, so it stays sheet-like and the
 guard fires regardless.
 
-So in the default configuration hole filling is skipped exactly on the clean
-reconstruction output it is meant to repair, and runs only when debris happens
-to widen the bounding box. §V-B currently describes a code path that does not
-execute on the pipeline's own inputs. This belongs in §IV-D or §VII, and the
-guard arguably belongs on the raw input rather than the filtered mesh.
+So in the default configuration hole filling was skipped exactly on the clean
+reconstruction output it is meant to repair, and ran only when debris happened
+to widen the bounding box. §V-B described a code path that did not execute on
+the pipeline's own inputs. Now fixed by moving the guard to the raw input, per
+the note above.
 
 ---
 
@@ -225,6 +272,54 @@ supported on accuracy as well as volume.
 ---
 
 ## 4b. Refinement's effect on accuracy is driven by component filtering, not smoothing
+
+**Status: superseded by the finding 2 fix.** This finding's conclusion --
+that object and room mode trade off in opposite directions, one better on
+geometry and the other on surfaces -- depended entirely on object mode
+retaining injected fragments. Now that it doesn't (finding 2), the trade-off
+is gone. Regenerated against the fixed code (mean over holes, fragments and
+seeds):
+
+| base | mode | sigma | before | after | delta | fraction improved |
+|---|---|---|---|---|---|---|
+| icosphere | object | 0.000 | 0.00504 | 0.00162 | -0.00342 | 0.93 |
+| icosphere | object | 0.010 | 0.00596 | 0.00380 | **-0.00216** | 1.00 |
+| icosphere | room | 0.000 | 0.00504 | 0.00162 | -0.00342 | 0.93 |
+| icosphere | room | 0.010 | 0.00596 | 0.00503 | -0.00093 | 0.81 |
+| torus | object | 0.010 | 0.00590 | 0.00365 | **-0.00225** | 1.00 |
+| torus | room | 0.010 | 0.00590 | 0.00492 | -0.00098 | 0.89 |
+| pointmap_sheet | object | 0.010 | 0.00590 | 0.00353 | **-0.00236** | 1.00 |
+| pointmap_sheet | room | 0.010 | 0.00590 | 0.00464 | -0.00126 | 0.89 |
+
+**Both modes now improve Chamfer at every sigma on every base**, and object
+mode improves it *more* than room mode everywhere noise is injected (e.g.
+icosphere at sigma=0.01: object -0.00216 vs room -0.00093). Normal
+consistency, also regenerated:
+
+| base | mode | before | after |
+|---|---|---|---|
+| icosphere | object | 0.7870 | **0.9475** |
+| icosphere | room | 0.7870 | 0.8023 |
+| torus | object | 0.7712 | **0.9268** |
+| torus | room | 0.7712 | 0.7825 |
+| pointmap_sheet | object | 0.7328 | **0.8921** |
+| pointmap_sheet | room | 0.7328 | 0.7481 |
+
+Object mode's normal-consistency advantage is unchanged from the pre-fix
+measurement (still driven by plain `smooth_taubin` vs room mode's
+feature-preserving variant, per the original analysis below) -- but it no
+longer costs anything on Chamfer. **Object mode now dominates room mode on
+both axes**, for the simple reason that discarding injected debris helps
+geometric accuracy in every mode, and object mode's smoothing was already
+better for surface consistency. §V-B's four assertions should become:
+component filtering removes fragments in both modes (finding 2); hole
+filling mostly proceeds, being skipped only for the rare zero-fragment case
+(finding 3); Taubin smoothing improves normal consistency substantially in
+object mode and marginally in room mode; and refinement's effect on
+geometric accuracy is now positive in both modes, and larger in object mode.
+
+The material below is the pre-fix measurement and analysis, kept for the
+record -- the "opposite trade-off" conclusion it reaches no longer holds.
 
 **Source:** `a3_refine_quality.csv`, `before_chamfer_l1` vs `after_chamfer_l1`
 
@@ -287,6 +382,31 @@ than the current uniform "refinement improves everything".
 ---
 
 ## 4c. `fig8_fragment_removal` draws findings 2, 3 and 4b as one figure
+
+**Status: superseded by the finding 2 fix.** Object and room mode now produce
+the *same* filtered geometry (finding 2), so panel (a)'s "ring, no change"
+object-mode arrow and panel (b)'s "grows with debris" object-mode arrow are
+both gone -- object mode's arrows now match room mode's almost exactly.
+Regenerated at 20 fragments injected (mean over 3 bases x 3 seeds, n=9 per
+mode):
+
+| panel | before | after: object | after: room |
+|---|---|---|---|
+| **(a)** connected components | 21.0 | **1.0** | **1.0** |
+| **(b)** mesh cells | -- | **19,918** | **19,918** |
+| **(c)** Chamfer-L1 | 0.0111 | **0.00228** | **0.00282** |
+| **(d)** boundary edges | 250.2 | **159.4** | **159.4** |
+
+Object and room now land on the same fragment-free component/cell/boundary
+counts; the only remaining difference is Chamfer, where object mode is
+slightly *better* (0.00228 vs 0.00282) because its plain Taubin smoothing
+outperforms room mode's feature-preserving variant on this synthetic noise
+(see the regenerated finding 4b table above). The figure needs regenerating
+from the current CSV before it can be used in the paper (not done here --
+`bench/figures/` is gitignored and regenerates on demand); the panel (b)/(d)
+captions describing object mode's cell count "rising" and boundary edges
+"only falling because debris widened the guard" no longer describe current
+behaviour and need rewriting along with it.
 
 **Source:** `a3_refine_quality.csv`
 
@@ -505,6 +625,78 @@ KD-tree transfer has to bridge (0.0 at 0 iterations, ~0.0025 at 30), and is
 essentially independent of decimation — decimation removes vertices but does
 not move the survivors, so their colours are exact. The §V-B claim is
 supported.
+
+---
+
+## 11. B7: reproducibility holds bit-for-bit on GPU, whether or not it is requested (§V-D)
+
+**Source:** `b7_determinism.csv`, 3 scenes (`scan24`, `scan37`, `scan40`) x 2
+`deterministic_requested` settings x 2 repeats, `device=cuda` (Tesla T4),
+`seed=0`, `cache_cleared=True` on every row, warm-up run discarded before the
+measured sweep.
+
+Across all 6 rows, with no exceptions:
+
+| metric | value |
+|---|---|
+| `hausdorff95_between_runs` | **0.0** |
+| `chamfer_between_runs` | **0.0** |
+| `point_count_delta` | **0** (300,000 vs 300,000) |
+| `glb_byte_identical` (SHA-256 of the exported mesh) | **True** |
+
+This holds for `deterministic_requested=True` **and** `deterministic_requested=False`.
+`deterministic_recorded` mirrors `deterministic_requested` exactly in every row
+(manifest bookkeeping is correct), but the two repeats are bit-identical
+regardless of which value was requested. §V-D's claim -- "supporting
+reproducible re-execution of a given job" -- is true for this GPU, these three
+scenes, and this seed: not because the determinism flag forces it, but because
+CUDA's default kernel selection for this workload's ops already lands on the
+same result twice.
+
+`deterministic_applied` is **not** evidence of anything here: `_set_determinism`
+returns `True` whenever `torch.use_deterministic_algorithms(...)` doesn't raise,
+regardless of which boolean was passed, so it reads `True` for both requested
+settings. `deterministic_recorded` (from the run manifest) is the column that
+actually reflects what ran.
+
+### The flag is not free
+
+`deterministic_requested=True` costs a consistent ~20 s per run, regardless of
+scene size:
+
+| scene | mean wall (det=True) | mean wall (det=False) | delta | glb size (det=True) |
+|---|---|---|---|---|
+| scan24 | 114.35 s | 94.65 s | +19.70 s (+20.8%) | 37.0 MB |
+| scan37 | 109.23 s | 89.16 s | +20.07 s (+22.5%) | 14.4 MB |
+| scan40 | 118.56 s | 98.18 s | +20.38 s (+20.8%) | 36.5 MB |
+
+The overhead is ~20 s / ~21% on every scene despite scan37's output being 2.5x
+smaller than scan24/scan40's -- consistent with a fixed per-run cost (disabling
+CUDA's algorithm auto-tuning) rather than one that scales with mesh or point
+count. Separately, `deterministic_requested` changes the *output*: GLB byte
+counts differ between True and False for the same scene (e.g. scan24:
+37,045,968 vs 37,033,920 bytes) even though the subsampled point cloud is
+capped at the same 300,000 points either way -- the two settings are not
+interchangeable, only self-consistent across repeats.
+
+**Suggested §V-D addition:** state the measured bound -- zero Hausdorff-95 and
+Chamfer divergence, byte-identical GLBs, across 3 scenes x 2 repeats on a
+Tesla T4 -- and note the ~20 s / ~21% wall-clock cost of requesting
+`torch.use_deterministic_algorithms(True)`, which bought no additional
+measured reproducibility on this hardware for this workload.
+
+**Caveats to state honestly:** n=3 scenes, one seed, one GPU model
+(Tesla T4), `device=cuda` only -- the module supports a CPU/GPU cross-device
+sweep and none ran here, so this says nothing about cross-device or
+cross-GPU-architecture reproducibility, only same-device repeat-run
+reproducibility. A result this clean (exactly 0.0 to 9 decimal places, every
+row) is also exactly what a broken comparison would produce, so before citing
+it: `bench/exp_b7_determinism.py`'s own docstring documents two specific
+failure modes (cache reuse, index-order artifacts) it was written to avoid --
+`cache_cleared=True` and non-trivial `point_count_delta`/`glb_bytes` variation
+*between* determinism settings on the same scene both corroborate that those
+guards held, but a wider seed/scene sweep would make the zero more convincing
+than three scenes can.
 
 ---
 
