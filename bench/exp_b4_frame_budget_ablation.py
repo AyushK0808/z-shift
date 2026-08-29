@@ -38,6 +38,7 @@ from bench.tier_b_common import (
     iter_scenes,
     load_gt_points,
     point_cloud_from_output,
+    reconstruction_scale_for,
     require_cuda_device,
     reset_gpu_peak,
     run_reconstruction,
@@ -106,6 +107,7 @@ def _run_variant(
     tau: float,
     seed: int,
     with_scale: bool,
+    reconstruction_scale: float,
 ) -> dict[str, Any]:
     from spatial_ingestion.reconstruction._io import uri_to_path
 
@@ -132,7 +134,14 @@ def _run_variant(
 
     capture_index = np.array([frame.index for frame in selected], dtype=float)
     reconstruction = point_cloud_from_output(run_info["output_dir"], seed=seed)
-    scores = score_against_gt(reconstruction, gt_points, tau=tau, with_scale=with_scale, seed=seed)
+    scores = score_against_gt(
+        reconstruction,
+        gt_points,
+        tau=tau,
+        with_scale=with_scale,
+        seed=seed,
+        reconstruction_scale=reconstruction_scale,
+    )
 
     return {
         "scene": scene_name,
@@ -204,6 +213,7 @@ def run(
                     tau=scene.tau,
                     seed=seed,
                     with_scale=with_scale,
+                    reconstruction_scale=reconstruction_scale_for(scene.units),
                 ),
             )
 
@@ -225,6 +235,7 @@ def run(
                         tau=scene.tau,
                         seed=seed,
                         with_scale=with_scale,
+                        reconstruction_scale=reconstruction_scale_for(scene.units),
                     ),
                 )
     return writer

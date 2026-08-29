@@ -32,6 +32,7 @@ from bench.tier_b_common import (
     iter_scenes,
     load_gt_points,
     point_cloud_from_output,
+    reconstruction_scale_for,
     require_cuda_device,
     reset_gpu_peak,
     run_reconstruction,
@@ -93,7 +94,12 @@ def run(
         gt_points = load_gt_points(scene.gt_path, seed=seed)
         reconstruction = point_cloud_from_output(run_info["output_dir"], seed=seed)
         scores = score_against_gt(
-            reconstruction, gt_points, tau=scene.tau, with_scale=with_scale, seed=seed
+            reconstruction,
+            gt_points,
+            tau=scene.tau,
+            with_scale=with_scale,
+            seed=seed,
+            reconstruction_scale=reconstruction_scale_for(scene.units),
         )
 
         writer.add(

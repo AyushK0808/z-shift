@@ -13,6 +13,26 @@ measurement from a cached one.
 Also sweeps `torch.use_deterministic_algorithms(True, warn_only=True)` on and
 off, since `set_seed` now requests it and the cost of that request is worth
 knowing.
+
+Two more failure modes a naive version of this test has, both fixed here:
+
+- The first MASt3R run of a process pays for the checkpoint download and
+  CUDA/cuDNN kernel warm-up (the same cost B2's `discard_first` exists to
+  absorb), and that warm-up can itself pick a different, non-deterministic
+  kernel than every later call. Without a warm-up run, that cold-start cost
+  lands entirely on row 0 of the first (scene, mode) pair and is
+  indistinguishable from a genuine determinism failure. `discard_first` here
+  runs one throwaway job before the measured sweep so the cost is paid once,
+  off the books.
+- Comparing two point clouds index-by-index (`points_a - points_b`) assumes
+  run 1's point *i* is run 2's point *i*. It isn't: `point_cloud_from_output`
+  subsamples with a fixed seed, but indexes into two independently-written
+  PLYs, so any run-to-run change in vertex *write order* turns into a
+  spurious multi-unit "displacement" even when the two clouds are
+  geometrically identical. `hausdorff95_between_runs` uses nearest-neighbour
+  correspondence instead (`bench.metrics.hausdorff_95`), so it measures real
+  divergence and, being a 95th percentile, is not dominated by one reordered
+  or duplicated point.
 """
 
 from __future__ import annotations
@@ -22,11 +42,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 from bench.csvio import ResultWriter
 from bench.harness import experiment_parser, finish
-from bench.metrics import chamfer_l1
+from bench.metrics import chamfer_l1, hausdorff_95
 from bench.tier_b_common import (
     SceneSet,
     build_job,
@@ -76,10 +94,35 @@ def run(
     deterministic_modes: tuple[bool, ...] = (True, False),
     clear_cache: bool = True,
     output_root: Path | None = None,
+    discard_first: bool = True,
 ) -> ResultWriter:
     writer = ResultWriter(EXP_ID, results_dir)
     scenes = iter_scenes(SceneSet.from_manifest(manifest), scene_names)
     root = output_root or (Path("data") / "bench" / EXP_ID)
+
+    if discard_first and scenes and len(scenes) * len(deterministic_modes) > 1:
+        warmup_scene = scenes[0]
+        warmup_mode = deterministic_modes[0]
+        logger.info("discarding warm-up run for %s", warmup_scene.name)
+        _set_determinism(warmup_mode)
+        warmup_params = Mast3rRunParams(
+            image_size=image_size,
+            tsdf_thresh=tsdf_thresh,
+            seed=seed,
+            device=device,
+            deterministic=warmup_mode,
+        )
+        warmup_path = root / warmup_scene.name / "_warmup" / "mesh.glb"
+        warmup_job = build_job(
+            warmup_scene.image_paths(n_images),
+            warmup_path,
+            params=warmup_params,
+            label=f"{warmup_scene.name}_warmup",
+        )
+        if clear_cache:
+            clear_alignment_cache(warmup_path.parent)
+        reset_gpu_peak()
+        run_reconstruction(warmup_job, clear_cache=clear_cache)
 
     for scene in scenes:
         image_paths = scene.image_paths(n_images)
@@ -123,9 +166,6 @@ def run(
             first, second = runs[0], runs[1]
             first_points, second_points = first["points"], second["points"]
             same_count = len(first_points) == len(second_points)
-            max_displacement = (
-                float(np.abs(first_points - second_points).max()) if same_count else float("nan")
-            )
 
             writer.add(
                 scene=scene.name,
@@ -144,7 +184,7 @@ def run(
                 n_points_run2=len(second_points),
                 point_count_delta=len(first_points) - len(second_points),
                 identical_point_count=same_count,
-                max_per_point_displacement=(round(max_displacement, 9) if same_count else ""),
+                hausdorff95_between_runs=round(hausdorff_95(first_points, second_points), 9),
                 chamfer_between_runs=round(chamfer_l1(first_points, second_points), 9),
                 glb_bytes_run1=first["mesh_bytes"],
                 glb_bytes_run2=second["mesh_bytes"],
@@ -196,6 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"  {row['scene']:<12}{row['device']:<6}det={row['deterministic_requested']!s:<6}"
             f"chamfer={row['chamfer_between_runs']:.3e} "
+            f"hausdorff95={row['hausdorff95_between_runs']:.3e} "
             f"byte_identical={row['glb_byte_identical']} "
             f"cache_cleared={row['cache_cleared']}"
         )

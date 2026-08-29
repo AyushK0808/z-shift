@@ -30,6 +30,7 @@ from bench.tier_b_common import (
     iter_scenes,
     load_gt_points,
     point_cloud_from_output,
+    reconstruction_scale_for,
     require_cuda_device,
     reset_gpu_peak,
     run_reconstruction,
@@ -159,6 +160,7 @@ def run(
                                 tau=scene.tau,
                                 with_scale=with_scale,
                                 seed=seed,
+                                reconstruction_scale=reconstruction_scale_for(scene.units),
                             )
                         )
                 except (MemoryError, RuntimeError) as exc:

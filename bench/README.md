@@ -58,7 +58,7 @@ uv run python -m bench.exp_b4_frame_budget_ablation --manifest bench/scenes/dtu.
 | Seeds fixed and logged | `seed` column on every row |
 | One CSV per experiment | `ResultWriter(EXP_ID)` |
 | Figures regenerate from CSVs | `bench/plots.py` reads only `results/` |
-| Discard the first MASt3R run | `discard_first` in B2 |
+| Discard the first MASt3R run | `discard_first` in B2 and B7 |
 | Clear `cache/` between independent runs | `tier_b_common.clear_alignment_cache`, called in B7 and every Tier B run; `cache_cleared` recorded |
 | τ stated for every F-score, units for every distance | `tau` and `distance_unit` columns |
 

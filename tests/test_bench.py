@@ -985,6 +985,69 @@ def test_set_address_space_limit_reports_unsupported_on_windows() -> None:
         assert isinstance(set_address_space_limit(1024.0), bool)
 
 
+def test_b7_pays_warmup_once_and_scores_runs_by_correspondence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression test for two B7 bugs found by inspecting a real result CSV.
+
+    (1) The sweep's first job paid a cold-start cost indistinguishable from a
+    real determinism failure -- `discard_first` must burn that off first, so
+    the warm-up job's label must be the *first* call and must not appear in
+    any written row's counts. (2) `max_per_point_displacement` used to diff
+    points by array index, so two runs producing the same points in a
+    different order scored as maximally divergent; the correspondence-based
+    replacement must score that same input as ~0.
+    """
+    from bench import exp_b7_determinism
+
+    images = tmp_path / "scanX"
+    images.mkdir()
+    for name in ("a.jpg", "b.jpg"):
+        (images / name).write_bytes(b"x")
+    manifest = tmp_path / "m.json"
+    manifest.write_text(
+        json.dumps({"scenes": [{"name": "scanX", "image_dir": "scanX"}]}), encoding="utf-8"
+    )
+
+    calls: list[str] = []
+    same_points_different_order = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
+
+    def fake_run_reconstruction(job, *, clear_cache: bool = True) -> dict:
+        calls.append(job.label)
+        output_path = Path(job.output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(job.label.encode())
+        return {
+            "output_path": output_path,
+            "output_dir": output_path.parent,
+            "wall_seconds": 1.0,
+            "manifest": {"device": "cpu", "reproducibility": {"deterministic_algorithms": True}},
+        }
+
+    def fake_point_cloud_from_output(output_dir: Path, max_points: int = 300_000, seed: int = 0):
+        points = same_points_different_order
+        return points[::-1] if Path(output_dir).name == "run1" else points
+
+    monkeypatch.setattr("bench.exp_b7_determinism.run_reconstruction", fake_run_reconstruction)
+    monkeypatch.setattr(
+        "bench.exp_b7_determinism.point_cloud_from_output", fake_point_cloud_from_output
+    )
+
+    writer = exp_b7_determinism.run(
+        results_dir=tmp_path / "results",
+        manifest=manifest,
+        deterministic_modes=(True, False),
+        output_root=tmp_path / "out",
+    )
+
+    assert calls[0].endswith("_warmup")
+    assert len(calls) == 1 + len(writer.rows) * exp_b7_determinism.REPEATS
+
+    for row in writer.rows:
+        assert row["hausdorff95_between_runs"] == pytest.approx(0.0, abs=1e-9)
+        assert row["chamfer_between_runs"] == pytest.approx(0.0, abs=1e-9)
+
+
 def test_b4_builds_frames_with_motion_scores(tmp_path: Path) -> None:
     import cv2
 

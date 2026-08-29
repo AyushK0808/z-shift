@@ -28,6 +28,7 @@ from bench.tier_b_common import (
     build_job,
     iter_scenes,
     load_gt_points,
+    reconstruction_scale_for,
     require_cuda_device,
     reset_gpu_peak,
     run_reconstruction,
@@ -81,6 +82,7 @@ def run(
         gt_is_mesh = isinstance(gt_mesh, trimesh.Trimesh)
 
         image_paths = scene.image_paths(n_images)
+        reconstruction_scale = reconstruction_scale_for(scene.units)
         params = Mast3rRunParams(
             image_size=image_size, tsdf_thresh=tsdf_thresh, seed=seed, device=require_cuda_device()
         )
@@ -107,6 +109,7 @@ def run(
             tau=scene.tau,
             with_scale=with_scale,
             seed=seed,
+            reconstruction_scale=reconstruction_scale,
         )
         writer.add(
             **base_row,
@@ -151,6 +154,7 @@ def run(
                     tau=scene.tau,
                     with_scale=with_scale,
                     seed=seed,
+                    reconstruction_scale=reconstruction_scale,
                 )
                 writer.add(
                     **base_row,

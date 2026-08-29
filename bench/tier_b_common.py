@@ -76,6 +76,29 @@ def natural_key(path: Path) -> tuple[object, ...]:
 # F-score; a bare F-score is not interpretable.
 DTU_TAU_MM = 2.0
 
+# The metric MASt3R checkpoint (*_catmlpdpt_metric) predicts real-world scale
+# in metres. Nothing in export_scene_to_mesh / point_cloud_from_output converts
+# that, so scoring it against a ground truth stated in another unit silently
+# compares a cloud that is 1000x too small: a rigid (no-scale) ICP cannot make
+# up a 1000x size difference, so it collapses the whole reconstruction onto
+# whichever small pocket of the GT surface is nearest, which reads as
+# precision~1.0, recall~0 and a deceptively tiny align_rmse -- not as a
+# failure. This factor is applied by `score_against_gt` alone, so it affects
+# only benchmark scoring; the actual `.glb` / `point_cloud.ply` the pipeline
+# writes stays in MASt3R's native metres.
+MAST3R_METRIC_UNITS = "m"
+
+
+def reconstruction_scale_for(units: str) -> float:
+    """Factor converting MASt3R's native metric output into `units`.
+
+    Only "mm" gets a real conversion. Anything else -- COLMAP's arbitrary SfM
+    scale, "unknown (auto-discovered)" -- has no fixed real-world relationship
+    to metres, so guessing a factor there would trade one silent scale bug for
+    another; run those with `with_scale=True` instead.
+    """
+    return 1000.0 if units == "mm" else 1.0
+
 
 @dataclass
 class Scene:
@@ -263,18 +286,27 @@ def score_against_gt(
     tau: float,
     with_scale: bool = False,
     seed: int = 0,
+    reconstruction_scale: float = 1.0,
 ) -> dict[str, Any]:
     """Align to GT, then report accuracy/completeness/F-score and the residual.
 
     The alignment residual is reported alongside the metrics, not instead of
     them: a good Chamfer after a badly-fitted alignment means nothing.
+
+    `reconstruction_scale` converts MASt3R's native metric (metre) output into
+    the ground truth's units before alignment -- see `reconstruction_scale_for`.
+    `with_scale`'s ICP fit cannot be trusted to recover this on its own: with
+    unknown correspondences it can "solve" a real scale mismatch by shrinking
+    to a point instead of finding the true ratio.
     """
+    reconstruction_points = np.asarray(reconstruction_points, dtype=float) * reconstruction_scale
     aligned, alignment = align_to_reference(reconstruction_points, gt_points, with_scale=with_scale)
     precision, recall, f_score = precision_recall_f(aligned, gt_points, tau)
     from bench.metrics import _dists  # noqa: PLC0415 - internal helper, one call site
 
     return {
         "tau": tau,
+        "reconstruction_scale": reconstruction_scale,
         "chamfer_l1": round(chamfer_l1(aligned, gt_points), 6),
         "accuracy_mean": round(float(_dists(aligned, gt_points).mean()), 6),
         "completeness_mean": round(float(_dists(gt_points, aligned).mean()), 6),
