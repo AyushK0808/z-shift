@@ -225,8 +225,18 @@ def filter_room_components(mesh: pv.DataSet, min_cell_count: int) -> pv.PolyData
     return merge_components(valid_pieces)
 
 
-def fill_mesh_holes(mesh: pv.PolyData, hole_size: float | None) -> pv.PolyData:
-    if hole_size is None and is_sheet_like(mesh):
+def fill_mesh_holes(
+    mesh: pv.PolyData, hole_size: float | None, *, guard_mesh: pv.DataSet | None = None
+) -> pv.PolyData:
+    # The sheet-like guard is meant to ask "is this capture inherently thin
+    # and open", not "did component filtering happen to leave a thin
+    # result" -- so it is evaluated against the pre-filter input
+    # (bench/FINDINGS.md #3). A raw MASt3R pointmap is typically fragmented
+    # into many islands by confidence masking, so this reliably reads as
+    # non-sheet-like on real reconstruction output even though the
+    # single-piece synthetic case still trips it.
+    check_mesh = guard_mesh if guard_mesh is not None else mesh
+    if hole_size is None and is_sheet_like(check_mesh):
         return mesh
 
     size = hole_size if hole_size is not None else get_default_hole_size(mesh)
@@ -338,7 +348,9 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
 
     data_source = filtered if _has_recognized_color_data(filtered) else mesh
 
-    filled = run_step("fill_holes", fill_mesh_holes, filtered, cfg.hole_size, stage_log=stage_log)
+    filled = run_step(
+        "fill_holes", fill_mesh_holes, filtered, cfg.hole_size, guard_mesh=mesh, stage_log=stage_log
+    )
 
     smoothed = run_step(
         "smooth",

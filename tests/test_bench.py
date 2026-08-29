@@ -633,17 +633,39 @@ def test_object_mode_keeps_only_the_largest_component() -> None:
     assert len(result["mesh"].split_bodies()) == 1
 
 
-def test_hole_filling_is_skipped_on_sheet_like_input() -> None:
-    """The other expected negative: `is_sheet_like` gates hole filling.
+def test_hole_filling_is_skipped_on_a_sheet_like_raw_input() -> None:
+    """A3's other finding, fixed and pinned (bench/FINDINGS.md #3).
 
-    Fused per-view pointmaps are sheet-like, so this branch is the one real
-    reconstruction output takes.
+    `is_sheet_like` now gates hole filling on the raw, pre-component-filter
+    mesh (`guard_mesh`) rather than the filtered one. Fused per-view pointmaps
+    are sheet-like, so this branch is the one a single-piece capture takes.
     """
     from spatial_ingestion.refinement.core import fill_mesh_holes, is_sheet_like
 
     sheet = to_pyvista(ladder_mesh("pointmap_sheet", 5_000)).extract_surface(algorithm=None)
     assert is_sheet_like(sheet)
     assert fill_mesh_holes(sheet, hole_size=None) is sheet
+
+
+def test_hole_filling_uses_the_raw_mesh_for_the_guard_not_the_filtered_one() -> None:
+    """The guard must not be fooled by filtering shrinking a fragmented mesh
+    down to something sheet-like, or growing a sheet-like mesh out of it via
+    retained debris -- it has to look at what the guard_mesh argument says,
+    independent of what the filtered mesh being passed in looks like.
+    """
+    from spatial_ingestion.refinement.core import fill_mesh_holes, is_sheet_like
+
+    sheet = to_pyvista(ladder_mesh("pointmap_sheet", 5_000)).extract_surface(algorithm=None)
+    blob = to_pyvista(ladder_mesh("icosphere", 5_000)).extract_surface(algorithm=None)
+    assert is_sheet_like(sheet)
+    assert not is_sheet_like(blob)
+
+    # guard_mesh says sheet-like -> skipped, even though the mesh being
+    # filled is not.
+    assert fill_mesh_holes(blob, hole_size=None, guard_mesh=sheet) is blob
+    # guard_mesh says not sheet-like -> filling proceeds, even though the
+    # mesh being filled is.
+    assert fill_mesh_holes(sheet, hole_size=None, guard_mesh=blob) is not sheet
 
 
 def test_cap_frames_does_not_restore_capture_order() -> None:
