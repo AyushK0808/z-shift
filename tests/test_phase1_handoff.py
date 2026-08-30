@@ -143,6 +143,50 @@ def test_run_from_schema_with_use_case_defaults_input_type(monkeypatch, tmp_path
     assert Path(result.deliverable.output_path).exists()
 
 
+def test_run_from_schema_with_use_case_and_rig_delivers_skinned_glb(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from spatial_ingestion.auto_rigging.models import ArticulationType, AutoRigConfig
+
+    folder = _ingest_folder(tmp_path)
+    payload = ingest_batch(
+        sorted(folder.iterdir()), normalizer=_normalizer(tmp_path / "normalized")
+    )
+    raw_mesh_path = tmp_path / "pipeline_out" / "mesh.glb"
+
+    def fake_reconstruction(job: ReconstructionJob) -> int:
+        import trimesh
+
+        output_path = Path(job.output_path or raw_mesh_path).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sphere = pv.Sphere(theta_resolution=16, phi_resolution=16)
+        faces = sphere.faces.reshape(-1, 4)[:, 1:]
+        trimesh.Trimesh(vertices=sphere.points, faces=faces).export(str(output_path))
+        return 0
+
+    monkeypatch.setattr(
+        "spatial_ingestion.final_pipeline.core.run_reconstruction", fake_reconstruction
+    )
+
+    result = run_from_schema(
+        payload,
+        use_case="editing",
+        output_path=raw_mesh_path,
+        refinement_config=MeshCleaningConfig(smoothing_iters=0, verify_watertight=False),
+        rig=True,
+        rigging_config=AutoRigConfig(articulation_type=ArticulationType.BIPED),
+        deliverables_root=tmp_path / "deliverables",
+    )
+
+    assert isinstance(result, FullPipelineResult)
+    assert result.pipeline_result.rigged_mesh_path is not None
+    assert result.pipeline_result.rigged_mesh_path.exists()
+    assert result.deliverable.track == "A"
+    assert result.deliverable.output_path is not None
+    assert Path(result.deliverable.output_path).exists()
+    assert Path(result.deliverable.output_path).name.endswith("_rigged.glb")
+
+
 def test_run_ingested_pipeline(monkeypatch, tmp_path: Path) -> None:
     folder = _ingest_folder(tmp_path)
     _fake_reconstruction(monkeypatch, tmp_path / "mesh.obj")

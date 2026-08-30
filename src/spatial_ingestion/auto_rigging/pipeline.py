@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import trimesh
@@ -8,6 +9,8 @@ from spatial_ingestion.auto_rigging.export import RigMetadataExporter
 from spatial_ingestion.auto_rigging.models import AutoRigConfig, AutoRigResult, RiggedMesh
 from spatial_ingestion.auto_rigging.skeleton.templates import TemplateSkeletonFitter
 from spatial_ingestion.auto_rigging.skinning.inverse_distance import InverseDistanceSkinner
+
+logger = logging.getLogger(__name__)
 
 
 class AutoRiggingPipeline:
@@ -31,12 +34,29 @@ class AutoRiggingPipeline:
         export_metadata: bool = True,
     ) -> AutoRigResult:
         cfg = config or AutoRigConfig()
+        logger.info(
+            "Rigging mesh: vertices=%d, faces=%d, articulation_type=%s",
+            len(mesh.vertices),
+            len(mesh.faces),
+            cfg.articulation_type.value,
+        )
         working_mesh = self._prepare_mesh(mesh, cfg)
         skeleton = self._skeleton_fitter.fit(working_mesh, cfg.articulation_type)
+        logger.info(
+            "Fitted skeleton: joints=%d, bones=%d, root=%s",
+            len(skeleton.joints),
+            len(skeleton.bones),
+            skeleton.root_joint,
+        )
         skinning = self._skinner.compute(
             working_mesh,
             skeleton,
             max_influences=cfg.max_skinning_influences,
+        )
+        logger.info(
+            "Computed skinning weights: vertices=%d, max_influences=%d",
+            len(skinning.weights),
+            skinning.max_influences,
         )
         rigged_mesh = RiggedMesh(
             mesh_uri=mesh_uri,
@@ -58,17 +78,25 @@ class AutoRiggingPipeline:
                 "joints may be misplaced for arbitrary orientations."
             ],
         )
+        for warning in result.warnings:
+            logger.warning(warning)
         if export_metadata:
             exporter = (
                 RigMetadataExporter(cfg.output_dir)
                 if cfg.output_dir is not None
                 else self._exporter
             )
-            return exporter.export_bundle(
+            bundle = exporter.export_bundle(
                 working_mesh,
                 result,
                 rigged_mesh_path=cfg.rigged_output_path,
             )
+            logger.info(
+                "Rigging export complete: rigged_mesh=%s, manifest=%s",
+                bundle.rigged_mesh_uri,
+                bundle.manifest_uri,
+            )
+            return bundle
         return result
 
     def rig_mesh_file(

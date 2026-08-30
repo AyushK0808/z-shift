@@ -83,6 +83,7 @@ def run_from_schema(
     output_path: Path | str | None = None,
     refinement_config: MeshCleaningConfig | None = None,
     refined_output_path: Path | str | None = None,
+    rig: bool = False,
     rigging_config: AutoRigConfig | None = None,
     rigged_output_path: Path | str | None = None,
     rig_output_dir: Path | str | None = None,
@@ -90,7 +91,10 @@ def run_from_schema(
 ) -> FullPipelineResult | FinalPipelineResult:
     """Run the final pipeline from a Phase 1 payload.
 
-    With ``use_case`` set, runs Phase 2 -> 3 -> 4; otherwise Phase 2 -> 3.
+    With ``use_case`` set, runs Phase 2 -> 3 -> 4 (pass ``rig=True`` too, with
+    ``use_case="editing"``, to also run Phase 5 and hand Phase 4 the skinned
+    GLB instead of the plain refined mesh); otherwise Phase 2 -> 3, or
+    Phase 2 -> 3 -> 5 if rigging options are given without a ``use_case``.
     ``input_type`` defaults to the schema's classified source type.
     """
     job = build_job(
@@ -106,6 +110,10 @@ def run_from_schema(
             refinement_config=refinement_config,
             refined_output_path=refined_output_path,
             deliverables_root=deliverables_root or DEFAULT_DELIVERABLES_ROOT,
+            rig=rig,
+            rigging_config=rigging_config,
+            rigged_output_path=rigged_output_path,
+            rig_output_dir=rig_output_dir,
         )
     if rigging_config or rigged_output_path or rig_output_dir:
         return run_phase2_phase3_phase5_pipeline(
@@ -135,6 +143,7 @@ def run_ingested_pipeline(
     output_path: Path | str | None = None,
     refinement_config: MeshCleaningConfig | None = None,
     refined_output_path: Path | str | None = None,
+    rig: bool = False,
     rigging_config: AutoRigConfig | None = None,
     rigged_output_path: Path | str | None = None,
     rig_output_dir: Path | str | None = None,
@@ -155,6 +164,7 @@ def run_ingested_pipeline(
         output_path=output_path,
         refinement_config=refinement_config,
         refined_output_path=refined_output_path,
+        rig=rig,
         rigging_config=rigging_config,
         rigged_output_path=rigged_output_path,
         rig_output_dir=rig_output_dir,
