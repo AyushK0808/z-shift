@@ -15,10 +15,12 @@ from spatial_ingestion.reconstruction.pairing import (
 
 logger = logging.getLogger(__name__)
 
+_mast3r_import_error: ImportError | None = None
 try:
     from mast3r.cloud_opt.sparse_ga import sparse_global_alignment
-except ImportError:
+except ImportError as exc:
     sparse_global_alignment: Callable[..., Any] | None = None
+    _mast3r_import_error = exc
 
 
 def run_sparse_alignment(
@@ -42,9 +44,11 @@ def run_sparse_alignment(
     """
     if sparse_global_alignment is None:
         raise RuntimeError(
-            "MASt3R is not installed. Run scripts/setup-mast3r.sh or "
-            "pip install -e third_party/mast3r && pip install -e third_party/mast3r/dust3r"
-        )
+            "MASt3R is not installed or failed to import (see the chained "
+            "exception above for the real cause). Run scripts/setup-mast3r.sh "
+            "or pip install -e third_party/mast3r && "
+            "pip install -e third_party/mast3r/dust3r"
+        ) from _mast3r_import_error
 
     model = load_model(model_name, device)
     images = load_images(image_paths, image_size=image_size)
