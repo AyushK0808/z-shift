@@ -10,10 +10,20 @@ change the text), and that choice belongs to the authors.
 
 ---
 
-## 1. Table I is off by ~38x, and blames the wrong variable
+## 1. Table I is off by ~17x, and blames the wrong variable
 
-**Source:** `a1_refine_scaling.csv` (228+ cells, 3 repeats each, all `status=ok`),
+**Source:** `a1_refine_scaling.csv` (237 cells, 3 repeats each, all `status=ok`),
 `a2_stage_profile.csv` (n=5 per stage), `a2_stage_profile_*.txt` (cProfile)
+
+**Status: numbers refreshed against the current CSVs.** The table below and
+everything derived from it was regenerated after `bc09e9d` ("improved
+performance", the batched-`merge_components` fix) and the `8994a3c` A1/A2
+rerun. The CSV is the source of truth; the previous version of this section
+quoted a run that predates that fix and is now stale — every cell in the
+triangle ladder is roughly 2x slower than what was previously written here,
+consistently across all six rungs, which is itself worth someone's attention
+(see the note at the end of this subsection) but does not change which
+variable is at fault.
 
 Table I reports ~2.6M triangles refining in **~7 minutes** with smoothing
 disabled and the watertightness check skipped. Running exactly that
@@ -21,53 +31,54 @@ configuration on a 2.5M-triangle **connected** mesh:
 
 | n triangles | smoothing | watertight check | mean seconds | sd |
 |---|---|---|---|---|
-| 50,000 | 0 | skipped | 0.09 | 0.02 |
-| 250,000 | 0 | skipped | 0.43 | 0.01 |
-| 1,000,000 | 0 | skipped | 2.57 | 0.03 |
-| 2,500,000 | 0 | skipped | **10.98** | 0.25 |
-| 2,500,000 | 15 | checked | 13.80 | 0.44 |
+| 50,000 | 0 | skipped | 0.18 | 0.01 |
+| 250,000 | 0 | skipped | 0.94 | 0.04 |
+| 1,000,000 | 0 | skipped | 5.63 | 0.07 |
+| 2,500,000 | 0 | skipped | **24.38** | 0.17 |
+| 2,500,000 | 15 | checked | 30.09 | 0.17 |
 
-11.0 s, not ~420 s. The reported figure is **~38x** the measured cost for a
+24.4 s, not ~420 s. The reported figure is **~17x** the measured cost for a
 connected mesh of that size, and the "substantially slower" default
-configuration is only 26% slower (13.80 s vs 10.98 s), not another order of
+configuration is only 23% slower (30.09 s vs 24.38 s), not another order of
 magnitude.
 
 Cost is mildly superlinear in triangle count, with a fitted exponent of
-**1.16-1.28** across both mesh sources and all four configurations — close
-enough to linear that triangle count alone cannot produce a 38x surprise.
+**1.16-1.31** across both mesh sources and all four configurations — close
+enough to linear that triangle count alone cannot produce a 17x surprise.
 
 ### The variable that does explain it is component count
 
-At a fixed ~100k triangles, sweeping connected components:
+At a fixed ~100k triangles, sweeping connected components (smoothing off,
+watertight skipped):
 
-| components | mean seconds | `component_filter` share |
-|---|---|---|
-| 1 | 0.15 | 32% |
-| 10 | 0.27 | 35% |
-| 50 | 0.47 | 69% |
-| 100 | 0.63 | 84% |
-| 250 | 1.30 | 93% |
-| 500 | 3.03 | 97% |
-| 1000 | 6.34 | **98.5%** |
+| components | mean seconds |
+|---|---|
+| 1 | 0.33 |
+| 10 | 0.56 |
+| 50 | 0.92 |
+| 100 | 1.12 |
+| 250 | 2.18 |
+| 500 | 5.42 |
+| 1000 | **10.79** |
 
-A 42x increase from component count alone, with the triangle count held
-constant. Fitted exponent ~0.5 in component count.
+A 33x increase from component count alone, with the triangle count held
+constant. Fitted exponent ~0.48 in component count.
 
 ### The two axes are strongly super-additive
 
 | n triangles | components | seconds (smoothing off, watertight skipped) |
 |---|---|---|
-| 2,500,000 | 1 | 10.98 +/- 0.25 |
-| 96,000 | 1000 | 6.34 +/- 0.08 |
-| 448,000 | 500 | 9.78 +/- 0.02 |
-| 896,000 | 1000 | 35.18 +/- 0.14 |
-| 2,496,000 | 1000 | **95.43 +/- 0.37** |
+| 2,500,000 | 1 | 24.38 +/- 0.17 |
+| 96,000 | 1000 | 10.79 +/- 0.52 |
+| 448,000 | 500 | 14.95 +/- 0.65 |
+| 896,000 | 1000 | 48.02 +/- 6.50 |
+| 2,496,000 | 1000 | **141.67 +/- 2.67** |
 
 If the axes were additive, 2.5M triangles in 1000 components would cost about
-17 s. It costs 95 s — **5.5x** more, with `component_filter` taking 92% of it. Extrapolating one more step in component
-count reaches the reported 7 minutes comfortably, and a fused pointmap from
-four 512x384 views can have far more than 1000 islands after confidence
-masking.
+35 s (24.38 + 10.79). It costs 142 s — **~4x** more. Extrapolating one more
+step in component count still reaches the reported 7 minutes comfortably, and
+a fused pointmap from four 512x384 views can have far more than 1000 islands
+after confidence masking.
 
 **Conclusion for §V-C:** the ~7-minute observation is reproducible, but only
 as a function of *component count*, not triangle count. The paper currently
@@ -76,44 +87,66 @@ of magnitude and would mislead anyone sizing a machine for this pipeline.
 
 ### Which stage, and which function
 
-`a2_stage_profile.csv`, n=5. The answer differs by regime, which is why a
-single attribution was never going to be right:
+`a2_stage_profile.csv`, n=5, also regenerated post-fix. The answer differs by
+regime, which is why a single attribution was never going to be right:
 
 | stage | 1M triangles, 1 component | 96k triangles, 1000 components |
 |---|---|---|
-| `component_filter` | 0.473 s (13.6%) | **6.416 s (97.6%)** |
-| `fill_holes` | 0.238 s (6.8%) | 0.013 s (0.2%) |
-| `smooth` | 0.334 s (9.6%) | 0.030 s (0.5%) |
-| `finalize` | **1.857 s (53.3%)** | 0.074 s (1.1%) |
-| `watertight_check` | 0.584 s (16.8%) | 0.041 s (0.6%) |
+| `component_filter` | 0.90 s (12.0%) | **9.64 s (95.9%)** |
+| `fill_holes` | 0.45 s (6.0%) | 0.03 s (0.3%) |
+| `smooth` | 0.96 s (12.7%) | 0.13 s (1.3%) |
+| `finalize` | **4.06 s (53.7%)** | 0.16 s (1.6%) |
+| `watertight_check` | 1.19 s (15.7%) | 0.10 s (0.9%) |
 
-cProfile, function level:
+cProfile, function level — this is the part that changed most since the
+merge fix landed:
 
-- **Large connected mesh:** `finalize_mesh` dominates — `clean()` 1.34 s and
-  `compute_normals()` 0.51 s. `split_bodies()` is only 0.47 s. The README's
-  attribution to `split_bodies()` is simply wrong in this regime.
-- **Many components:** inside `component_filter`, `split_bodies()` is ~51%,
-  `merge_components` ~35%, and the per-piece `extract_surface` calls (1001 of
-  them) ~13%.
+- **Large connected mesh** (7.87 s total): `finalize_mesh` dominates —
+  `clean()` 3.04 s and `compute_normals()` 1.08 s. `split_bodies()` is only
+  1.00 s.
+- **Many components** (14.23 s total): inside `component_filter`,
+  `split_bodies()` now accounts for **10.55 s (74%)** of the *entire* call —
+  mostly its internal repeated `threshold()` filter invocations (9.48 s
+  cumulative across 1000 calls) — with per-piece `extract_surface` calls
+  (1001 of them) at 2.91 s (20%). `merge_components` no longer appears in the
+  top 25 functions by cumulative time: the batched-merge fix in `bc09e9d`
+  worked, and removed what used to be roughly a third of this regime's cost.
 
-So the README's attribution is right only in the many-component regime, and
-even there it accounts for about half the cost. `merge_components` chains
-`merged.merge(piece)` in a Python loop, copying the accumulated mesh once per
-piece — that is the other third, and replacing it with a single batched merge
-is a far cheaper fix than replacing `split_bodies()`.
+So the previously-suggested fix (batch the per-piece merge instead of looping
+`merged.merge(piece)`) has already shipped, and `split_bodies()` — via its
+1000 individual `threshold()` calls, one per surviving component — is now the
+dominant remaining cost in the many-component regime, not `merge_components`.
 
 **Suggested §V-C revision:** report cost as a function of component count with
-the measured exponents, name `split_bodies` / `merge_components` /
-`finalize_mesh` with their measured shares per regime, and drop the generic
-"GPU acceleration" future-work item in favour of the batched-merge fix.
+the measured exponents, name `split_bodies`'s per-piece `threshold()` calls
+and `finalize_mesh` with their measured shares per regime, and drop the
+generic "GPU acceleration" future-work item in favour of batching or
+vectorizing the per-component extraction in `split_bodies` / `get_component_pieces`.
 
 ### Memory
 
-Peak process RSS reached 2.51 GB during the largest cells, comfortably
-inside 16 GB. No cell hit the 240 s budget and no cell raised `MemoryError`,
-so the ladder has no ceiling to report on this machine. Note that
-`peak_rss_mb` is a process-wide high-water mark and is monotonic within a run,
-so it bounds the whole run rather than attributing memory to one cell.
+Peak process RSS reached 2.02 GB during the largest cells (down from the
+2.51 GB recorded pre-fix, consistent with the batched merge avoiding repeated
+full-mesh copies), comfortably inside 16 GB. No cell hit the 240 s budget and
+no cell raised `MemoryError`, so the ladder has no ceiling to report on this
+machine. Note that `peak_rss_mb` is a process-wide high-water mark and is
+monotonic within a run, so it bounds the whole run rather than attributing
+memory to one cell.
+
+### Open question: why is every cell ~2x slower than the pre-fix run
+
+The relative story above (component count, not triangle count, and by
+roughly the same ~17-33x and ~0.48-1.3 exponents) is unchanged from the
+pre-fix numbers. But the *absolute* seconds are consistently ~2.1-2.4x higher
+across every triangle-count rung, and ~1.5x higher on the flagship
+2.5M-triangle/1000-component interaction cell, than the run this section used
+to quote — including on the "1 component" cells, where the batched-merge fix
+should be a no-op (a single-piece `.merge([])` call vs. the old
+`.copy(deep=True)`). That gap has not been root-caused here: it could be
+machine variance between the two runs (single laptop, no isolation), or a
+real cost difference in `pieces[0].merge(list(pieces[1:]), merge_points=False)`
+vs. `pieces[0].copy(deep=True)` for the single-piece path. Worth a rerun with
+the machine otherwise idle before this table is cited again.
 
 ---
 
