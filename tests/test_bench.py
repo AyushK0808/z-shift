@@ -561,6 +561,30 @@ def test_align_to_reference_reduces_the_residual() -> None:
     assert result.as_row()["align_with_scale"] is False
 
 
+def test_align_to_reference_recovers_a_large_rotation() -> None:
+    """A reconstruction's frame carries no relation to an external GT's world
+    frame (see gt_align module docstring), so the true rotation between them
+    can be large. Centroid-only seeding traps plain ICP in a bad local minimum
+    well before 130 degrees; this must still find the exact transform."""
+    rng = np.random.default_rng(4)
+    # Anisotropic spread so the point cloud's principal axes are well defined.
+    target = rng.normal(size=(600, 3)) * np.array([3.0, 1.5, 1.0])
+    angle = np.deg2rad(130.0)
+    rotation = np.array(
+        [
+            [np.cos(angle), -np.sin(angle), 0.0],
+            [np.sin(angle), np.cos(angle), 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    translation = np.array([5.0, -4.0, 2.0])
+    source = (target - translation) @ rotation
+
+    aligned, result = align_to_reference(source, target)
+    assert result.rmse < 1e-6
+    assert np.allclose(aligned, target, atol=1e-6)
+
+
 def test_umeyama_rejects_degenerate_input() -> None:
     with pytest.raises(ValueError, match="at least 3"):
         umeyama(np.zeros((2, 3)), np.zeros((2, 3)))
