@@ -327,6 +327,51 @@ try:
     plt.savefig(preview_path, dpi=150)
     plt.close(fig)
     print("saved", preview_path)
+
+    # --- skinning sanity: bend the most-influential joint and verify the rest stays ---
+    try:
+        weights = np.asarray(skinning["weights"], dtype=float)
+        if weights.shape[1] >= 2:
+            joint_index = int(np.argmax((weights > 0).sum(axis=0)))
+            jname = skeleton["joints"][joint_index]["name"]
+            angle = np.deg2rad(38.0)
+            pivot = np.asarray(skeleton["joints"][joint_index]["position"], dtype=float)
+            cos_a, sin_a = np.cos(angle), np.sin(angle)
+            # rotate about Y: axes map (x, y, z) -> (x cos + z sin, y, -x sin + z cos)
+            rotation = np.array([[cos_a, 0.0, sin_a], [0.0, 1.0, 0.0], [-sin_a, 0.0, cos_a]])
+            deformed = (verts - pivot) @ rotation.T + pivot
+            influence = weights[:, joint_index][:, None]
+            posed = influence * deformed + (1.0 - influence) * verts
+            displacement = np.linalg.norm(posed - verts, axis=1)
+
+            fig = plt.figure(figsize=(15, 5))
+            views = [(10, 0, "front"), (10, 90, "side"), (80, 0, "top")]
+            sm = plt.cm.ScalarMappable(
+                cmap=plt.cm.viridis, norm=plt.Normalize(0, float(displacement.max() or 1))
+            )
+            for i, (elev, azim, title) in enumerate(views):
+                ax = fig.add_subplot(1, 3, i + 1, projection="3d")
+                ax.scatter(
+                    posed[sample, 0],
+                    posed[sample, 2],
+                    posed[sample, 1],
+                    c=sm.to_rgba(displacement[sample]),
+                    s=1,
+                    alpha=0.7,
+                )
+                ax.add_collection3d(Line3DCollection(segs, colors="red", linewidths=2))
+                ax.view_init(elev=elev, azim=azim)
+                ax.set_title(f"skin sanity -- {title} (bent joint: {jname})")
+                ax.set_box_aspect([1, 1, 1])
+                ax.axis("off")
+            fig.colorbar(sm, ax=list(fig.axes), label="displacement", shrink=0.6)
+            plt.tight_layout()
+            skin_preview = OUT_DIR / "preview_skin_sanity.png"
+            plt.savefig(skin_preview, dpi=150)
+            plt.close(fig)
+            print("saved", skin_preview)
+    except Exception as exc:  # noqa: BLE001 -- preview must never kill the run
+        print("skin sanity preview failed (non-fatal):", exc)
 except Exception as exc:  # noqa: BLE001 -- preview must never kill the run
     print("preview failed (non-fatal):", exc)
 
