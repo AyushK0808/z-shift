@@ -41,42 +41,42 @@ def test_dense_points_xyz_rgb_masks_low_confidence_points() -> None:
 
     assert xyz.shape == (15, 3)
     assert rgb.shape == (15, 3)
+    assert np.all(xyz == pts3d[0].reshape(-1, 3)[1:])
 
 
-def test_export_scene_to_mesh_writes_mesh_and_point_cloud(tmp_path: Path) -> None:
-    try:
-        import dust3r  # noqa: F401
-        import mast3r  # noqa: F401
-    except ImportError:
-        pytest.skip("MASt3R is not installed")
-
+def test_export_scene_to_mesh_writes_ply_and_glb(tmp_path: Path) -> None:
     rng = np.random.default_rng(1)
-    imgs = [rng.random((4, 4, 3))]
-    pts3d = [rng.random((4, 4, 3))]
-    confs = [np.full((4, 4), 2.0)]
-    scene = _FakeScene(imgs, pts3d, confs)
+    imgs = [rng.random((8, 8, 3))]
+    pts3d = [rng.random((8, 8, 3))]
+    confs = [np.full((8, 8), 2.0)]
+    scene = _FakeScene(imgs=imgs, pts3d=pts3d, confs=confs)
 
-    output_dir = tmp_path / "out"
-    output_dir.mkdir(parents=True)
-    output = output_dir / "mesh.glb"
+    output = tmp_path / "out" / "mesh.glb"
+    result = export_scene_to_mesh(
+        scene,
+        output_path=output,
+        output_dir=output.parent,
+        tsdf_thresh=0.0,
+        min_conf_thr=1.5,
+    )
 
-    fell_back = export_scene_to_mesh(scene, output, output_dir, min_conf_thr=1.5)
-
+    assert result is False
     assert output.exists() and output.stat().st_size > 0
-    assert (output_dir / "point_cloud.ply").exists()
-    assert fell_back is False
+    ply_path = output.parent / "point_cloud.ply"
+    assert ply_path.exists() and ply_path.stat().st_size > 0
 
 
 def test_patch_tsdf_cuda_hardcode_makes_cuda_a_noop_without_cuda() -> None:
     """Regression test for a vendored MASt3R bug: TSDFPostProcess calls
     `tensor.cuda()` unconditionally, which raises AssertionError on a
-    CPU-only torch build and crashed reconstruction outright."""
+    CPU-only torch build (or RuntimeError if no driver is present) and crashed
+    reconstruction outright."""
     torch = pytest.importorskip("torch")
     if torch.cuda.is_available():
         pytest.skip("only meaningful on a CPU-only torch build")
 
     tensor = torch.zeros(3)
-    with pytest.raises(AssertionError):
+    with pytest.raises((AssertionError, RuntimeError)):
         tensor.cuda()
 
     _patch_tsdf_cuda_hardcode()

@@ -7,6 +7,7 @@ import trimesh
 
 from spatial_ingestion.auto_rigging.export import RigMetadataExporter
 from spatial_ingestion.auto_rigging.models import AutoRigConfig, AutoRigResult, RiggedMesh
+from spatial_ingestion.auto_rigging.skeleton.mesh_analysis import orient_up
 from spatial_ingestion.auto_rigging.skeleton.templates import TemplateSkeletonFitter
 from spatial_ingestion.auto_rigging.skinning.inverse_distance import InverseDistanceSkinner
 
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class AutoRiggingPipeline:
-    """Phase 5 MVP: mesh -> template skeleton -> inverse-distance skinning."""
+    """Auto-rigging pipeline: mesh -> skeleton fitting -> bone-segment skinning."""
 
     def __init__(
         self,
@@ -35,13 +36,18 @@ class AutoRiggingPipeline:
     ) -> AutoRigResult:
         cfg = config or AutoRigConfig()
         logger.info(
-            "Rigging mesh: vertices=%d, faces=%d, articulation_type=%s",
+            "Rigging mesh: vertices=%d, faces=%d, articulation_type=%s, detailed=%s",
             len(mesh.vertices),
             len(mesh.faces),
             cfg.articulation_type.value,
+            cfg.detailed_skeleton,
         )
         working_mesh = self._prepare_mesh(mesh, cfg)
-        skeleton = self._skeleton_fitter.fit(working_mesh, cfg.articulation_type)
+        skeleton = self._skeleton_fitter.fit(
+            working_mesh,
+            cfg.articulation_type,
+            detailed=cfg.detailed_skeleton,
+        )
         logger.info(
             "Fitted skeleton: joints=%d, bones=%d, root=%s",
             len(skeleton.joints),
@@ -66,16 +72,18 @@ class AutoRiggingPipeline:
             skinning=skinning,
             metadata={
                 "articulation_type": cfg.articulation_type.value,
-                "skinning_method": "inverse_distance_to_joints",
-                "skeleton_method": "template_bbox_fit",
+                "detailed_skeleton": cfg.detailed_skeleton,
+                "skinning_method": "volumetric_geodesic_inverse_distance",
+                "skeleton_method": "geometry_guided_template",
                 "template_axis_convention": "Y-up height, X forward/width, Z lateral/depth",
             },
         )
         result = AutoRigResult(
             rigged_mesh=rigged_mesh,
             warnings=[
-                "Template skeleton fitting assumes a world-axis-aligned, Y-up mesh; "
-                "joints may be misplaced for arbitrary orientations."
+                "Templates are fitted to the mesh's volumetric centreline and limb "
+                "extrema; shapes without clear limbs (or with a rotated up-axis that "
+                "auto-orient could not fix) will still produce approximate joints."
             ],
         )
         for warning in result.warnings:
@@ -122,11 +130,13 @@ class AutoRiggingPipeline:
         if not config.normalize_mesh:
             return mesh.copy()
 
-        normalized = mesh.copy()
-        extents = normalized.extents
+        working = mesh.copy()
+        if config.auto_orient:
+            working = orient_up(working)
+
+        extents = working.extents
         scale = float(max(extents)) if len(extents) else 1.0
-        if scale <= 0:
-            return normalized
-        normalized.apply_translation(-normalized.bounding_box.centroid)
-        normalized.apply_scale(1.0 / scale)
-        return normalized
+        if scale > 0:
+            working.apply_scale(1.0 / scale)
+        working.apply_translation(-working.bounding_box.centroid)
+        return working

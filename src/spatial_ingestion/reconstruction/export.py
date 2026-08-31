@@ -222,6 +222,10 @@ def export_scene_to_mesh(
             fmt,
         )
         output_path = output_path.with_suffix(".glb")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     mesh.export(str(output_path))
 
     xyz, rgb = _dense_points_xyz_rgb(imgs, pts3d, confs, min_conf_thr)

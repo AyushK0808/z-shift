@@ -28,6 +28,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not normalize the mesh to a unit-scale bounding box before fitting",
     )
     parser.add_argument(
+        "--no-auto-orient",
+        action="store_true",
+        help="Disable automatic up-axis detection / reorientation before fitting",
+    )
+    parser.add_argument(
         "--no-export",
         action="store_true",
         help="Return rig data without writing skeleton/weight JSON files",
@@ -51,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         articulation_type=ArticulationType(args.articulation),
         max_skinning_influences=args.max_influences,
         normalize_mesh=not args.no_normalize,
+        auto_orient=not args.no_auto_orient,
         output_dir=args.output_dir,
         rigged_output_path=args.rigged_output,
     )

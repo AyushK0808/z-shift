@@ -77,6 +77,8 @@ class AutoRigConfig(BaseModel):
     articulation_type: ArticulationType = ArticulationType.STATIC
     max_skinning_influences: int = Field(default=4, ge=1)
     normalize_mesh: bool = True
+    detailed_skeleton: bool = False
+    auto_orient: bool = True
     output_dir: Path | None = None
     rigged_output_path: Path | None = None
 
