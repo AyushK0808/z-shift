@@ -71,9 +71,14 @@ print(f"GPU: {props.name}, {props.total_memory / 1024**3:.1f} GB")
 for p in (str(REPO_DIR), str(REPO_DIR / "src")):
     if p not in sys.path:
         sys.path.insert(0, p)
+for p in (
+    str(REPO_DIR / "third_party" / "mast3r"),
+    str(REPO_DIR / "third_party" / "mast3r" / "dust3r"),
+):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 os.environ["PYVISTA_OFF_SCREEN"] = "true"
 
-import mast3r  # noqa: E402  (sanity check)
 
 print("=== 2. Dependencies (idempotent) ===")
 import tomllib
@@ -87,7 +92,7 @@ for dep in pyproject["project"]["dependencies"]:
     if name.startswith(SKIP_PREFIXES):
         continue
     deps.append(dep)
-subprocess.run([sys.executable, "-m", "pip", "install", "-q", *deps], check=True)
+subprocess.run([sys.executable, "-m", "pip", "install", "-q", *deps], check=True)  # noqa: S603 -- trusted pinned deps
 print(f"deps ensured ({len(deps)})")
 
 print("=== 3. CO3D teddybear (chunk 001 = real images) ===")
@@ -95,14 +100,16 @@ zip_path = WORK_DIR / "teddybear_001_singlesequence.zip"
 extract_dir = WORK_DIR / "teddybear_extracted"
 if not zip_path.exists():
     print(f"downloading {CO3D_ZIP_URL} (606 MB, one-time)")
-    urllib.request.urlretrieve(CO3D_ZIP_URL, zip_path)
+    urllib.request.urlretrieve(CO3D_ZIP_URL, zip_path)  # noqa: S310 -- pinned https dataset URL
 print(f"zip: {zip_path.stat().st_size / 1024**2:.1f} MB")
+
 
 # Extract fresh unless a previous extraction already has real images -- the old
 # ``_000`` chunk left an annotation-only directory behind, which aborts the
 # sequence search if we blindly reuse it.
 def _has_images(root: Path) -> bool:
     return any(p.is_dir() for p in root.rglob("images"))
+
 
 if not extract_dir.exists() or not _has_images(extract_dir):
     if extract_dir.exists():
@@ -144,8 +151,8 @@ INPUT_TYPE = "image_folder"
 result = None
 if ARGS.rig_only:
     print("=== 4. rig-only: loading cached refined mesh ===")
-    from spatial_ingestion.auto_rigging.pipeline import AutoRiggingPipeline
     from spatial_ingestion.auto_rigging.export import RigMetadataExporter
+    from spatial_ingestion.auto_rigging.pipeline import AutoRiggingPipeline
 
     if not REFINED_MESH_PATH.exists():
         raise SystemExit(f"no cached refined mesh at {REFINED_MESH_PATH}")
@@ -157,9 +164,9 @@ if ARGS.rig_only:
         output_dir=RIG_DIR,
         rigged_output_path=RIGGED_GLB_PATH,
     )
-    rigging_result = AutoRiggingPipeline(
-        exporter=RigMetadataExporter(RIG_DIR)
-    ).rig_mesh_file(REFINED_MESH_PATH, config=export_cfg)
+    rigging_result = AutoRiggingPipeline(exporter=RigMetadataExporter(RIG_DIR)).rig_mesh_file(
+        REFINED_MESH_PATH, config=export_cfg
+    )
     skeleton_path = Path(rigging_result.skeleton_uri.replace("file://", ""))
     weights_path = Path(rigging_result.weights_uri.replace("file://", ""))
     result_refined_diags = {}
@@ -220,14 +227,14 @@ print("articulation:", skeleton["articulation_type"])
 print("joints:", [j["name"] for j in skeleton["joints"]])
 print("bones :", [b["name"] for b in skeleton["bones"]])
 print("root  :", skeleton["root_joint"])
-print("skinned vertices:", len(skinning["weights"]), "| max influences:", skinning["max_influences"])
+print("skinned vertices:", len(skinning["weights"]))
+print("max influences  :", skinning["max_influences"])
 
 print("=== 6. preview renders ===")
 try:
-    import trimesh
-
-    from mpl_toolkits.mplot3d.art3d import Line3DCollection
     import matplotlib
+    import trimesh
+    from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -241,12 +248,12 @@ try:
     normalized.apply_translation(-normalized.bounding_box.centroid)
     normalized.apply_scale(1.0 / scale)
 
+    from contextlib import suppress as _suppress
+
     verts = normalized.vertices
     colors = None
-    try:
+    with _suppress(Exception):
         colors = normalized.visual.vertex_colors[:, :3] / 255.0
-    except Exception:
-        pass
 
     joint_pos = {j["name"]: np.array(j["position"]) for j in skeleton["joints"]}
     bone_segments = [
@@ -260,8 +267,12 @@ try:
     for i, (elev, azim, title) in enumerate(views):
         ax = fig.add_subplot(1, 3, i + 1, projection="3d")
         ax.scatter(
-            verts[sample, 0], verts[sample, 2], verts[sample, 1],
-            c=colors[sample] if colors is not None else "gray", s=1, alpha=0.6,
+            verts[sample, 0],
+            verts[sample, 2],
+            verts[sample, 1],
+            c=colors[sample] if colors is not None else "gray",
+            s=1,
+            alpha=0.6,
         )
         segs = [[(p[0], p[2], p[1]), (c[0], c[2], c[1])] for p, c in bone_segments]
         ax.add_collection3d(Line3DCollection(segs, colors="red", linewidths=2))
