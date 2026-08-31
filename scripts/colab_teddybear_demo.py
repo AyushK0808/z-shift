@@ -1,3 +1,4 @@
+# ruff: noqa: E501, S603, S607, I001
 """Colab end-to-end demo: CO3D teddybear -> MASt3R -> refine -> geometry-guided rig.
 
 Runs the full z-shift chain on a Google Colab session using the repo checked
@@ -78,6 +79,46 @@ for p in (
     if p not in sys.path:
         sys.path.insert(0, p)
 os.environ["PYVISTA_OFF_SCREEN"] = "true"
+
+
+# --- MASt3R setup (idempotent; mirrors scripts/setup-mast3r.sh) ---------------
+def _setup_mast3r() -> None:
+    mast3r_dir = REPO_DIR / "third_party" / "mast3r"
+    dust3r_dir = mast3r_dir / "dust3r"
+    py_stub = """[build-system]\nrequires = ["setuptools"]\nbuild-backend = "setuptools.build_meta"\n\n[project]\nname = "{name}"\nversion = "0.1.0"\nrequires-python = ">=3.10"\n\n[tool.setuptools.packages.find]\nwhere = ["."]\ninclude = ["{name}*"]\n"""
+    if not mast3r_dir.exists():
+        subprocess.run(
+            ["git", "clone", "https://github.com/naver/mast3r", str(mast3r_dir)], check=True
+        )
+        subprocess.run(["git", "checkout", PINNED_MAST3R], cwd=mast3r_dir, check=True)
+        subprocess.run(
+            ["git", "submodule", "update", "--init", "--recursive"],
+            cwd=mast3r_dir,
+            check=True,
+        )
+    for target, name in ((mast3r_dir, "mast3r"), (dust3r_dir, "dust3r")):
+        if target.exists() and not (target / "pyproject.toml").exists():
+            (target / "pyproject.toml").write_text(py_stub.format(name=name), encoding="utf-8")
+        if target.exists() and str(target) not in sys.path:
+            sys.path.insert(0, str(target))
+        if target.exists():
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-q", "--no-deps", "-e", str(target)],
+                check=True,
+            )
+
+
+try:
+    import mast3r  # noqa: F401
+
+    print("mast3r already importable:", mast3r.__file__)
+except Exception:  # noqa: BLE001 -- fresh VM needs the clone+install step
+    print("MASt3R not importable -- provisioning from source")
+    _setup_mast3r()
+    import mast3r  # noqa: E402,F401
+
+    print("mast3r importable:", mast3r.__file__)
+import dust3r  # noqa: E402, F401 -- sanity check the submodule is importable
 
 
 print("=== 2. Dependencies (idempotent) ===")
