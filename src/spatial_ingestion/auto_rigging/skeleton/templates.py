@@ -13,6 +13,7 @@ from spatial_ingestion.auto_rigging.skeleton.mesh_analysis import (
     foot_points,
     horizontal_band,
     limb_extrema,
+    voxel_points,
     widest_horizontal_axis,
 )
 
@@ -72,7 +73,7 @@ class TemplateSkeletonFitter:
         size: np.ndarray,
         detailed: bool = False,
     ) -> Skeleton:
-        pts = np.asarray(mesh.vertices, dtype=float)
+        pts = voxel_points(mesh)
         profile = cross_sections(mesh)
 
         def c_at(fraction: float) -> np.ndarray:
@@ -85,9 +86,9 @@ class TemplateSkeletonFitter:
             head = top_band.mean(axis=0)
 
         # Hands: where the shoulder band protrudes most on each side.
-        hand_l, hand_r = limb_extrema(mesh, lo_frac=0.45, hi_frac=0.78)
+        hand_l, hand_r = limb_extrema(mesh, pts, lo_frac=0.45, hi_frac=0.78)
         # Feet: bottom-band clusters snapped to the floor.
-        foot_l, foot_r = foot_points(mesh, lo_frac=0.0, hi_frac=0.14)
+        foot_l, foot_r = foot_points(mesh, pts, lo_frac=0.0, hi_frac=0.14)
 
         if not detailed:
             joints = [
@@ -188,7 +189,7 @@ class TemplateSkeletonFitter:
         size: np.ndarray,
         detailed: bool = False,
     ) -> Skeleton:
-        pts = np.asarray(mesh.vertices, dtype=float)
+        pts = voxel_points(mesh)
         long_axis = widest_horizontal_axis(mesh)  # front-back axis
         other_axis = 2 if long_axis == 0 else 0  # left-right axis
         profile = cross_sections(mesh, axis=long_axis)
@@ -212,9 +213,10 @@ class TemplateSkeletonFitter:
             back_left = np.array([mins[long_axis], y_low, mins[other_axis]])
             back_right = np.array([mins[long_axis], y_low, maxs[other_axis]])
 
-        # Head: the farthest protrusion toward the front (+long axis), raised
-        # into the upper half of the body so it isn't the front paw.
-        head = extremal_cluster(pts, long_axis, +1)
+        # Head: the farthest protrusion of the upper half toward the front
+        # (+long axis), raised into the top of the body so it isn't the front paw.
+        upper = pts[pts[:, UP] >= y_low + 0.5 * (y_high - y_low)]
+        head = extremal_cluster(upper, long_axis, +1)
         head[UP] = max(float(head[UP]), y_low + 0.6 * (y_high - y_low))
 
         if not detailed:
@@ -318,7 +320,7 @@ class TemplateSkeletonFitter:
         size: np.ndarray,
         detailed: bool = False,
     ) -> Skeleton:
-        pts = np.asarray(mesh.vertices, dtype=float)
+        pts = voxel_points(mesh)
         profile = cross_sections(mesh)
         body = profile.center_at(0.5)
 

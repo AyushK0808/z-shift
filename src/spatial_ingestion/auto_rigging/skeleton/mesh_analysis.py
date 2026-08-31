@@ -104,7 +104,14 @@ def _perpendicular_axis(v: np.ndarray) -> np.ndarray:
     return axis / norm
 
 
-def _voxel_points(mesh: trimesh.Trimesh, resolution: int = 96) -> np.ndarray:
+def voxel_points(mesh: trimesh.Trimesh, resolution: int = 96) -> np.ndarray:
+    """World-space centres of the mesh's filled voxels (interior sample).
+
+    Denser and more uniform than the raw vertex list, so limb/head/feet band
+    analysis behaves the same on a sparse 8-vertex bench box and a dense
+    100k-triangle reconstruction. Falls back to mesh vertices when the mesh
+    cannot be voxelised.
+    """
     ext = float(mesh.extents.max()) or 1.0
     pitch = ext / resolution
     vox = trimesh.voxel.creation.voxelize(mesh, pitch=pitch)
@@ -114,7 +121,6 @@ def _voxel_points(mesh: trimesh.Trimesh, resolution: int = 96) -> np.ndarray:
         filled = vox.fill()
     except Exception:
         filled = vox
-    # Drop voxels touching the padding plane so pure-surface noise doesn't dominate.
     pts = np.asarray(filled.points, dtype=float)
     if len(pts) < 32:
         pts = np.asarray(mesh.vertices, dtype=float)
@@ -129,7 +135,7 @@ def cross_sections(
     smooth: int = 3,
 ) -> SliceProfile:
     """Volumetric cross-section profile of ``mesh`` along ``axis``."""
-    pts = _voxel_points(mesh, resolution)
+    pts = voxel_points(mesh, resolution)
     lo, hi = float(pts[:, axis].min()), float(pts[:, axis].max())
     if hi - lo <= 0:
         return SliceProfile(
@@ -190,12 +196,17 @@ def _smooth(values: np.ndarray, window: int) -> np.ndarray:
 
 
 def extremal_cluster(verts: np.ndarray, axis: int, sign: int, k: int = 24) -> np.ndarray:
-    """Centroid of the ``k`` most extreme vertices along ``axis`` in one direction."""
+    """Centroid of the ``k`` most extreme vertices along ``axis`` in one direction.
+
+    ``k`` is clamped to a quarter of the point count so sparse meshes (bench
+    boxes with 8 vertices) don't average the whole shape into the centroid.
+    """
     if len(verts) == 0:
         return np.zeros(3)
+    k = min(k, max(1, len(verts) // 4))
     vals = verts[:, axis]
     order = np.argsort(vals if sign < 0 else -vals)
-    return verts[order[: min(k, len(verts))]].mean(axis=0)
+    return verts[order[:k]].mean(axis=0)
 
 
 def split_cluster(verts: np.ndarray, axis: int) -> tuple[np.ndarray, np.ndarray]:
@@ -219,20 +230,21 @@ def widest_horizontal_axis(mesh: trimesh.Trimesh) -> int:
 
 def limb_extrema(
     mesh: trimesh.Trimesh,
+    sample: np.ndarray,
     lo_frac: float = 0.45,
     hi_frac: float = 0.78,
     k: int = 24,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Left/right limb end points from the band's most extreme protrusions.
 
-    The band (a horizontal slab of the mesh) is split along whichever
-    horizontal axis has the widest spread, so arms that hang sideways and arms
-    that point forward both resolve into a (left, right) pair. Falls back to the
-    bounding-box extreme when the band is too small to be meaningful.
+    ``sample`` is a point matrix (usually ``voxel_points`` output). The band
+    (a slab along Y) is split along whichever horizontal axis has the widest
+    spread, so arms that hang sideways and arms that point forward both
+    resolve into a (left, right) pair. Falls back to the bounding-box extreme
+    when the band is too small to be meaningful.
     """
-    pts = np.asarray(mesh.vertices, dtype=float)
-    band = horizontal_band(pts, lo_frac, hi_frac)
-    if len(band) < max(8, min(len(pts), 8)):
+    band = horizontal_band(sample, lo_frac, hi_frac)
+    if len(band) < max(8, min(len(sample), 8)):
         axis = widest_horizontal_axis(mesh)
         centroid = np.asarray(mesh.centroid, dtype=float)
         other = 2 if axis == 0 else 0
@@ -249,16 +261,16 @@ def limb_extrema(
 
 def foot_points(
     mesh: trimesh.Trimesh,
+    sample: np.ndarray,
     lo_frac: float = 0.0,
     hi_frac: float = 0.14,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Left/right foot anchors: bottom-band clusters snapped to the floor."""
-    pts = np.asarray(mesh.vertices, dtype=float)
-    band = horizontal_band(pts, lo_frac, hi_frac)
-    if len(band) < max(8, min(len(pts), 8)):
+    band = horizontal_band(sample, lo_frac, hi_frac)
+    if len(band) < max(8, min(len(sample), 8)):
         centroid = np.asarray(mesh.centroid, dtype=float)
-        left = np.array([mesh.bounds[0][0], float(pts[:, UP].min()), centroid[2]])
-        right = np.array([mesh.bounds[1][0], float(pts[:, UP].min()), centroid[2]])
+        left = np.array([mesh.bounds[0][0], float(sample[:, UP].min()), centroid[2]])
+        right = np.array([mesh.bounds[1][0], float(sample[:, UP].min()), centroid[2]])
         return left, right
     spread = band[:, [0, 2]].std(axis=0)
     axis = 0 if spread[0] >= spread[1] else 2
