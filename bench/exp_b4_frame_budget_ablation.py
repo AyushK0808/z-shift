@@ -66,6 +66,7 @@ def _frames_from_image_dir(image_paths: list[Path]) -> list[FrameReference]:
     """
     import cv2
 
+    logger.info("computing motion scores for %d frames", len(image_paths))
     frames: list[FrameReference] = []
     previous: Any = None
     for index, path in enumerate(image_paths):
@@ -113,6 +114,13 @@ def _run_variant(
 
     selected = select_variant(variant, frames, budget=budget)
     image_paths = [uri_to_path(frame.uri) for frame in selected]
+    logger.info(
+        "%s/%s: running reconstruction (budget=%d, %d frames selected)",
+        scene_name,
+        variant,
+        budget,
+        len(selected),
+    )
 
     output_path = output_root / scene_name / variant / f"{variant}.glb"
     job = build_job(
@@ -141,6 +149,14 @@ def _run_variant(
         with_scale=with_scale,
         seed=seed,
         reconstruction_scale=reconstruction_scale,
+    )
+    logger.info(
+        "%s/%s (budget=%d): F=%.3f chamfer=%.4f",
+        scene_name,
+        variant,
+        budget,
+        scores["f_score"],
+        scores["chamfer_l1"],
     )
 
     return {

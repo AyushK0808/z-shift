@@ -37,6 +37,7 @@ from bench.tier_b_common import (
     reset_gpu_peak,
     run_reconstruction,
     score_against_gt,
+    timed,
 )
 from spatial_ingestion.reconstruction.models import Mast3rRunParams
 
@@ -91,16 +92,18 @@ def run(
             for record in run_info["manifest"].get("stage_timings", [])
         }
 
-        gt_points = load_gt_points(scene.gt_path, seed=seed)
+        with timed(f"{scene.name}/load_gt_points"):
+            gt_points = load_gt_points(scene.gt_path, seed=seed)
         reconstruction = point_cloud_from_output(run_info["output_dir"], seed=seed)
-        scores = score_against_gt(
-            reconstruction,
-            gt_points,
-            tau=scene.tau,
-            with_scale=with_scale,
-            seed=seed,
-            reconstruction_scale=reconstruction_scale_for(scene.units),
-        )
+        with timed(f"{scene.name}/score_against_gt"):
+            scores = score_against_gt(
+                reconstruction,
+                gt_points,
+                tau=scene.tau,
+                with_scale=with_scale,
+                seed=seed,
+                reconstruction_scale=reconstruction_scale_for(scene.units),
+            )
 
         writer.add(
             scene=scene.name,

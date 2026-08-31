@@ -13,12 +13,15 @@ which one the numbers came from.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import numpy as np
 from scipy.spatial import KDTree
 
 __all__ = ["AlignmentResult", "apply_alignment", "umeyama", "align_to_reference"]
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -150,14 +153,23 @@ def align_to_reference(
     source_mean = source.mean(axis=0)
     target_mean = target.mean(axis=0)
 
+    seed_rotations = _seed_rotations(source, target)
+    logger.info(
+        "ICP: aligning %d points to %d GT points across %d seed rotations (<=%d iterations each)",
+        len(source),
+        len(target),
+        len(seed_rotations),
+        iterations,
+    )
+
     best_current: np.ndarray | None = None
     best_alignment: AlignmentResult | None = None
-    for rotation in _seed_rotations(source, target):
+    for seed_index, rotation in enumerate(seed_rotations):
         current = (source - source_mean) @ rotation.T + target_mean
         alignment = umeyama(source[:3], source[:3], with_scale=with_scale)
         previous_rmse = float("inf")
 
-        for _ in range(iterations):
+        for step in range(iterations):  # noqa: B007 (used after loop for logging)
             _, indices = tree.query(current, k=1)
             correspondences = target[np.asarray(indices, dtype=int)]
             alignment = umeyama(source, correspondences, with_scale=with_scale)
@@ -165,6 +177,14 @@ def align_to_reference(
             if abs(previous_rmse - alignment.rmse) < tolerance:
                 break
             previous_rmse = alignment.rmse
+
+        logger.info(
+            "ICP seed %d/%d: converged after %d iterations, rmse=%.6f",
+            seed_index + 1,
+            len(seed_rotations),
+            step + 1,
+            alignment.rmse,
+        )
 
         if best_alignment is None or alignment.rmse < best_alignment.rmse:
             best_current, best_alignment = current, alignment

@@ -200,12 +200,15 @@ def load_gt_object(path: Path) -> Any:
     resolved = Path(path).resolve()
     cache_path = _gt_cache_key(resolved, "raw").with_suffix(".pkl")
     if cache_path.exists():
+        logger.debug("trimesh object cache hit: %s", cache_path)
         with cache_path.open("rb") as handle:
             return pickle.load(handle)  # noqa: S301 - our own cache, not external input
 
     import trimesh
 
+    logger.info("loading trimesh object (uncached, may be slow for raw scans): %s", resolved)
     loaded = trimesh.load(str(resolved))
+    logger.info("loaded trimesh object: %s (%s)", resolved.name, type(loaded).__name__)
     _GT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     with cache_path.open("wb") as handle:
         pickle.dump(loaded, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -219,12 +222,14 @@ def load_gt_points(path: Path, max_points: int = 500_000, seed: int = 0) -> np.n
     resolved = Path(path).resolve()
     cache_path = _gt_cache_key(resolved, max_points, seed).with_suffix(".npy")
     if cache_path.exists():
+        logger.debug("points cache hit: %s", cache_path)
         return np.load(cache_path)
 
     loaded = load_gt_object(resolved)
     if isinstance(loaded, trimesh.PointCloud):
         points = np.asarray(loaded.vertices, dtype=float)
     elif isinstance(loaded, trimesh.Trimesh):
+        logger.info("sampling %d points from mesh: %s", min(max_points, 500_000), resolved.name)
         points = sample_points(loaded, min(max_points, 500_000), seed)
     else:
         raise ValueError(f"unsupported ground-truth artifact: {path}")
@@ -235,6 +240,7 @@ def load_gt_points(path: Path, max_points: int = 500_000, seed: int = 0) -> np.n
 
     _GT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
     np.save(cache_path, points)
+    logger.info("cached %d points: %s", len(points), cache_path)
     return points
 
 
