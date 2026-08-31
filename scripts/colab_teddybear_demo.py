@@ -97,9 +97,19 @@ if not zip_path.exists():
     print(f"downloading {CO3D_ZIP_URL} (606 MB, one-time)")
     urllib.request.urlretrieve(CO3D_ZIP_URL, zip_path)
 print(f"zip: {zip_path.stat().st_size / 1024**2:.1f} MB")
-if not extract_dir.exists():
+
+# Extract fresh unless a previous extraction already has real images -- the old
+# ``_000`` chunk left an annotation-only directory behind, which aborts the
+# sequence search if we blindly reuse it.
+def _has_images(root: Path) -> bool:
+    return any(p.is_dir() for p in root.rglob("images"))
+
+if not extract_dir.exists() or not _has_images(extract_dir):
+    if extract_dir.exists():
+        shutil.rmtree(extract_dir)
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(extract_dir)
+    print("extracted fresh into", extract_dir)
 
 image_dirs = sorted(p for p in extract_dir.rglob("images") if p.is_dir())
 if not image_dirs:
