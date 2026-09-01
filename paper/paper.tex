@@ -98,28 +98,26 @@ email@vitstudent.ac.in}
 \vspace{-14pt}
 
 \begin{abstract}
-Recent advances in computer vision have substantially improved 3D reconstruction
-from two-dimensional observations, but a deployable 2D-to-3D system must also
-compose that reconstruction with ingestion, frame selection, temporal
-synchronization, geometric refinement, and application-specific delivery. This
-paper presents z-shift, a systems contribution rather than a new reconstruction
-network: a fixed sequence of independently replaceable stages -- ingestion of
-images, videos, synchronized captures, and live frames through a unified spatial
-schema; MASt3R-based multi-view reconstruction with optional TSDF fusion and a
-point-map fallback; automated mesh refinement; and contract-checked routing of
-GLB or point-cloud deliverables -- communicating only through explicit,
-serializable artifacts. A controlled benchmark suite, with a single traced
-eight-view capture as an end-to-end illustration, shows
-that the interfaces between stages, not the stages themselves, carry the
-system's most consequential behavior. Motion-ranked frame retention degrades
-sliding-window pairing locality unless capture order is restored, a 6.6x effect
-fixable at zero cost; refinement cost is governed by mesh fragmentation rather
-than triangle count, and behaves as a threshold -- nearly flat below roughly 100
-components, then close to linear, reaching 23x at 1,000; and repeat runs of the
-same configuration on one GPU were byte-identical. Component- and
-integration-level correctness is established across the pipeline; real-time
-delivery, efficient large-scale mesh processing, and quantitative reconstruction
-accuracy against ground truth remain future work.
+Unposed learned methods such as DUSt3R and MASt3R now recover dense geometry
+from two-dimensional observations without calibration or pose, but a deployable
+2D-to-3D system needs more than a reconstruction network. It also needs
+ingestion, frame selection, temporal synchronization, geometric refinement, and
+application-specific delivery, and those stages have to work together. We present z-shift, a four-stage pipeline whose stages are
+independently replaceable and communicate only through serializable artifacts.
+Ingestion normalizes images, videos, synchronized captures, and live frames into
+a unified spatial schema. Reconstruction wraps MASt3R with optional TSDF fusion
+and a point-map fallback. Refinement applies a fixed operator sequence.
+Delivery routes GLB or point-cloud outputs under a compatibility contract. We
+evaluate the pipeline on a controlled benchmark suite and trace one eight-view
+capture end to end. Motion-ranked frame retention degrades sliding-window
+pairing locality by 6.6x unless capture order is restored, which costs nothing
+to fix. Refinement cost is governed by mesh fragmentation more than by triangle
+count, and behaves as a threshold: nearly flat below roughly 100 components,
+then close to linear, reaching 23x at 1,000. Repeat runs of one configuration
+on one GPU were byte-identical. We establish component- and integration-level
+correctness across the pipeline. Real-time delivery, efficient large-scale mesh
+processing, and quantitative reconstruction accuracy against ground truth remain
+future work.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -142,98 +140,100 @@ with follow-on work on faster rendering \cite{b7}, explicit representations
 conventional calibrated pipeline \cite{b14}, and MASt3R strengthened this through
 improved image matching \cite{b15}.
 
-This paper addresses the question that remains once a capable reconstruction
-engine is available: how the surrounding stages -- ingestion, frame selection,
-synchronization, refinement, and delivery -- are composed around it so that
-heterogeneous raw media reach a usable deliverable at a predictable cost,
-reproducibly. z-shift is that composition: a fixed sequence of
-independently replaceable stages communicating only through explicit, serializable
-artifacts, with MASt3R occupying the reconstruction slot. The evaluation
-supports one observation: individually correct stages do not compose into a
-correct or predictable system for free -- the interfaces between them carry
-their own correctness and cost behavior.
+Once a capable reconstruction engine is available, a question remains: how should
+the surrounding stages be arranged around it so that heterogeneous raw media
+reach a usable deliverable at predictable cost, reproducibly? z-shift is one
+answer, a fixed sequence of independently replaceable stages that communicate
+only through serializable artifacts, with MASt3R occupying the reconstruction
+slot. Our evaluation supports a single claim. Individually correct stages do not
+compose into a correct or predictable system for free, and the interfaces
+between them carry their own correctness and cost behavior.
 
-Real-world input is heterogeneous -- photographs, image directories, videos,
-synchronized multi-camera captures, continuous frame streams -- and video adds
-redundancy and cost, so z-shift normalizes these sources into a common spatial
-schema and bounds the frames entering reconstruction
-(Section~\ref{sec:architecture}). Raw reconstruction is in turn not
-production-ready: surfaces may contain disconnected
-components, holes, noise, and inconsistent normals, which established
-mesh-processing methods can address \cite{b16}--\cite{b19}; z-shift applies these
-automatically in a dedicated refinement stage that preserves vertex colors.
+Real-world input is heterogeneous. Photographs, image directories, videos,
+synchronized multi-camera captures, and continuous frame streams all arrive at
+the same entry point, and video adds redundancy and cost. z-shift normalizes
+these sources into a common spatial schema and bounds the frames entering
+reconstruction (Section~\ref{sec:architecture}). Raw reconstruction output is
+not production-ready either. Surfaces may contain disconnected components,
+holes, noise, and inconsistent normals. Established mesh-processing methods
+address all four \cite{b16}--\cite{b19}, and z-shift applies them automatically
+in a dedicated refinement stage that preserves vertex colors.
 
-This work contributes, as systems abstractions rather than new algorithms: (1) a
-unified ingestion schema decoupling heterogeneous batch and live media from
-everything downstream and making a normalized input replayable; (2) bounded
-orchestration of frame selection and pairing under an explicit frame budget; (3) a
-backend orchestration layer wrapping MASt3R with optional TSDF fusion and a
-recorded point-map fallback; (4) an automated geometry-processing stage applying a
-fixed refinement sequence without per-model human choices; and (5) a delivery
-layer enforcing source-type/use-case compatibility as an explicit contract and
-emitting reproducibility manifests. It further contributes three empirical
-findings about how these stages interact: frame ordering degrades pairing
-locality (6.6x, fixable at zero cost); mesh fragmentation rather than triangle
-count governs refinement cost, with a threshold near 100 components rather than
-a smooth gradient; and repeat runs of a fixed configuration on one GPU are
-byte-identical, so a run is reproducible from its manifest where hardware is
-held fixed.
+We contribute five systems abstractions. (1) A unified ingestion schema that
+decouples heterogeneous batch and live media from everything downstream and
+makes a normalized input replayable. (2) Bounded orchestration of frame
+selection and pairing under an explicit frame budget. (3) A backend layer
+wrapping MASt3R with optional TSDF fusion and a recorded point-map fallback.
+(4) An automated geometry-processing stage that applies a fixed refinement
+sequence without per-model human choices. (5) A delivery layer that enforces
+source-type and use-case compatibility as a contract and emits reproducibility
+manifests.
+
+We also report three empirical findings about how the stages interact. Frame
+ordering degrades pairing locality by 6.6x, and the fix is free. Mesh
+fragmentation governs refinement cost more strongly than triangle count does,
+and it does so as a threshold near 100 components, not a smooth gradient.
+Repeat runs of a fixed configuration on one GPU are byte-identical, so a run is
+reproducible from its manifest when hardware is held fixed.
 
 \section{Related Work}
 
 Classical SfM and MVS recover camera poses and dense geometry from
-correspondences across images \cite{b1}--\cite{b4} but degrade on textureless,
+correspondences across images \cite{b1}--\cite{b4}, but degrade on textureless,
 specular, or sparsely covered surfaces. Learned scene representations relax that
-dependence -- NeRF and its accelerated, explicit, and unbounded-scene successors
-\cite{b6}--\cite{b9}, and generalizable one- or few-view variants \cite{b10},
-\cite{b11} -- but optimize for view synthesis rather than an explicit, exportable
-surface, limiting their direct use as an asset-production backend.
+dependence. NeRF and its accelerated, explicit, and unbounded-scene successors
+\cite{b6}--\cite{b9}, along with generalizable one- and few-view variants
+\cite{b10}, \cite{b11}, optimize for view synthesis. What they do not produce is
+an explicit exportable surface, which limits their direct use as an
+asset-production backend.
 
 DUSt3R \cite{b14} and MASt3R \cite{b15} are the most directly relevant prior
-work: both regress dense per-pixel point maps in a common reference frame from
-unposed image pairs, removing calibration and pose as prerequisites, and MASt3R
-adds a dense local-feature head that improves matching. Both yield a
-confidence-weighted point map rather than a clean surface, motivating the
-refinement stage described later. z-shift adopts MASt3R as its current backend;
-because stages communicate only through serializable artifacts
-(Section~\ref{sec:architecture}), it could be swapped for a comparable method
-without changing the surrounding stages. The volumetric fusion
-\cite{b21}--\cite{b23} and mesh-processing \cite{b16}--\cite{b19} methods z-shift
-composes are likewise established. The contribution is the composed system and
-what can be said about it once composed: which interface properties determine
-its cost, and what a run must record to be reproducible.
+work. Both regress dense per-pixel point maps in a common reference frame from
+unposed image pairs, which removes calibration and pose as prerequisites, and
+MASt3R adds a dense local-feature head that improves matching. The output of
+each is a confidence-weighted point map, not a clean surface, which is what
+motivates the refinement stage described later. z-shift adopts MASt3R as its
+current backend. Since stages communicate only through serializable artifacts
+(Section~\ref{sec:architecture}), MASt3R could be swapped for a comparable
+method without changing anything around it. The volumetric fusion
+\cite{b21}--\cite{b23} and mesh-processing \cite{b16}--\cite{b19} methods we use
+are likewise established. Our contribution is the assembled system and what can
+be measured about it: which interface properties determine its cost, and what a
+run must record to be reproducible.
 
-z-shift therefore belongs to a smaller literature of complete reconstruction
-\emph{systems} rather than individual algorithms. COLMAP chains incremental SfM
-\cite{b2} with dense multi-view stereo \cite{b25}, and AliceVision's Meshroom
-\cite{b26} wraps a similar chain in a node-based GUI for interactive,
-human-supervised use; Nerfstudio \cite{b27} standardizes data
-loading, training, and export for radiance-field methods; and Open3D \cite{b28}
-and Kaolin \cite{b29} supply reusable primitives without prescribing an
-ingestion-to-delivery workflow. z-shift differs from the classical pipelines in
-adopting an unposed learned backend in place of calibrated SfM/MVS, and from all
-four in targeting a fixed, non-interactive path from heterogeneous raw media
-through automatic refinement to use-case-routed export, rather than an
-interactive authoring tool or a library the user must assemble. Two consequences follow.
-Because mesh quality is conventionally restored by a human choosing operators and
-thresholds per model \cite{b18}, \cite{b19}, an automatic pipeline must fix the
-sequence in advance, which makes its cost a property of the input's structure
-rather than of an operator's choices. And because reconstruction accuracy is
-conventionally reported against captured ground truth on datasets such as
-ScanNet \cite{b34}, such protocols evaluate a reconstruction method in isolation
-and say nothing about whether the surrounding stages preserve the properties a
-downstream tool requires -- the gap the benchmark reported later addresses.
+z-shift belongs to a smaller literature of complete reconstruction \emph{systems}
+rather than individual algorithms. COLMAP chains incremental SfM \cite{b2} with
+dense multi-view stereo \cite{b25}, and AliceVision's Meshroom \cite{b26} wraps a
+similar chain in a node-based GUI built for interactive, human-supervised use.
+Nerfstudio \cite{b27} standardizes data loading, training, and export for
+radiance-field methods, while Open3D \cite{b28} and Kaolin \cite{b29} supply
+reusable primitives and leave the ingestion-to-delivery workflow to the user. z-shift
+departs from the classical pipelines by adopting an unposed learned backend in
+place of calibrated SfM/MVS. It departs from all four by targeting a fixed,
+non-interactive path from heterogeneous raw media through automatic refinement
+to use-case-routed export, instead of an interactive authoring tool or a library
+the user must assemble.
+
+Two consequences follow. Mesh quality is conventionally restored by a human
+choosing operators and thresholds per model \cite{b18}, \cite{b19}, so an
+automatic pipeline has to fix the sequence in advance. Its cost then becomes a
+property of the input's structure and not of an operator's judgment.
+Reconstruction accuracy, meanwhile, is conventionally reported against captured
+ground truth on datasets such as ScanNet \cite{b34}. Those protocols evaluate a
+reconstruction method on its own. They say nothing about whether the surrounding
+stages preserve the properties a downstream tool requires, which is the gap our
+benchmark addresses.
 
 \section{Research Gap and Problem Statement}
 
-The reconstruction components surveyed above are individually well studied and,
-in isolation, work. Deploying them additionally requires ingestion, frame
-selection, synchronization, refinement, and delivery, and those stages must
-compose. Composition is a distinct problem: a stage that satisfies its own
-specification can still violate an assumption the next stage makes, or exhibit a
-cost profile that no stage shows alone. This work addresses that gap -- the
-correctness and cost of the interfaces between stages -- as distinct from the
-accuracy of whichever model occupies the reconstruction slot.
+The reconstruction components surveyed above are well studied, and on their own
+they work. Deployment additionally requires the surrounding stages enumerated in
+Section~\ref{sec:architecture}, and assembling them is a distinct problem, since
+a stage that satisfies its own specification can still violate an assumption the
+next stage makes, or show a cost profile that no stage exhibits alone. We
+address the correctness and cost of the interfaces between those stages. That is
+a separate question from the accuracy of whichever model occupies the
+reconstruction slot.
 
 \begin{figure}[tbp]
 \centerline{\includegraphics[width=0.6\columnwidth]{figures/fig1-overview.png}}
@@ -245,12 +245,12 @@ refined, and routed to use-case-specific deliverables.}
 \section{System Architecture}
 \label{sec:architecture}
 
-The architecture is four modular stages -- media ingestion, multi-view
-reconstruction, mesh refinement, and outcome routing -- communicating only through
-explicit, serializable artifacts: a unified schema, a reconstruction job, a mesh
-file, and a set of manifests. Those four artifacts are the system's interfaces:
-each is what one stage may assume about the previous one, and each is where the
-composition-level behavior reported in Section~\ref{sec:bench-validation}
+The architecture has four modular stages: media ingestion, multi-view
+reconstruction, mesh refinement, and outcome routing. They communicate only
+through serializable artifacts, namely a unified schema, a reconstruction job, a
+mesh file, and a set of manifests. Those four artifacts are the system's
+interfaces. Each defines what one stage may assume about the previous one, and
+each is where the behavior reported in Section~\ref{sec:bench-validation}
 originates. Fig.~\ref{fig:overview} summarizes the flow.
 
 \subsection{Media Ingestion}
@@ -258,43 +258,43 @@ originates. Fig.~\ref{fig:overview} summarizes the flow.
 Ingestion accepts single images, image folders, videos, video folders, and live
 WebSocket frames through an HTTP/WebSocket gateway with pluggable authentication
 and rate limiting. A classifier selects a processing track from MIME type and file
-extension, rejecting mixed or unrecognized payloads outright rather than
-partially processing them. The batch track normalizes uploads: images are resized
-with aspect ratio and EXIF metadata preserved, while videos are probed with FFmpeg
-and sampled by a motion-adaptive sampler that shortens its interval during motion
-and lengthens it across static spans. For video folders, a multi-source
+extension. Mixed or unrecognized payloads are rejected outright, never partially
+processed. The batch track then normalizes uploads: images are resized with
+aspect ratio and EXIF metadata preserved, while videos are probed with FFmpeg and
+sampled by a motion-adaptive sampler that shortens its interval during motion and
+lengthens it across static spans. For video folders, a multi-source
 synchronizer estimates a per-source clock offset by matching motion signatures
 against the source with the most frames, then aligns frames to that anchor by
 nearest timestamp. The live track instead buffers frames in a bounded ring buffer
-with explicit backpressure -- oversized payloads are refused, a full buffer evicts
-its oldest frame -- and receives top compute priority.
+with explicit backpressure. Oversized payloads are refused and a full buffer
+evicts its oldest frame. Live work receives top compute priority.
 
 \subsection{Unified Spatial Representation}
 
 Both tracks converge into a single serializable schema holding source metadata,
 frame references, temporal information, per-frame intrinsics, and synchronization
-state. This is the pipeline's first explicit artifact boundary, and it buys two
-things. It decouples ingestion from reconstruction, so neither stage encodes
-assumptions about the other's internals; and it makes a normalized input
-replayable, so reconstruction experiments run against a fixed frame set rather
-than against the original capture.
+state. This is the pipeline's first artifact boundary, and it does two things.
+It decouples ingestion from reconstruction, so neither stage encodes assumptions
+about the other's internals. It also makes a normalized input replayable, so
+reconstruction experiments run against a fixed frame set instead of the original
+capture.
 
 \subsection{Multi-View Reconstruction}
 \label{sec:reconstruction}
 
 The reconstruction stage converts the schema into an explicit reconstruction job.
-Each source type maps to a mode -- image folder to multi-view, single video to
-video-sequence, video folder to synchronized-views -- while single images and live
+Each source type maps to a mode: image folder to multi-view, single video to
+video-sequence, video folder to synchronized-views. Single images and live
 streams are rejected, since alignment requires at least two views of one subject.
-Video is redundant, so the job is capped at a configurable frame budget: above it,
-the highest-motion frames are retained in preference to a uniform subsample, and
-for synchronized captures the budget applies to whole groups so cross-camera
-groups are never split. Pairing then uses either a complete scene graph or a
-sliding window, the latter preferred for videos and larger image sets; for
-synchronized-views jobs, cross-camera pairs are formed within each group so
-simultaneous observations are matched directly. Retained frames reach pairing in
-motion-rank order rather than capture order -- a cross-stage interaction
-Section~\ref{sec:bench-validation} measures.
+Video is redundant, so the job is capped at a configurable frame budget. Above
+that budget the highest-motion frames are retained in preference to a uniform
+subsample, and for synchronized captures the budget applies to whole groups, so
+cross-camera groups are never split. Pairing then uses either a complete scene
+graph or a sliding window, the latter preferred for videos and larger image sets,
+and for synchronized-views jobs cross-camera pairs are formed within each group
+so simultaneous observations are matched directly. Retained frames
+reach pairing in motion-rank order, not capture order. This is a cross-stage
+interaction, and Section~\ref{sec:bench-validation} measures it.
 
 The pipeline resolves an execution device
 across CUDA, CPU, and Metal backends, seeds the Python, NumPy, and PyTorch generators
@@ -304,48 +304,49 @@ alignment, caching intermediate results on disk so repeated runs over the same
 frames reuse prior work. Geometry export is optionally preceded by TSDF fusion;
 when fusion is disabled, or fails under memory or runtime pressure, the pipeline
 falls back to a dense point-map export and records the fallback. The exporter
-writes a colored mesh -- GLB by default, with OBJ and PLY also supported --
-applying a confidence threshold to discard low-confidence points, and
-additionally writes a confidence-masked dense point cloud; a run manifest records
-the model, device, input resolution, pairing strategy, thresholds, seed, and
-reproducibility metadata.
+writes a colored mesh in GLB by default, with OBJ and PLY also supported,
+applying a confidence threshold to discard low-confidence points. It also writes
+a confidence-masked dense point cloud. A run manifest records the model, device,
+input resolution, pairing strategy, thresholds, seed, and reproducibility
+metadata.
 
 \subsection{Mesh Refinement}
 
-The refinement stage applies a fixed operator sequence, rather than the per-model
-operator and threshold choices a human would make in an interactive tool. It first
-validates its input, unwrapping container formats such as GLB scenes and rejecting
-meshes that are empty or contain non-finite coordinates. Component handling then
-depends on mode: object mode retains only the largest connected component, while
-room mode splits the mesh into bodies, keeps every component above a minimum cell
-count, and merges the survivors, preserving scenes legitimately composed of several
-pieces. Boundary holes are closed up to a maximum size derived from the
-bounding-box diagonal, skipping closure when the geometry is itself thin and open
-along one axis so an intentionally planar capture is not sealed.
+The refinement stage applies one fixed operator sequence, in place of the
+per-model operator and threshold choices a human would make in an interactive
+tool. It first validates its input, unwrapping container formats such as GLB
+scenes and rejecting meshes that are empty or contain non-finite coordinates.
+Component handling then depends on mode. Object mode retains only the largest
+connected component. Room mode splits the mesh into bodies, keeps every
+component above a minimum cell count, and merges the survivors, which preserves
+scenes legitimately made of several pieces. Boundary holes are closed up to a
+maximum size derived from the bounding-box diagonal. Closure is skipped when the
+geometry is itself thin and open along one axis, so an intentionally planar
+capture is not sealed.
 
 Surfaces are smoothed with Taubin smoothing, which suppresses noise without the
 shrinkage of repeated Laplacian passes; room mode additionally preserves feature
 edges above a configurable angle. Finalization merges coincident points,
 triangulates, optionally decimates to a target reduction, and recomputes
-outward-facing normals. Because smoothing and decimation rewrite the vertex set,
-vertex colors are carried onto the cleaned mesh by nearest-point transfer, so
-appearance survives the geometric operations -- an invariant the interface between
-these two stages must hold and that Section~\ref{sec:bench-validation} checks. A
-final pass counts open boundary edges and flags the mesh watertight or not,
-reporting a non-watertight result as a warning rather than terminating the
-workflow, alongside a refinement manifest recording input and output counts, the
-watertightness result, and any warnings.
+outward-facing normals. Smoothing and decimation rewrite the vertex set, so
+vertex colors are carried onto the cleaned mesh by nearest-point transfer and
+appearance survives the geometric operations. This is an invariant the interface
+between these two stages must hold, and Section~\ref{sec:bench-validation}
+checks it. A final pass counts open boundary edges and flags the mesh watertight
+or not, treating a non-watertight result as a warning that does not terminate the
+workflow. The stage emits a refinement manifest recording input and output
+counts, the watertightness result, and any warnings.
 
 \subsection{Application-Specific Deliverables}
 
-The outcomes stage treats source-type/use-case compatibility as an explicit
-contract rather than a default: each use case declares the source types it can
-meaningfully consume, every other combination is rejected with a routing error
-before anything is exported, and the benchmark (Table~\ref{tab3}) confirms all 24
+The outcomes stage treats source-type and use-case compatibility as a contract,
+not a default. Each use case declares the source types it can meaningfully
+consume, and every other combination is rejected with a routing error before
+anything is exported. Our benchmark (Table~\ref{tab3}) confirms all 24
 combinations route or reject correctly. The editing pathway exports a
-Blender-ready GLB; the viewing pathway packages the confidence-masked point cloud
-into a colored PLY rather than a full Gaussian Splatting representation; the live
-pathway is defined at the routing level and rejects requests explicitly.
+Blender-ready GLB. The viewing pathway packages the confidence-masked point
+cloud into a colored PLY, short of a full Gaussian Splatting representation. The
+live pathway is defined at the routing level and rejects requests explicitly.
 
 \section{Results and Discussion}
 
@@ -365,28 +366,28 @@ in (b) marks the $\sim$7-minute combined-load case.}
 \label{fig:refine-scaling}
 \end{figure}
 
-In the current implementation, refinement cost is dominated by per-component
-processing overhead rather than by triangle count. On a single connected mesh,
-triangle count alone is only mildly super-linear: a log-log fit over 50K--2.5M
+In the current implementation, per-component processing overhead dominates
+refinement cost, and triangle count matters less. On a single connected mesh,
+triangle count alone is only mildly super-linear. A log-log fit over 50K--2.5M
 triangles gives an exponent of 1.16--1.31 across the eight
-configuration/geometry combinations ($R^2 > 0.98$ throughout), and the default
-configuration adds only 23\% over the smoothing-off baseline. Component count,
-held at a fixed $\sim$96,000 triangles, is the stronger driver
-(Fig.~\ref{fig:refine-scaling}(a)): cost grows 23x between 1 and 1,000
-components on the pooled means, 17--33x across the four configurations.
+configuration/geometry combinations, with $R^2 > 0.98$ throughout, and the
+default configuration adds only 23\% over the smoothing-off baseline. Component
+count is the stronger driver. Held at a fixed $\sim$96,000 triangles
+(Fig.~\ref{fig:refine-scaling}(a)), cost grows 23x between 1 and 1,000
+components on the pooled means, and 17--33x across the four configurations.
 
 That growth is not a clean power law, and the endpoint ratio alone would
 overstate how evenly it accumulates. A single log-log fit over the component
 ladder gives an exponent of 0.39--0.48 (0.43 pooled) but fits poorly
-($R^2 = 0.85$), because the curve has a knee: the local exponent is 0.22 from 1
-to 100 components and 0.94 from 100 to 1,000. Below roughly 100 components
-fragmentation is nearly free -- 0.45~s to 1.23~s, under 3x over two decades --
-and above it cost rises close to linearly in component count, supplying the
-remaining $\sim$8.5x. Fragmentation is therefore a threshold rather than a
-gradient: refinement stays cheap until component count reaches the low hundreds,
-past which each additional component costs roughly a fixed amount. The two axes
-are also super-additive, the combined configuration costing roughly 4x the
-additive prediction and reaching the $\sim$7-minute regime marked in
+($R^2 = 0.85$). The curve has a knee. Its local exponent is 0.22 from 1 to 100
+components and 0.94 from 100 to 1,000. Below roughly 100 components,
+fragmentation is nearly free: 0.45~s to 1.23~s, under 3x over two decades. Above
+that point cost rises close to linearly in component count, supplying the
+remaining $\sim$8.5x. Fragmentation behaves as a threshold, not a gradient.
+Refinement stays cheap until component count reaches the low hundreds, past
+which each additional component costs roughly a fixed amount. The two axes are
+also super-additive. The combined configuration costs roughly 4x the additive
+prediction and reaches the $\sim$7-minute regime marked in
 Fig.~\ref{fig:refine-scaling}(b).
 
 \begin{table}[tbp]
@@ -415,48 +416,51 @@ Watertightness check & 1.19 s (15.7\%) & 0.10 s (0.9\%) \\
 \end{table}
 
 Table~\ref{tab-stage-profile} attributes this cost to different substeps in each
-regime: on a large connected mesh, finalization dominates (53.7\%, mostly point
-deduplication and normal recomputation); on a many-component mesh, component
-filtering dominates instead (95.9\%), driven by repeated per-piece processing
-during body splitting. The knee above therefore has a mechanical explanation:
-body splitting runs each connected component through a separate processing pass,
-so once component count is large enough for that loop to dominate the fixed
+regime. On a large connected mesh, finalization dominates at 53.7\%, mostly
+point deduplication and normal recomputation. On a many-component mesh,
+component filtering dominates instead at 95.9\%, driven by repeated per-piece
+processing during body splitting. The knee has a mechanical explanation. Body
+splitting runs each connected component through a separate processing pass, so
+once component count is large enough for that loop to dominate the fixed
 per-mesh work, cost tracks component count directly. A batched
-connected-component labeling pass is the direct optimization and was not
-implemented for this study. The cost is a property of an interface rather than
-of a stage: refinement's runtime is set by a structural property of the mesh the
-reconstruction stage happens to hand it, which no benchmark of refinement on a
-single connected mesh would reveal. TSDF fusion can similarly become expensive;
-the fallback to dense point-map export degrades gracefully, at the price of an
-output representation that depends on available resources.
+connected-component labeling pass is the obvious optimization. We did not
+implement it for this study.
+
+This cost belongs to an interface, not to a stage. Refinement's runtime is set
+by a structural property of the mesh that the reconstruction stage happens to
+hand it, and no benchmark of refinement on a single connected mesh would reveal
+it. TSDF fusion can become expensive in a similar way. Its fallback to dense
+point-map export degrades gracefully, at the price of an output representation
+that depends on available resources.
 
 \subsection{Determinism and Repeat-Run Behavior}
 
 Run manifests record the reconstruction model, device, pairing strategy, seed,
-and configuration, supporting repeatable re-execution on the same hardware. A
-small GPU benchmark tested this on three scenes (\texttt{scan24},
+and configuration, which supports repeatable re-execution on the same hardware.
+A small GPU benchmark tested this on three scenes (\texttt{scan24},
 \texttt{scan37}, \texttt{scan40}), each run twice on one Tesla~T4 under one seed
 with the cache cleared between runs. Hausdorff-95 and Chamfer distance between
 repeats were exactly 0.0, point counts matched, and exported GLB files were
-byte-identical (SHA-256), regardless of PyTorch's deterministic-algorithms mode
--- which added $\sim$21\% wall time without measurably improving repeatability
-here. Six runs on one device do not establish reproducibility in the general
-sense; they show that the manifest captures enough state to reproduce a run
-bit-for-bit where the hardware is held fixed, and that the deterministic-kernel
-setting is not what buys it.
+byte-identical by SHA-256, and this held regardless of PyTorch's
+deterministic-algorithms mode, which added $\sim$21\% wall time without
+measurably improving repeatability here. Six runs on one device do not establish
+reproducibility in the general sense. What they show is narrower: that the
+manifest captures enough state to reproduce a run bit-for-bit when hardware is
+held fixed, and that the deterministic-kernel setting is not what buys it.
 
 \subsection{Component and Integration Correctness}
 \label{sec:bench-validation}
 
 Table~\ref{tab3} summarizes controlled validation of the individual components
-and their interfaces; every number traces to a committed CSV. These are contract
-checks on a synthetic, single-body protocol: component filtering removes every
+and their interfaces. Every number traces to a committed CSV. These are contract
+checks on a synthetic, single-body protocol. Component filtering removes every
 injected fragment, and object and room mode converge to the same output, as they
 should on a single body and would not on real multi-body scenes. Distance to the
 clean ground truth improves monotonically as injected corruption is removed
 (Fig.~\ref{fig:refine-quality}(a)--(b)), which the injection protocol largely
-guarantees; the informative comparison there is between smoothing operators,
-where Taubin holds mesh volume within 0.15\% of the unsmoothed baseline against
+guarantees by construction. The informative comparison there is between
+smoothing operators.
+Taubin holds mesh volume within 0.15\% of the unsmoothed baseline, against
 0.52\% drift for Laplacian (Fig.~\ref{fig:refine-quality}(c)). The remaining
 rows establish synchronization, motion-sampling, routing, and color-transfer
 correctness.
@@ -465,20 +469,20 @@ correctness.
 frame budget (Section~\ref{sec:reconstruction}) changes frame ordering before
 sliding-window pairing, which assumes capture order. Re-sorting the retained
 frames into capture order reduces the median pair-index gap from 184.5 to 27.8
-across the three over-budget schedules -- 6.6x pooled, 4.4x to 10x per schedule
--- at zero additional cost, and leaves complete pairing, which does not depend on
-order, unchanged. Neither stage is incorrect in isolation: selection returns the
-frames it was asked for, and pairing windows the sequence it is given. The defect
-exists only in their composition, and is invisible to any test that exercises
-either stage alone. Its effect on reconstruction quality is not measured
-here.
+across the three over-budget schedules. That is 6.6x pooled and 4.4x to 10x per
+schedule, at no additional cost, and complete pairing is unaffected because it
+does not depend on order. Neither stage is incorrect on its own. Selection
+returns the frames it was asked for, and pairing windows the sequence it is
+given. The defect appears only when the two are put together, and no test that
+exercises either stage alone would find it. We do not measure its effect on
+reconstruction quality.
 
 Together these establish component-level correctness against synthetic ground
 truth, integration correctness across the routing, manifest, and color-transfer
-invariants, and systems-level behavior under controlled conditions -- scaling,
-determinism, and robustness to injected corruption. End-to-end reconstruction
-accuracy against captured ground truth is a separate question, addressed by the
-protocols in Section~\ref{sec:future-work} rather than here.
+invariants, and systems-level behavior under controlled conditions, covering
+scaling, determinism, and robustness to injected corruption. End-to-end
+reconstruction accuracy against captured ground truth is a separate question,
+which the protocols in Section~\ref{sec:future-work} address.
 
 % 2x2: panels (a)-(c) plus the legend (a) and (b) share in the fourth cell.
 % Generated by trim-refine-quality-figure.py at exactly \columnwidth. It was
@@ -521,10 +525,10 @@ Color transfer & Analytic color field & $<$1/255 mean per-channel error across a
 
 The results above are the paper's evidence. This subsection adds a single traced
 run ($n=1$) of the offline workflow of Fig.~\ref{fig:overview} on a real
-eight-view CO3D \emph{teddybear} capture, included to show the composed pipeline
-running end to end at full scale and to check that the cost model of
+eight-view CO3D \emph{teddybear} capture. We include it to show the assembled
+pipeline running end to end at full scale, and to check whether the cost model of
 Section~\ref{sec:comp-performance} predicts where the time goes. One run
-supports neither a timing claim nor a quality claim; Table~\ref{tab2} reports
+supports neither a timing claim nor a quality claim. Table~\ref{tab2} reports
 the per-stage timings for that purpose only.
 
 \begin{table}[tbp]
@@ -563,15 +567,14 @@ Watertightness check & non-watertight & 0.53 s \\
 \end{table}
 
 Alignment peaked at 5259.6 MB resident and retained 64.3\% of points after
-confidence masking. Total runtime was $\approx$78 min, of which component
-filtering alone accounted for 99.9\% of refinement wall time -- every other
-substep together cost under one second (Table~\ref{tab2}). This is the
-fragmentation regime of Section~\ref{sec:comp-performance} at full scale: a
-1.90M-triangle mesh far past the component-count knee, where the benchmark
-predicts component filtering to swamp everything else, and it does. The output
-was correctly flagged as non-watertight and the warning did not halt the
-workflow, so the pipeline reports geometry defects rather than terminating on
-them.
+confidence masking. Total runtime was $\approx$78 min. Component filtering alone
+accounted for 99.9\% of refinement wall time, and every other substep together
+cost under one second (Table~\ref{tab2}). This is the fragmentation regime of
+Section~\ref{sec:comp-performance} at full scale. The mesh has 1.90M triangles
+and sits far past the component-count knee, where the benchmark predicts
+component filtering will swamp everything else. It does. The output was
+correctly flagged as non-watertight and the warning did not halt the workflow,
+so the pipeline reports geometry defects instead of terminating on them.
 
 % Composed side by side by compose-case-study-figure.py at exactly
 % \columnwidth, so no height cap is needed: the file's own aspect ratio prints
@@ -593,39 +596,38 @@ claimed from it.
 \section{Conclusions}
 
 z-shift is a systems architecture of independently replaceable stages
-communicating through explicit artifacts (Fig.~\ref{fig:overview}), not a new
-reconstruction network. Its findings are accordingly about composition. Frame
-ordering, correct at the selection stage, breaks pairing locality at the next
-one, and restoring capture order recovers a 6.6x pair-index gap at zero cost.
-Mesh fragmentation, a structural property of what reconstruction hands
+communicating through explicit artifacts (Fig.~\ref{fig:overview}), and not a new
+reconstruction network. Its findings are about how those stages fit together.
+Frame ordering is correct at the selection stage but breaks pairing locality at
+the next one, and restoring capture order recovers a 6.6x pair-index gap for
+free. Mesh fragmentation, a structural property of what reconstruction hands
 refinement, governs refinement cost in this implementation far more than triangle
-count does, and it does so as a threshold: cost is nearly flat below roughly 100
-components and then close to linear in component count, reaching 23x at 1,000.
-That shape, not the endpoint ratio, is what makes cost predictable in advance: a
-single structural property of the incoming mesh determines which regime a run
-lands in. Repeat runs of a fixed
-configuration on one GPU were deterministic down to the byte (identical SHA-256
-mesh hashes). None of these is visible from a benchmark of any single stage in
-isolation, which is the general point: component correctness does not imply
-system correctness or predictable system cost. What remains outside this
-evaluation is end-to-end reconstruction accuracy against captured ground truth
-(Section~\ref{sec:future-work}).
+count does, and it does so as a threshold rather than a gradient: cost is nearly
+flat below roughly 100 components, then close to linear in component count,
+reaching 23x at 1,000. That shape is what makes cost predictable in advance, more than the
+endpoint ratio does, because a single structural property of the incoming mesh
+determines which regime a run lands in. Repeat runs of a fixed configuration on
+one GPU were deterministic down to the byte, with identical SHA-256 mesh hashes.
+No benchmark of a single stage on its own would surface any of this. Component
+correctness does not imply system correctness or predictable system cost. What
+remains outside this evaluation is end-to-end reconstruction accuracy against
+captured ground truth (Section~\ref{sec:future-work}).
 
 \section{Limitations and Future Work}
 \label{sec:future-work}
 
 The prototype has three principal limitations. Real-time delivery is incomplete:
 WebSocket ingestion works, but RTSP/WebRTC and the live outcome route are
-unimplemented, and viewing exports a colored point cloud rather than Gaussian
-Splatting. Refinement is CPU-bound and expensive on fragmented meshes. And there
-is no end-to-end ground-truth reconstruction benchmark. Reconstruction also
-requires at least two views, and authentication, rate limiting, and streaming
-state remain in-memory and single-process, reflecting research-prototype status.
+unimplemented, and viewing exports a colored point cloud instead of Gaussian
+Splatting. Refinement is CPU-bound and expensive on fragmented meshes. There is
+no end-to-end ground-truth reconstruction benchmark. Reconstruction requires at
+least two views, and authentication, rate limiting, and streaming state remain
+in-memory and single-process, reflecting research-prototype status.
 
-The evaluation therefore establishes component-, integration-, and systems-level
-behavior, not reconstruction accuracy; quantitative comparison -- Chamfer
-distance, point-to-surface error, and F-score against classical MVS, DUSt3R, and
-MASt3R baselines -- remains the priority for future work.
+Our evaluation therefore establishes component-, integration-, and systems-level
+behavior, but not reconstruction accuracy. Quantitative comparison against
+classical MVS, DUSt3R, and MASt3R baselines, using Chamfer distance,
+point-to-surface error, and F-score, is the priority for future work.
 
 \begin{thebibliography}{00}
 \bibitem{b1} R. Hartley and A. Zisserman, Multiple View Geometry in Computer Vision, 2nd ed. Cambridge, U.K.: Cambridge Univ. Press, 2004.
