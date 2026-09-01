@@ -19,7 +19,12 @@ bench/
   exp_b*.py            experiments requiring MASt3R weights and a GPU
   run_tier_a.py        runs all of Tier A in the protocol's order
   plots.py             regenerates every figure from the CSVs
+  generate_case_study_plots.py
+                       optional visual cross-check of Table II's case-study
+                       numbers (hardcoded, not read from a CSV); not used by
+                       the paper -- Table II already prints the same numbers
   results/*.csv        committed results
+  results/fig7-8-*.png outputs of generate_case_study_plots.py
   scenes/example.json  Tier B scene-manifest template
 ```
 

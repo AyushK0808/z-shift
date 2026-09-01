@@ -40,7 +40,9 @@ def fig4_refine_scaling(results_dir: Path, figures_dir: Path) -> Path:
     components = [r for r in rows if r["ladder"] == "components"]
     interaction = [r for r in rows if r["ladder"] == "interaction"]
 
-    figure, (left, middle, right) = plt.subplots(1, 3, figsize=(14, 4.4))
+    # Stacked in a single column (rather than a row of 3) so the figure fits
+    # a single-column \columnwidth placement in the paper.
+    figure, (left, middle, right) = plt.subplots(3, 1, figsize=(4.0, 8.8))
 
     for source in dict.fromkeys(r["source"] for r in triangles):
         for smoothing in sorted({r["smoothing_iters"] for r in triangles}):
@@ -137,11 +139,9 @@ def fig4_refine_scaling(results_dir: Path, figures_dir: Path) -> Path:
         axis.set_yscale("log")
         axis.grid(True, which="both", alpha=0.3)
 
-    figure.suptitle(
-        "Refinement cost: triangle count, component count, and their interaction "
-        "(error bars: sd over 3 repeats)",
-        fontsize=9,
-    )
+    # No figure.suptitle: at the narrow single-column figsize used here, a
+    # one-line suptitle this long overflows the canvas and gets clipped: the
+    # paper's LaTeX caption already carries this description.
     return _save(figure, figures_dir / "fig4_refine_scaling.png")
 
 
@@ -362,7 +362,9 @@ def fig_a8_rigging(results_dir: Path, figures_dir: Path) -> Path:
         for row in read_rows("a8_rigging_quality", results_dir)
         if row["articulation"] != "static"
     ]
-    figure, (left, right) = plt.subplots(1, 2, figsize=(11, 4.5))
+    # Stacked in a single column (rather than a row of 2) so the figure fits
+    # a single-column \columnwidth placement in the paper.
+    figure, (left, right) = plt.subplots(2, 1, figsize=(4.0, 7.5))
 
     for shape in dict.fromkeys(r["shape"] for r in rows):
         subset = [r for r in rows if r["shape"] == shape]
@@ -454,10 +456,12 @@ def fig8_fragment_removal(results_dir: Path, figures_dir: Path) -> Path:
         ()
     ][0]
 
-    figure, axes = plt.subplots(2, 2, figsize=(12, 8.4))
+    # Stacked in a single column (rather than a 2x2 grid) so the figure fits
+    # a single-column \columnwidth placement in the paper.
+    figure, axes = plt.subplots(4, 1, figsize=(4.0, 9.1))
     panels = (
         (
-            axes[0][0],
+            axes[0],
             "components_in",
             "components_out",
             "(a) stray fragments: connected components",
@@ -465,7 +469,7 @@ def fig8_fragment_removal(results_dir: Path, figures_dir: Path) -> Path:
             None,
         ),
         (
-            axes[0][1],
+            axes[1],
             "in_cells",
             "out_cells",
             "(b) stray surface: cells retained",
@@ -473,15 +477,15 @@ def fig8_fragment_removal(results_dir: Path, figures_dir: Path) -> Path:
             clean_cells,
         ),
         (
-            axes[1][0],
+            axes[2],
             "before_chamfer_l1",
             "after_chamfer_l1",
-            "(c) cost of keeping them: Chamfer-L1 to clean original",
+            "(c) cost of keeping them: Chamfer-L1",
             "Chamfer-L1 (bbox-diagonal units)",
             None,
         ),
         (
-            axes[1][1],
+            axes[3],
             "boundary_edges_in",
             "boundary_edges_out",
             "(d) side effect: boundary edges",
@@ -583,12 +587,10 @@ def fig8_fragment_removal(results_dir: Path, figures_dir: Path) -> Path:
             label="after: room mode",
         ),
     ]
-    axes[0][0].legend(handles=handles, fontsize=7, loc="upper left", framealpha=0.9)
-    figure.suptitle(
-        "Refinement before -> after, by mode (means over 3 bases x 4 sigmas x 3 hole counts "
-        "x 3 seeds; error bars: SEM)",
-        fontsize=9,
-    )
+    axes[0].legend(handles=handles, fontsize=7, loc="upper left", framealpha=0.9)
+    # No figure.suptitle: at the narrow single-column figsize used here, a
+    # one-line suptitle this long overflows the canvas and gets clipped: the
+    # paper's LaTeX caption already carries this description.
     return _save(figure, figures_dir / "fig8_fragment_removal.png")
 
 

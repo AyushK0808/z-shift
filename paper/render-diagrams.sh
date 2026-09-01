@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Renders every Mermaid source in diagrams/ to a print-resolution PNG in figures/.
+# Renders every Mermaid source in diagrams/ (fig1-4) to a print-resolution PNG in figures/.
 #
 # Requires Node.js (for npx) and a local Chrome/Chromium at the path given in
 # puppeteer-config.json -- adjust that path if Chrome lives elsewhere.
