@@ -98,27 +98,30 @@ email@vitstudent.ac.in}
 \vspace{-14pt}
 
 \begin{abstract}
-Unposed learned methods such as DUSt3R and MASt3R now recover dense geometry
-from two-dimensional observations without calibration or pose. A deployable
-2D-to-3D system, however, needs more than a reconstruction network: ingestion,
-frame selection, temporal synchronization, geometric refinement, and
-application-specific delivery must all be present, and must work together. We
-present z-shift, a four-stage pipeline whose stages are independently
-replaceable and communicate only through serializable artifacts. Images,
-videos, synchronized captures, and live frames are normalized by ingestion
-into a unified spatial schema. Reconstruction wraps MASt3R with optional TSDF
-fusion and a point-map fallback, refinement applies a fixed operator sequence,
-and delivery routes GLB or point-cloud outputs under a compatibility contract.
-Our evaluation combines a controlled benchmark suite with one eight-view
-capture traced end to end. Unless capture order is restored, motion-ranked
-frame retention degrades sliding-window pairing locality by 6.6x, at no cost
-to fix. Mesh fragmentation governs refinement cost more than triangle count
-does, behaving as a threshold: nearly flat below roughly 100 components, then
-close to linear, reaching 23x at 1,000. Repeat runs of one configuration on
-one GPU were byte-identical. Component- and integration-level correctness is
-established across the pipeline. Real-time delivery, efficient large-scale
-mesh processing, and quantitative reconstruction accuracy against ground truth
-remain future work.
+DUSt3R and MASt3R recover dense geometry from a scene based on 2D observations
+alone, without requiring information about camera pose and without prior
+calibration. A readily deployable 2D-to-3D system, however, cannot be built
+from the reconstruction network by itself: ingestion, frame selection,
+temporal synchronization, geometry refinement, and application-specific
+delivery must operate in concert. We present z-shift, a four-stage pipeline in
+which each individual stage can be replaced if desired, and in which data
+passes between stages only as serializable artifacts. During ingestion,
+images, videos, synchronized captures, and live feeds are unified into a
+common spatial schema. Reconstruction uses MASt3R for its initial estimate of
+scene geometry, may optionally fuse TSDFs, and falls back to a point map where
+fusion is unavailable. Refinement applies a fixed sequence of operations, and
+delivery routes GLB or point-cloud output under a compatibility contract. Our
+evaluation consists of a constrained benchmark suite together with one eight-
+view capture in which each stage was individually traced. Unless capture order
+is preserved, motion-ranked frame retention degrades sliding-window pairing
+locality by 6.6x, and restoring that order costs nothing. Refinement cost is
+affected by the number of disconnected components in a mesh more than by its
+triangle count, remaining nearly constant below approximately 100 components
+and rising close to linearly thereafter, reaching 23x at 1,000. Repeating a
+run on the same GPU under the same configuration produces byte-identical
+output. Component- and integration-level correctness is established across the
+pipeline. Real-time delivery, efficient large-scale mesh processing, and
+quantitative reconstruction accuracy against ground truth remain future work.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -152,14 +155,15 @@ Stages that are individually correct do not combine into a correct or
 predictable system for free, and the interfaces between them carry correctness
 and cost behavior of their own.
 
-Input in the field is rarely uniform. Photographs, image directories, videos,
-synchronized multi-camera captures, and continuous frame streams reach the same
-entry point, and video contributes both redundancy and cost. To manage this,
-z-shift normalizes the sources into a common spatial schema and bounds the
-frames admitted to reconstruction (Section~\ref{sec:architecture}). Nor is raw
-reconstruction output ready for production. Disconnected components, holes,
-noise, and inconsistent normals may all appear in the surface. Established
-mesh-processing methods address all four \cite{b16}--\cite{b19}; z-shift applies
+In the field, input rarely arrives uniformly. The same entry point receives
+photographs, directories containing images, videos, synchronized multi-camera
+captures, and continuous frame streams. Video contributes redundancy along
+with the cost of processing it. To address this, z-shift normalizes the
+sources into a common spatial schema and limits the number of frames admitted
+to reconstruction (Section~\ref{sec:architecture}). Nor is raw reconstruction
+output ready for production. Disconnected components, holes, noise, and
+inconsistent normals may all appear in the surface. Established mesh-
+processing methods address all four \cite{b16}--\cite{b19}; z-shift applies
 them automatically in a dedicated refinement stage that preserves vertex
 colors.
 
@@ -230,14 +234,15 @@ the gap our benchmark addresses.
 
 \section{Research Gap and Problem Statement}
 
-Individually, the reconstruction components surveyed above are well studied, and
-they work. Deployment additionally requires the surrounding stages enumerated in
-Section~\ref{sec:architecture}, and assembling them raises a distinct problem: a
-stage may satisfy its own specification and still violate an assumption the next
-stage makes, or exhibit a cost profile that no stage shows alone. What we
-address is the correctness and cost of the interfaces between those stages. The
-accuracy of whichever model occupies the reconstruction slot is a separate
-question.
+The reconstruction stages surveyed above have each been individually shown to
+be valid. Assembling them into a complete deployment system, alongside the
+surrounding stages enumerated in Section~\ref{sec:architecture}, creates a
+problem of another kind. A stage may comply with its own specification and yet
+violate an assumption made by the stage that follows it. A stage may also
+carry a cost profile that does not appear when each stage is measured
+separately. What this paper addresses is therefore the correctness and cost of
+the interfaces between stages, rather than the validity or cost of whichever
+model occupies the reconstruction slot.
 
 \begin{figure}[tbp]
 \centerline{\includegraphics[width=0.6\columnwidth]{figures/fig1-overview.png}}
@@ -250,98 +255,100 @@ refined, and routed to use-case-specific deliverables.}
 \label{sec:architecture}
 
 Four modular stages make up the architecture: media ingestion, multi-view
-reconstruction, mesh refinement, and outcome routing. Communication between them
-passes only through serializable artifacts, namely a unified schema, a
-reconstruction job, a mesh file, and a set of manifests. These four artifacts
-are the system's interfaces. Each defines what one stage may assume about the
-previous one, and each is where the behavior reported in
-Section~\ref{sec:bench-validation} originates. Fig.~\ref{fig:overview}
-summarizes the flow.
+reconstruction, mesh refinement, and outcome routing. They can communicate
+only through serializable artifacts, namely a unified schema, a reconstruction
+job, a mesh file, and a set of manifests. These four artifacts are the
+system's interfaces. They define what one stage can assume about the previous
+one, and they are where the behavior documented in Section~\ref{sec:bench-validation} originates. Fig.~\ref{fig:overview} illustrates the flow.
 
 \subsection{Media Ingestion}
 
-Through an HTTP/WebSocket gateway with pluggable authentication and rate limiting,
-ingestion accepts single images, image folders, videos, video folders, and live
-WebSocket frames. MIME type and file extension determine which processing track
-a payload enters. Mixed or unrecognized payloads are rejected outright, never
-partially processed. Normalization then follows on the batch track: images are
-resized with aspect ratio and EXIF metadata preserved, while videos are probed
-with FFmpeg and sampled by a motion-adaptive sampler whose interval shortens
-during motion and lengthens across static spans. Where the input is a video
-folder, a multi-source synchronizer estimates a per-source clock offset by
-matching motion signatures against the source with the most frames, then aligns
-frames to that anchor by nearest timestamp. The live track buffers frames
-instead, in a bounded ring buffer with explicit backpressure. Oversized payloads
-are refused, and a full buffer evicts its oldest frame. Compute priority goes
-first to live work.
+An HTTP/WebSocket gateway with pluggable authentication and rate limiting
+ingests single images, image folders, videos, video folders, and live
+WebSocket frames. MIME type and file extension determine which processing
+track a payload enters. Mixed or unrecognized payloads are rejected outright,
+never partially processed. Normalization then follows on the batch track:
+images are resized while aspect ratio and EXIF metadata are preserved, and
+videos are probed using FFmpeg and sampled by a motion-adaptive sampler whose
+interval shortens during motion and lengthens across static spans. When the
+input is a video folder, a multi-source synchronizer estimates a per-source
+clock offset by matching motion signatures against the source with the most
+frames, then aligns frames to that anchor by nearest timestamp. On the live
+track, frames are buffered instead in a bounded ring buffer with explicit
+backpressure. Oversized payloads are denied, and a full buffer evicts its
+oldest frame. Compute priority goes first to live work.
 
 \subsection{Unified Spatial Representation}
 
 Both tracks converge into a single serializable schema, which holds source
 metadata, frame references, temporal information, per-frame intrinsics, and
-synchronization state. Two things are gained at this boundary, the first in the
-pipeline. Ingestion is decoupled from reconstruction, so that neither stage
-encodes assumptions about the other's internals. A normalized input also becomes
-replayable, which lets reconstruction experiments run against a fixed frame set
-instead of the original capture.
+synchronization state. Two benefits result at this boundary between ingestion
+and reconstruction. Ingestion is decoupled from reconstruction, so that each
+stage encodes as little as possible about the other's internal workings. A
+normalized input also becomes replayable, which lets reconstruction
+experiments run against a fixed frame set instead of the original capture.
 
 \subsection{Multi-View Reconstruction}
 \label{sec:reconstruction}
 
-An explicit reconstruction job is what the reconstruction stage makes of the
-schema. Modes follow from source type: image folder to multi-view, single video
-to video-sequence, video folder to synchronized-views. Because alignment
-requires at least two views of one subject, single images and live streams are
-rejected. Redundancy in video motivates a configurable frame budget for the job.
-Beyond that budget the highest-motion frames are retained in preference to a
-uniform subsample, and for synchronized captures the budget applies to whole
-groups, leaving cross-camera groups intact. Pairing then proceeds by complete
-scene graph or by sliding window, the latter preferred for videos and larger
-image sets; on synchronized-views jobs, cross-camera pairs form within each
-group so that simultaneous observations are matched directly. Frames arrive at
-pairing in motion-rank order, not capture order.
-Section~\ref{sec:bench-validation} measures this cross-stage interaction.
+An explicit reconstruction job is created during the reconstruction stage. The
+mode of operation depends on the type of input used: an image folder is
+processed as multi-view, a single video as a video-sequence, and a folder of
+videos as synchronized-views. Since alignment requires at least two views of
+one subject, single images and live streams are rejected. Because video is
+redundant, a configurable frame budget applies to each job. Above that budget
+the highest-motion frames are retained in preference to a uniform subsample.
+When processing synchronized captures, the budget applies to entire groups
+rather than to individual frames, so cross-camera groupings remain intact.
+Pairing then occurs either through a complete scene graph or by sliding
+window, the latter preferred for videos and larger image sets. On
+synchronized-views jobs, cross-camera pairings form within each group, so that
+simultaneous observations are matched directly. Frames then proceed to pairing
+in motion-rank order, not capture order. Section~\ref{sec:bench-validation}
+evaluates this cross-stage interaction.
 
-Before alignment, the pipeline resolves an execution device across CUDA, CPU, and
-Metal backends, seeds the Python, NumPy, and PyTorch generators where a seed is
-supplied, and converts an EXIF 35~mm-equivalent focal length into the per-image
-intrinsic matrix. Sparse global alignment is then performed by MASt3R, with
-intermediate results cached on disk so that repeated runs over the same frames
-reuse prior work. TSDF fusion may optionally precede geometry export. Should
-fusion be disabled, or should it fail under memory or runtime pressure, the
-pipeline falls back to a dense point-map export and records the fallback. GLB is
-the exporter's default for the colored mesh, with OBJ and PLY also supported,
-and a confidence threshold discards low-confidence points. A confidence-masked
-dense point cloud is written alongside it. Recorded in the run manifest are the
-model, device, input resolution, pairing strategy, thresholds, seed, and
-reproducibility metadata.
+Prior to alignment, the pipeline selects an execution device among CUDA, CPU,
+and Metal backends, seeds the Python, NumPy, and PyTorch generators if a seed
+has been supplied, and converts an EXIF 35~mm-equivalent focal length into the
+per-image intrinsic matrix. MASt3R then performs sparse global alignment, with
+intermediate results cached to disk so that repeated runs over the same frames
+reuse prior work. TSDF fusion may optionally precede geometry export. If
+fusion is disabled by user option, or fails under memory or runtime pressure,
+the pipeline falls back to a dense point-map export and records the event. GLB
+is the default output format for the colored mesh, with OBJ and PLY also
+supported, and a confidence threshold discards low-confidence points. A
+confidence-masked dense point cloud is written alongside it. Recorded in the
+run manifest are the model, device, input resolution, pairing strategy,
+thresholds, seed, and reproducibility metadata.
 
 \subsection{Mesh Refinement}
 
-Where an interactive tool would leave operator and threshold choices to a human on
-a per-model basis, the refinement stage applies one fixed sequence. Validation
-comes first: container formats such as GLB scenes are unwrapped, and meshes that
-are empty or contain non-finite coordinates are rejected. Mode then governs
-component handling. Under object mode, only the largest connected component
-survives. Room mode splits the mesh into bodies, keeps every component above a
-minimum cell count, and merges the survivors, which preserves scenes
-legitimately made of several pieces. Boundary holes are closed up to a maximum
-size derived from the bounding-box diagonal. Where the geometry is itself thin
-and open along one axis, closure is skipped, so that an intentionally planar
-capture is not sealed.
+So that operator and threshold settings need not be chosen per model by a
+human working in an interactive tool, every mesh undergoes a single fixed
+procedure during the refinement stage. Validation occurs first: container
+formats such as GLB scenes are unwrapped, and meshes are rejected if they are
+empty or if their vertices carry non-finite coordinates. Mode then determines
+how components are processed. Under object mode, only the largest connected
+component remains. Under room mode, the mesh is broken down into bodies, every
+component above a minimum cell count is kept, and the survivors are merged,
+preserving scenes that were legitimately created from multiple parts. Holes in
+the mesh boundary are closed up to a maximum size derived from the bounding-
+box diagonal. Where the geometry is thin and open along one axis, closure is
+skipped, so that an intentionally planar capture is preserved.
 
-Taubin smoothing handles surface noise, suppressing it without the shrinkage that
-repeated Laplacian passes introduce; under room mode, feature edges above a
-configurable angle are additionally preserved. Finalization merges coincident
-points, triangulates, optionally decimates to a target reduction, and recomputes
-outward-facing normals. Since smoothing and decimation rewrite the vertex set,
-vertex colors are carried onto the cleaned mesh by nearest-point transfer, and
-appearance thereby survives the geometric operations. The interface between
-these two stages must hold that invariant, and
-Section~\ref{sec:bench-validation} checks it. Open boundary edges are counted in
-a final pass, which flags the mesh watertight or not and treats a non-watertight
-result as a warning that does not terminate the workflow. A refinement manifest
-records input and output counts, the watertightness result, and any warnings.
+Taubin smoothing reduces surface noise without shrinking the mesh, as
+repeatedly applying Laplacian filters can do; under room mode, feature edges
+above a configurable angle are additionally preserved. Finalization then
+merges coincident points, triangulates, optionally decimates to a target
+reduction, and recomputes outward-facing normals. Because smoothing and
+decimation modify the vertex set, vertex colors are transferred to the cleaned
+mesh by a nearest-point operation, which preserves appearance through the
+geometric processing. The interface between these two stages must hold that
+invariant, and Section~\ref{sec:bench-validation} verifies it. Open boundary
+edges are counted in a final pass, which flags the mesh watertight or not and
+treats a non-watertight result as a warning that does not terminate the
+workflow. A refinement manifest records input and output counts, the
+watertightness result, and any warnings.
 
 \subsection{Application-Specific Deliverables}
 
