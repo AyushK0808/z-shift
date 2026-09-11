@@ -9,7 +9,8 @@ paper.tex                       the paper (IEEEtran, conference mode)
 diagrams/*.mmd                  Mermaid source for the single architecture figure
 figures/*.png                   rendered figures, referenced by paper.tex
 outputs/                        hand-captured source images (not regenerated)
-render-diagrams.sh              regenerates figures/fig1-overview from diagrams/
+render-diagrams.sh              regenerates fig1 with Mermaid CLI
+render-architecture.py          Matplotlib fallback renderer for fig1
 compose-case-study-figure.py    regenerates figures/fig6 (input photo + render)
 trim-refine-scaling-figure.py   regenerates figures/fig9 (2-panel) from bench/results/
 trim-refine-quality-figure.py   regenerates figures/fig12 (2x2) from bench/results/
@@ -65,28 +66,27 @@ The figures are generated, not hand-drawn. Edit the `.mmd` source, then:
 
 This needs Node.js (for `npx`) and a local Chrome. If Chrome is somewhere other
 than the default Windows path, update `executablePath` in
-`puppeteer-config.json` — use forward slashes.
+`puppeteer-config.json` — use forward slashes. On systems without Mermaid CLI,
+`ipython render-architecture.py` regenerates the same component-architecture
+figure using Matplotlib (installed here as an IPython tool dependency).
 
 The paper carries a single architecture diagram, `fig1-overview`, rather than
 one figure per stage. Earlier drafts split media ingestion, multi-view
 reconstruction, and mesh refinement/delivery into three additional diagrams,
 but four figures cost roughly a full column of vertical space once captions
 are counted, which does not fit a six-page target; the four were merged into
-one `flowchart TB` covering ingestion through the TSDF-fusion decision,
-refinement, and outcomes routing, with each stage collapsed to a short
-multi-line node label rather than exploded into its own diagram. It is
-single-column (`figure` at a fraction of `\columnwidth`) and deliberately runs
-long instead of wide, since a tall narrow diagram survives a two-column layout
-far better than a wide one squeezed down to column width; `rankSpacing`/
-`nodeSpacing` are tightened in the file's front-matter to keep the merged
-12-node flow's printed height manageable at a single-column width. Rendered at
-roughly 580-660 dpi. The paper references exactly four figures -- fig1, fig6,
-fig9, and fig12 -- and every one is single-column, so nothing spans the full
-text width:
+one component architecture covering ingestion, artifact stores, reconstruction,
+refinement, and outcomes routing. Stage boundaries group related services;
+cylinders distinguish buffered, cached, or persistent artifacts from processing
+components, and decision diamonds are deliberately avoided so the figure reads
+as a system architecture rather than an execution flow. It is a full-width
+`figure*` laid out left to right; this gives labels enough physical width and
+keeps connectors out of stage headings and component text. The other three
+figures remain single-column:
 
 | figure | covers | printed height @ its placed width |
 |---|---|---|
-| fig1-overview | full architecture: ingestion, job construction, MASt3R alignment, TSDF fusion or point-map fallback, refinement, outcomes routing | 5.5 in @ 0.6 columnwidth |
+| fig1-overview | full architecture: ingestion, job construction, MASt3R alignment, TSDF fusion or point-map fallback, refinement, outcomes routing | 3.3 in @ textwidth |
 | fig6-case-study-validation | input photo + render, composed (not a screenshot), side by side a \| b | 1.2 in |
 | fig9-refine-scaling | component count vs.\ cost, and both axes together, side by side a \| b | 1.6 in |
 | fig12-refine-quality | Chamfer, normal consistency, Taubin-vs-Laplacian volume, 2x2 with the shared legend in the fourth cell | 2.8 in |
@@ -105,10 +105,9 @@ its six-page target. Two rules came out of that and are worth keeping:
   or a 2x2 cost a fraction of that. `height=...\textheight` caps bound the
   damage but do not fix it, and they silently shrink the figure's width too.
 
-`fig1-overview` is now over half the paper's total figure height. It is a tall
-`flowchart TB`, so the lever there is a wider Mermaid layout rather than a
-smaller `\includegraphics` width -- at 0.6 columnwidth its node labels are
-already small.
+`fig1-overview` uses a wide `flowchart LR` and is rendered at approximately the
+same physical width at which LaTeX places it. Do not return it to a narrow,
+single-column layout: doing so makes labels and connectors collide.
 
 If you rewrite a diagram, check its printed height doesn't run past a column
 (roughly 9 in usable on a letter page): render it, then compare `width/height`

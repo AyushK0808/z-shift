@@ -1,40 +1,64 @@
 ---
 config:
   flowchart:
-    rankSpacing: 13
-    nodeSpacing: 14
+    rankSpacing: 28
+    nodeSpacing: 18
 ---
-flowchart TB
-  SRC["Heterogeneous input<br/>image · folder · video<br/>synced views · live"] --> ING["Ingestion<br/>classify · normalize<br/>motion sample · sync"]
-  ING --> SCH[("Unified spatial<br/>schema")]
-  SCH --> JB["Job construction<br/>frame budget · pairing"]
-  JB -->|"single view / live"| REJ["Rejected"]
-  JB --> AL["MASt3R sparse<br/>global alignment"]
-  AL --> FUS{"TSDF<br/>fusion"}
-  FUS -->|"off / fails"| PMAP["Dense point map"]
-  FUS -->|"success"| REF["Mesh refinement<br/>filter · fill · smooth<br/>colour transfer"]
-  PMAP --> REF
-  REF --> RT{"Outcomes<br/>router"}
-  RT -->|"editing"| D1["GLB"]
-  RT -->|"viewing"| D3["Colored PLY"]
-  RT -->|"live"| REJ
+flowchart LR
+  SRC["Inputs<br/>images · video<br/>synchronized views"]
 
-  classDef src fill:#e0f2fe,stroke:#0284c7,stroke-width:1.4px,color:#0c2233
-  classDef ingest fill:#dbeafe,stroke:#2563eb,stroke-width:1.4px,color:#0f172a
-  classDef schema fill:#fef3c7,stroke:#d97706,stroke-width:1.6px,color:#0f172a
-  classDef recon fill:#ede9fe,stroke:#7c3aed,stroke-width:1.4px,color:#0f172a
-  classDef fuse fill:#f3e8ff,stroke:#9333ea,stroke-width:1.4px,color:#0f172a
-  classDef refine fill:#ccfbf1,stroke:#0d9488,stroke-width:1.4px,color:#0f172a
-  classDef route fill:#f1f5f9,stroke:#475569,stroke-width:1.4px,color:#0f172a
-  classDef deliver fill:#ffedd5,stroke:#ea580c,stroke-width:1.4px,color:#0f172a
-  classDef reject fill:#fee2e2,stroke:#dc2626,stroke-width:1.4px,color:#7f1d1d
+  subgraph S1["1  Media ingestion"]
+    direction TB
+    ING["Ingestion service<br/>classify · sample<br/>normalize · synchronize"]
+    BUF[("Live frame buffer")]
+    ING --> BUF
+  end
 
-  class SRC src
+  SCHEMA[("Spatial schema<br/>frames · timing · intrinsics")]
+
+  subgraph S2["2  Reconstruction"]
+    direction TB
+    REC["Reconstruction<br/>budget · pairing<br/>MASt3R · TSDF<br/>point-map fallback"]
+    CACHE[("Alignment cache")]
+    RUN[("Run manifest")]
+    REC --> CACHE
+    REC -.-> RUN
+  end
+
+  GEO[("Geometry artifacts<br/>mesh · point cloud")]
+
+  subgraph S3["3  Refinement"]
+    direction TB
+    REF["Refinement<br/>filter · fill · smooth<br/>color · validate"]
+    RMAN[("Refinement manifest")]
+    REF -.-> RMAN
+  end
+
+  subgraph S4["4  Delivery"]
+    direction LR
+    ROUTE["Compatibility<br/>router"]
+    EDIT["Editing · GLB"]
+    VIEW["Viewing · PLY"]
+    DENY["Reject<br/>unsupported"]
+    ROUTE --> EDIT
+    ROUTE --> VIEW
+    ROUTE --> DENY
+  end
+
+  SRC --> ING --> SCHEMA --> REC --> GEO --> REF --> ROUTE
+
+  classDef external fill:#e0f2fe,stroke:#334155,stroke-width:1.2px,color:#172033
+  classDef ingest fill:#dbeafe,stroke:#2563eb,stroke-width:1.2px,color:#172033
+  classDef recon fill:#ede9fe,stroke:#7c3aed,stroke-width:1.2px,color:#172033
+  classDef refine fill:#ccfbf1,stroke:#0d9488,stroke-width:1.2px,color:#172033
+  classDef deliver fill:#ffedd5,stroke:#ea580c,stroke-width:1.2px,color:#172033
+  classDef store fill:#fff4cc,stroke:#b96800,stroke-width:1.3px,color:#172033
+  classDef reject fill:#fee2e2,stroke:#334155,stroke-width:1.2px,color:#172033
+
+  class SRC external
   class ING ingest
-  class SCH schema
-  class JB,AL recon
-  class FUS,PMAP fuse
+  class REC recon
   class REF refine
-  class RT route
-  class D1,D3 deliver
-  class REJ reject
+  class ROUTE,EDIT,VIEW deliver
+  class BUF,SCHEMA,CACHE,RUN,GEO,RMAN store
+  class DENY reject
