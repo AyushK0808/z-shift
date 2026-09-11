@@ -7,6 +7,7 @@
 \usepackage{textcomp}
 \usepackage{xcolor}
 \usepackage{array}
+\usepackage{url}
 
 % ---------------------------------------------------------------------------
 % Float placement.
@@ -251,10 +252,9 @@ That is the gap our benchmark addresses.
 \label{sec:litreview}
 
 The preceding discussion establishes the individual methods. Table~\ref{tab:litreview}
-compares their native representations, assumptions, and relationship to the
-interfaces studied here. The synthesis separates view-synthesis representations
-from surface-producing methods and distinguishes algorithmic components from
-complete software systems.
+summarizes representative authors and techniques by their reported advantages and
+practical limitations. The comparisons remain specific to each method's native output,
+assumptions, and role in an end-to-end reconstruction system.
 
 \begin{table*}[tbp]
 \caption{Literature Review: Authors, Algorithms, Pros, and Cons}
@@ -263,55 +263,55 @@ complete software systems.
 \footnotesize
 \setlength{\tabcolsep}{3pt}
 \renewcommand{\arraystretch}{1.12}
-\begin{tabular}{p{1.8cm} p{2.6cm} p{3.0cm} p{3.6cm}}
+\begin{tabular}{>{\raggedright\arraybackslash}p{2.8cm} >{\raggedright\arraybackslash}p{3.8cm} >{\raggedright\arraybackslash}p{5.1cm} >{\raggedright\arraybackslash}p{5.4cm}}
 \hline
 \textbf{Authors} & \textbf{Algorithm/Techniques} & \textbf{Pros} & \textbf{Cons} \\
 \hline
-Hartley \& Zisserman \cite{b1} & Projective multi-view geometry & Foundational theory for camera and scene structure recovery & Assumes calibrated cameras; limited to sparse geometry \\
+Hartley \& Zisserman \cite{b1} & Projective multi-view geometry & Foundational treatment of camera geometry and multi-view reconstruction & A general theoretical reference rather than an end-to-end reconstruction system \\
 \hline
-Schönberger \& Frahm \cite{b2} & Incremental Structure-from-Motion & Robust sparse structure and camera estimation & Requires correspondence cues; scales poorly to large scenes \\
+Schönberger \& Frahm \cite{b2} & Incremental Structure-from-Motion & Robust sparse structure and camera estimation & Requires reliable feature correspondences; dense geometry needs a subsequent MVS stage \\
 \hline
 Seitz et al. \cite{b3} & Multi-view stereo (MVS) evaluation & Comprehensive MVS algorithm comparison & Performance depends on photo-consistency; struggles with textureless surfaces \\
 \hline
-Furukawa \& Hernández \cite{b4} & MVS taxonomy and analysis & Identifies key limitations and failure modes & Does not address solutions for problematic surface types \\
+Furukawa \& Hernández \cite{b4} & MVS taxonomy and analysis & Organizes major MVS approaches, assumptions, and failure modes & Surveys reconstruction methods rather than defining a deployable pipeline \\
 \hline
 Mildenhall et al. \cite{b6} & Neural Radiance Fields (NeRF) & Implicit representation enables novel-view synthesis; high quality rendering & Per-scene optimization required; not a native mesh asset; slow rendering \\
 \hline
-Müller et al. \cite{b7} & Instant-NGP with hash encoding & Accelerates neural graphics primitives significantly & Still requires per-scene training; GPU-intensive \\
+Müller et al. \cite{b7} & Instant-NGP with hash encoding & Substantially accelerates several neural graphics primitives & Acceleration does not itself provide a clean polygonal asset \\
 \hline
 Kerbl et al. \cite{b8} & 3D Gaussian Splatting & Real-time novel-view synthesis; explicit representation & Not a clean polygonal mesh; requires post-processing for asset export \\
 \hline
-Barron et al. \cite{b9} & Mip-NeRF 360 & Handles unbounded scenes effectively & Complex training procedure; limited to novel-view synthesis \\
+Barron et al. \cite{b9} & Mip-NeRF 360 & Extends radiance-field rendering to unbounded scenes & Its native representation targets novel-view synthesis rather than mesh delivery \\
 \hline
-Chen et al. \cite{b10} & MVSNeRF & Fast generalization from few views & Still requires view synthesis pipeline; mesh extraction is separate step \\
+Chen et al. \cite{b10} & MVSNeRF & Generalizes radiance-field reconstruction from sparse input views & Targets novel-view synthesis; mesh extraction is a separate step \\
 \hline
 Yu et al. \cite{b11} & pixelNeRF & Generalizes to new scenes with few images & Radiance field formulation; not natively polygonal output \\
 \hline
 Wang et al. \cite{b14} & DUSt3R: Pose-free dense regression & No calibration or poses required; recovers dense geometry & Confidence-weighted output; requires alignment; point clouds not meshes \\
 \hline
-Leroy et al. \cite{b15} & MASt3R: Learned local features & Improved image matching over DUSt3R; better geometry estimates & Still produces confidence-weighted point maps; refinement needed \\
+Leroy et al. \cite{b15} & MASt3R: Learned local features & Adds dense local features for stronger image matching & Produces confidence-weighted point maps; alignment and surface processing remain separate \\
 \hline
 Taubin \cite{b16} & Alternating low-pass filtering & Reduces noise while avoiding shrinkage artifacts & Parameter-dependent; may over-smooth fine details \\
 \hline
-Garland \& Heckbert \cite{b17} & Quadric Error Metrics (QEM) simplification & Preserves mesh topology and visual quality & May alter intended geometry; requires careful threshold selection \\
+Garland \& Heckbert \cite{b17} & Quadric Error Metrics (QEM) simplification & Reduces mesh complexity while minimizing accumulated geometric error & Simplification can remove fine geometry; the target reduction must be selected \\
 \hline
 Curless \& Levoy \cite{b21} & Signed-distance fusion (TSDF) & Robust implicit surface representation & Voxel memory-intensive; expensive at high resolution \\
 \hline
 Newcombe et al. \cite{b22} & KinectFusion: Real-time TSDF & Dense surface mapping with camera tracking & Requires depth sensor; limited to small scenes; memory-bound \\
 \hline
-Kazhdan et al. \cite{b23} & Poisson surface reconstruction & Creates watertight meshes from oriented points & Computationally expensive; may smooth geometric details \\
+Kazhdan et al. \cite{b23} & Poisson surface reconstruction & Creates watertight meshes from oriented points & Requires oriented points and may smooth detail or close unsupported regions \\
 \hline
-Cignoni et al. \cite{b18} & MeshLab: Interactive mesh operators & Flexible, widely-used tool with many algorithms & Interactive tool; not suitable for automated pipelines \\
+Cignoni et al. \cite{b18} & MeshLab: Mesh-processing system & Exposes a broad collection of repair and refinement operators & Operator choice and parameterization remain external to a fixed pipeline contract \\
 \hline
-Griwodz et al. \cite{b26} & AliceVision Meshroom photogrammetry & Complete open-source pipeline; customizable workflow & Complex parameter tuning; primarily SfM-based approach \\
+Griwodz et al. \cite{b26} & AliceVision Meshroom photogrammetry & Complete open-source pipeline with a customizable processing graph & Estimates cameras through SfM before dense reconstruction; has a different ingestion-to-delivery scope \\
 \hline
 Tancik et al. \cite{b27} & Nerfstudio: Neural field framework & Modular, standardized training and visualization & Radiance-field focus; geometry extraction remains separate \\
 \hline
 Zhou et al. \cite{b28} & Open3D: 3D data processing library & Reusable primitives for general 3D operations & Low-level tools; requires custom orchestration \\
 \hline
-Jatavallabhula et al. \cite{b29} & Kaolin: PyTorch 3D deep learning & Differentiable 3D components for learning & Research-focused; limited for industrial deployment \\
+Jatavallabhula et al. \cite{b29} & Kaolin: PyTorch 3D deep learning & Provides reusable differentiable 3D learning components & Supplies components rather than an ingestion-to-deliverable workflow \\
 \hline
-Ånes et al. \cite{b36} & DTU: Multi-view stereo benchmark & Ground-truth reference scans enable quantitative evaluation & Limited to structured indoor scenes; calibrated setup required \\
+Aanæs et al. \cite{b36} & DTU multi-view stereo benchmark & Structured-light reference scans enable quantitative geometric evaluation & Controlled calibrated captures do not represent every deployment condition \\
 \hline
 Reizenstein et al. \cite{b37} & CO3D: Real-world 3D captures & Diverse real-world categories; unconstrained viewpoints & No ground-truth reference geometry; limited accuracy evaluation \\
 \hline
@@ -342,98 +342,75 @@ record manifest metadata.}
 \section{Comparative Analysis Against Existing Systems}
 \label{sec:comparison}
 
-Section~\ref{sec:litreview} situated z-shift relative to individual
-algorithms; this section situates it relative to complete systems that
-occupy comparable ground. Five points of comparison follow: input
-heterogeneity, pose dependence, output artifact, automated
-post-processing, and reproducibility guarantees. Table~\ref{tab:sys-compare}
-summarizes the comparison; the prose below explains what the columns do
-and do not capture.
+Table~\ref{tab:sys-compare} compares representative reconstruction systems
+along five dimensions: accepted input, pose handling, native output,
+post-processing workflow, and recorded provenance. These are differences in
+system scope and interface design, not claims of superior reconstruction
+accuracy.
 
 \begin{table*}[tbp]
-\caption{Comparison Against Existing Reconstruction Systems}
+\caption{Comparison of Representative Reconstruction Systems}
 \label{tab:sys-compare}
 \centering
 \footnotesize
-\setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular}{p{2.0cm} p{2.3cm} p{1.6cm} p{2.4cm} p{2.5cm} p{2.5cm}}
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.9cm} >{\raggedright\arraybackslash}p{3.3cm} >{\raggedright\arraybackslash}p{2.6cm} >{\raggedright\arraybackslash}p{2.8cm} >{\raggedright\arraybackslash}p{3.4cm} >{\raggedright\arraybackslash}p{3.1cm}}
 \hline
-\textbf{System} & \textbf{Input Handling} & \textbf{Pose Required} & \textbf{Reconstruction Core} & \textbf{Post-Processing} & \textbf{Reproducibility} \\
+\textbf{System} & \textbf{Accepted Input} & \textbf{Pose Handling} & \textbf{Native Output} & \textbf{Post-Processing Workflow} & \textbf{Recorded Provenance} \\
 \hline
-COLMAP \cite{b2,b25} & Static image sets only; no video/live/sync tracks & Estimated internally via SfM & Incremental SfM + dense MVS & None built in; downstream tools required & Deterministic given fixed correspondences, but not manifest-recorded \\
+COLMAP \cite{b41} & Image directory; video frames must first be extracted & Estimates cameras through SfM & Sparse/dense points and meshes & Built-in meshing and simplification; configurable CLI/GUI stages & Database and workspace artifacts; invocation and software environment captured externally \\
 \hline
-AliceVision Meshroom \cite{b26} & Image sets via a configurable node graph & Estimated internally via SfM & Photogrammetry graph (SfM + MVS) & Optional mesh nodes, manually wired per project & Graph is inspectable but not auto-manifested \\
+AliceVision Meshroom \cite{b42} & Images; video through keyframe extraction; watched image folder for live reconstruction & Estimates cameras through SfM & Point clouds and textured meshes & Default photogrammetry graph with configurable mesh-processing nodes \cite{b26} & Saved graph parameters and cached node outputs \\
 \hline
-Nerfstudio \cite{b27} & Posed image sets (from COLMAP or similar) & Required as a preprocessing dependency & Radiance-field training (NeRF-family) & Geometry extraction is a separate, optional step & Training configs logged; scene-to-mesh path not standardized \\
+Nerfstudio \cite{b43} & Images, video, and supported capture/application formats & Imports poses or estimates them during data preparation & Trained neural scene representation & Rendering and optional point-cloud/mesh export \cite{b27} & Training configuration, checkpoints, and processed dataset metadata \\
 \hline
-Open3D / Kaolin \cite{b28,b29} & N/A -- libraries, not pipelines & N/A & N/A; primitives for custom orchestration & Operators available but sequencing left to the user & No manifest concept; reproducibility is the integrator's responsibility \\
-\hline
-DUSt3R / MASt3R alone \cite{b14,b15} & Unposed image pairs only & Not required & Direct point-map regression & None; output is a raw confidence-weighted point map & Model-level determinism only; no run manifest, no ingestion/refinement stages \\
-\hline
-\textbf{z-shift (this work)} & Images, image folders, video, synchronized video folders, live WebSocket frames, unified into one schema & Not required (MASt3R backend) & MASt3R + optional TSDF fusion, with point-map fallback & Fixed, automatic sequence: filter, fill, smooth, finalize, color-transfer, watertightness check & Manifests record model, device, pairing, seed, thresholds; byte-identical reruns observed on fixed hardware \\
+\textbf{z-shift (this work)} & Batch images/folders, video, and synchronized video folders; WebSocket frames are ingestion-only & MASt3R estimates geometry without input poses & Refined GLB or colored PLY on implemented routes & Fixed filter, fill, smooth, finalize, color-transfer, and validation sequence & Run/refinement manifests; exact reruns observed only in the tested fixed environment \\
 \hline
 \end{tabular}
 \end{table*}
 
-\textbf{Input heterogeneity.} COLMAP and Meshroom expect a static image
-set as their unit of input; neither natively distinguishes a video from
-an image folder, and neither offers a live-capture track. Nerfstudio
-inherits this constraint indirectly, since it consumes pose data
-typically produced by COLMAP. z-shift instead classifies and normalizes
-five distinct source shapes -- single image, image folder, video, video
-folder, live stream -- into one schema before any source-specific logic
-runs (Section~\ref{sec:architecture}). This is a difference in scope
-rather than in algorithmic novelty: none of the compared systems is
-solving a harder reconstruction problem by lacking this stage, but each
-pushes the classification and normalization work onto the user or onto
-a separate preprocessing script.
+\textbf{Input and pose handling.} COLMAP operates on an image directory
+\cite{b41}. Meshroom also accepts video through a keyframe-selection step,
+although its documented workflow requires computing that node before importing
+the extracted frames into reconstruction \cite{b42}. Nerfstudio directly
+supports image and video preprocessing, using COLMAP to estimate poses when
+needed \cite{b43}. z-shift's additional scope is synchronized multi-video
+normalization behind one schema. It also accepts WebSocket frames at ingestion,
+but the live reconstruction and delivery route remains unimplemented; the table
+does not present live input as an end-to-end deliverable path.
 
-\textbf{Pose dependence.} COLMAP, Meshroom, and Nerfstudio all require or
-produce camera pose as a precondition for dense reconstruction, which
-ties their accuracy to the correspondence and calibration quality
-discussed in Section~\ref{sec:litreview}. z-shift's reconstruction slot
-is occupied by MASt3R specifically because it dispenses with that
-precondition \cite{b15}; the pipeline's ingestion and refinement stages
-are written against that assumption throughout, e.g., the EXIF-derived
-intrinsic initialization in Section~\ref{sec:reconstruction} is an aid to
-alignment rather than a calibration requirement.
+COLMAP and Meshroom estimate camera parameters through SfM before dense
+reconstruction. Nerfstudio either imports poses or obtains them during data
+preparation. z-shift instead places MASt3R behind its reconstruction interface;
+MASt3R operates without camera calibration or poses as input prerequisites
+\cite{b15}. This is a difference in where pose estimation occurs, not evidence
+that one reconstruction core is more accurate.
 
-\textbf{Post-processing.} Open3D and Kaolin provide the operators
-(smoothing, simplification, hole filling) that a refinement stage would
-need, but leave sequencing, thresholds, and invocation order to the
-integrator \cite{b28,b29}. MeshLab exposes the same operators
-interactively \cite{b18}. Raw DUSt3R/MASt3R output is not carried
-through any fixed cleanup path at all \cite{b14,b15}. z-shift's
-contribution at this layer is not a new operator but the removal of
-per-model human choice: Section~\ref{sec:comp-performance} shows that
-this fixed sequence has cost behavior -- the component-count knee near
-100 components -- that would not be visible, or even well-defined,
-in a system where the sequence and its parameters vary per run.
+\textbf{Outputs and post-processing.} COLMAP includes dense fusion, meshing,
+and mesh simplification commands \cite{b41}; Meshroom provides a configurable
+photogrammetry graph and mesh-processing stages \cite{b26}; and Nerfstudio can
+export derived point clouds or meshes from trained representations \cite{b27}.
+z-shift differs by fixing one refinement sequence and routing its result to a
+small set of declared deliverables. Fixing that sequence makes its interface
+cost measurable: Section~\ref{sec:comp-performance} reports the observed
+component-count knee near 100 components.
 
-\textbf{Reproducibility.} COLMAP and Meshroom are deterministic given
-fixed inputs and correspondences, but neither writes a manifest tying a
-specific output back to model version, device, seed, and configuration.
-Nerfstudio logs training configuration but not a geometry-export
-manifest, since mesh export is an optional downstream step \cite{b27}.
-z-shift's run and refinement manifests (Sections~\ref{sec:reconstruction}
-and~\ref{sec:architecture}) are what made the byte-identical repeat-run
-result in Section~\ref{sec:comp-performance} checkable in the first
-place; the manifest is the artifact that a claim of reproducibility
-attaches to, not the determinism itself.
+\textbf{Recorded provenance.} The systems retain different reproducibility
+artifacts, so the table avoids claiming that any implementation is inherently
+deterministic. z-shift records run and refinement manifests, while its exact
+repeatability result is limited to one tested software and hardware environment
+(Section~\ref{sec:repeat-behavior}). PyTorch does not guarantee identical
+results across releases or platforms \cite{b40}.
 
-\textbf{What this comparison does not establish.} None of the above
-claims that z-shift reconstructs more accurately than COLMAP, Meshroom,
-or a trained NeRF/3DGS scene -- that comparison requires the ground-truth
-evaluation identified as future work in Section~\ref{sec:future-work},
-and is a claim about the reconstruction core, not the surrounding
-architecture. What Table~\ref{tab:sys-compare} documents is scope:
-which of these systems accept heterogeneous, pose-free, live-capable
-input and return a manifested, refined, delivery-routed asset without
-additional user-assembled tooling. Among the systems compared, z-shift
-is the only one for which all of those columns are checked
-simultaneously; each individual column, taken alone, is met by at least
-one other system.
+\textbf{Scope of the comparison.} The comparison establishes neither superior
+reconstruction accuracy nor a complete live workflow. Accuracy against
+independent reference geometry remains future work
+(Section~\ref{sec:future-work}); live reconstruction and delivery are likewise
+unimplemented. The supported distinction is narrower: z-shift combines
+synchronized heterogeneous-media normalization, pose-free reconstruction,
+fixed refinement, compatibility-based routing, and explicit run artifacts in
+one batch-oriented path.
 
 \section{System Architecture}
 \label{sec:architecture}
@@ -636,6 +613,7 @@ point-map export when fusion exceeds available resources, at the price of an
 output representation that depends on those resources.
 
 \subsection{Determinism and Repeat-Run Behavior}
+\label{sec:repeat-behavior}
 
 Run manifests record the reconstruction model, device, pairing strategy, seed,
 and configuration, which supports repeatable re-execution on the same
@@ -865,6 +843,9 @@ point-to-surface error, and F-score, is the priority for future work.
 \bibitem{b38} Camera \& Imaging Products Association, ``Exchangeable image file format for digital still cameras: Exif Version 3.0,'' CIPA DC-008-2024, 2024.
 \bibitem{b39} NAVER Corp., ``MASt3R: Grounding image matching in 3D,'' software repository, 2024. [Online]. Available: https://github.com/naver/mast3r. Accessed: Sep. 11, 2026.
 \bibitem{b40} PyTorch Contributors, ``Reproducibility,'' PyTorch documentation. [Online]. Available: https://pytorch.org/docs/stable/notes/randomness.html. Accessed: Sep. 11, 2026.
+\bibitem{b41} COLMAP Contributors, ``Command-line interface,'' COLMAP documentation. [Online]. Available: https://colmap.github.io/cli.html. Accessed: Sep. 11, 2026.
+\bibitem{b42} AliceVision Contributors, ``KeyframeSelection,'' Meshroom documentation. [Online]. Available: https://meshroom-manual.readthedocs.io/en/latest/feature-documentation/nodes/KeyframeSelection.html. Accessed: Sep. 11, 2026.
+\bibitem{b43} Nerfstudio Contributors, ``Using custom data,'' Nerfstudio documentation. [Online]. Available: \url{https://docs.nerf.studio/quickstart/custom_dataset.html}. Accessed: Sep. 11, 2026.
 \end{thebibliography}
 
 \end{document}
