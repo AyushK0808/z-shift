@@ -9,7 +9,7 @@ paper.tex                       the paper (IEEEtran, conference mode)
 diagrams/*.mmd                  canonical Mermaid source for fig1
 figures/*.png                   rendered figures, referenced by paper.tex
 outputs/                        hand-captured source images (not regenerated)
-render-diagrams.sh              Mermaid CLI renderer for fig1
+render-diagrams.py              cross-platform Mermaid CLI renderer for fig1
 mermaid-config.json             print-oriented Mermaid theme
 puppeteer-config.json           browser configuration for Mermaid CLI
 compose-case-study-figure.py    regenerates figures/fig6 (input photo + render)
@@ -61,12 +61,14 @@ The second pass is required — figure and equation cross-references come out as
 The figures are generated, not hand-drawn. The architecture has one source of
 truth, `diagrams/fig1-overview.mmd`; regenerate it with:
 
-```bash
-./render-diagrams.sh
+```text
+python render-diagrams.py
 ```
 
-The renderer uses Mermaid CLI through `npx` and requires Node.js plus a local
-Chrome/Chromium installation configured in `puppeteer-config.json`.
+The Python wrapper uses Mermaid CLI through `npx` and requires Node.js plus a
+local Chrome/Chromium installation configured in `puppeteer-config.json`. It
+resolves all paths relative to `paper/`, so the same command works from Windows,
+macOS, and Linux.
 
 The paper carries a single architecture diagram, `fig1-overview`, rather than
 one figure per stage. Earlier drafts split media ingestion, multi-view
