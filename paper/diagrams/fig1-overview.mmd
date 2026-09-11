@@ -5,7 +5,7 @@ config:
     nodeSpacing: 18
 ---
 flowchart LR
-  SRC["Inputs<br/>images · video<br/>synchronized views"]
+  SRC["Inputs<br/>image sets · videos<br/>live frames"]
 
   subgraph S1["1  Media ingestion"]
     direction TB
@@ -18,10 +18,10 @@ flowchart LR
 
   subgraph S2["2  Reconstruction"]
     direction TB
-    REC["Reconstruction<br/>budget · pairing<br/>MASt3R · TSDF<br/>point-map fallback"]
-    CACHE[("Alignment cache")]
+    REC["Job builder + backend<br/>budget · pairing<br/>MASt3R · TSDF<br/>point-map fallback"]
+    JOB[("Reconstruction job")]
     RUN[("Run manifest")]
-    REC --> CACHE
+    REC --> JOB
     REC -.-> RUN
   end
 
@@ -60,5 +60,5 @@ flowchart LR
   class REC recon
   class REF refine
   class ROUTE,EDIT,VIEW deliver
-  class BUF,SCHEMA,CACHE,RUN,GEO,RMAN store
+  class BUF,SCHEMA,JOB,RUN,GEO,RMAN store
   class DENY reject

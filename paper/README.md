@@ -6,16 +6,16 @@ IEEE conference paper for z-shift.
 
 ```text
 paper.tex                       the paper (IEEEtran, conference mode)
-diagrams/*.mmd                  Mermaid source for the single architecture figure
+diagrams/*.mmd                  canonical Mermaid source for fig1
 figures/*.png                   rendered figures, referenced by paper.tex
 outputs/                        hand-captured source images (not regenerated)
-render-diagrams.sh              regenerates fig1 with Mermaid CLI
-render-architecture.py          Matplotlib fallback renderer for fig1
+render-diagrams.sh              Mermaid CLI renderer for fig1
+mermaid-config.json             print-oriented Mermaid theme
+puppeteer-config.json           browser configuration for Mermaid CLI
 compose-case-study-figure.py    regenerates figures/fig6 (input photo + render)
 trim-refine-scaling-figure.py   regenerates figures/fig9 (2-panel) from bench/results/
 trim-refine-quality-figure.py   regenerates figures/fig12 (2x2) from bench/results/
-mermaid-config.json             Mermaid theme (serif, print-friendly greys)
-puppeteer-config.json           browser path used by mermaid-cli
+
 ```
 
 `figures/fig6-case-study-validation.png` is composed from two source images in
@@ -58,17 +58,15 @@ The second pass is required — figure and equation cross-references come out as
 
 ## Regenerating the figures
 
-The figures are generated, not hand-drawn. Edit the `.mmd` source, then:
+The figures are generated, not hand-drawn. The architecture has one source of
+truth, `diagrams/fig1-overview.mmd`; regenerate it with:
 
 ```bash
 ./render-diagrams.sh
 ```
 
-This needs Node.js (for `npx`) and a local Chrome. If Chrome is somewhere other
-than the default Windows path, update `executablePath` in
-`puppeteer-config.json` — use forward slashes. On systems without Mermaid CLI,
-`ipython render-architecture.py` regenerates the same component-architecture
-figure using Matplotlib (installed here as an IPython tool dependency).
+The renderer uses Mermaid CLI through `npx` and requires Node.js plus a local
+Chrome/Chromium installation configured in `puppeteer-config.json`.
 
 The paper carries a single architecture diagram, `fig1-overview`, rather than
 one figure per stage. Earlier drafts split media ingestion, multi-view
@@ -77,7 +75,7 @@ but four figures cost roughly a full column of vertical space once captions
 are counted, which does not fit a six-page target; the four were merged into
 one component architecture covering ingestion, artifact stores, reconstruction,
 refinement, and outcomes routing. Stage boundaries group related services;
-cylinders distinguish buffered, cached, or persistent artifacts from processing
+cylinders distinguish buffered or persistent artifacts from processing
 components, and decision diamonds are deliberately avoided so the figure reads
 as a system architecture rather than an execution flow. It is a full-width
 `figure*` laid out left to right; this gives labels enough physical width and
@@ -86,7 +84,7 @@ figures remain single-column:
 
 | figure | covers | printed height @ its placed width |
 |---|---|---|
-| fig1-overview | full architecture: ingestion, job construction, MASt3R alignment, TSDF fusion or point-map fallback, refinement, outcomes routing | 3.3 in @ textwidth |
+| fig1-overview | full architecture: ingestion, reconstruction job/backend, TSDF fusion or point-map fallback, refinement, outcomes routing | 2.8 in @ textwidth |
 | fig6-case-study-validation | input photo + render, composed (not a screenshot), side by side a \| b | 1.2 in |
 | fig9-refine-scaling | component count vs.\ cost, and both axes together, side by side a \| b | 1.6 in |
 | fig12-refine-quality | Chamfer, normal consistency, Taubin-vs-Laplacian volume, 2x2 with the shared legend in the fourth cell | 2.8 in |
@@ -105,19 +103,18 @@ its six-page target. Two rules came out of that and are worth keeping:
   or a 2x2 cost a fraction of that. `height=...\textheight` caps bound the
   damage but do not fix it, and they silently shrink the figure's width too.
 
-`fig1-overview` uses a wide `flowchart LR` and is rendered at approximately the
-same physical width at which LaTeX places it. Do not return it to a narrow,
-single-column layout: doing so makes labels and connectors collide.
+`fig1-overview` uses a wide Mermaid `flowchart LR` and is rendered at
+approximately the same physical width at which LaTeX places it. Do not return it
+to a narrow, single-column layout: doing so makes labels and connectors collide.
 
 If you rewrite a diagram, check its printed height doesn't run past a column
 (roughly 9 in usable on a letter page): render it, then compare `width/height`
 against `\columnwidth` (3.5 in) or `\textwidth` (7.16 in) as appropriate.
-`rankSpacing`/`nodeSpacing` in the per-file front-matter trims height if a
-diagram is too tall.
 
-Colour is applied with `classDef` per stage — blue for ingestion, amber for the
-schema artifact, violet for reconstruction, teal for refinement, orange for
-deliverables, red for rejection paths. There is no rigging colour: automatic
+
+Colour is applied consistently with Mermaid `classDef` rules — blue for
+ingestion, amber for artifacts, violet for reconstruction, teal for refinement,
+orange for deliverables, and red for rejection paths. There is no rigging colour: automatic
 rigging is future work (see the paper's Future Work section), not part of the
 current architecture, so it does not appear in any diagram. Keep colour
 assignments consistent across figures — the same stage should be the same
