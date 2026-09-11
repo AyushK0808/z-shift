@@ -250,79 +250,70 @@ That is the gap our benchmark addresses.
 \section{Literature Review}
 \label{sec:litreview}
 
-The preceding discussion establishes the individual methods; Table~\ref{tab:litreview}
+The preceding discussion establishes the individual methods. Table~\ref{tab:litreview}
 compares their native representations, assumptions, and relationship to the
 interfaces studied here. The synthesis separates view-synthesis representations
 from surface-producing methods and distinguishes algorithmic components from
 complete software systems.
 
 \begin{table*}[tbp]
-\caption{Synthesis of Reviewed Literature}
+\caption{Literature Review: Authors, Algorithms, Pros, and Cons}
 \label{tab:litreview}
 \centering
 \footnotesize
 \setlength{\tabcolsep}{3pt}
 \renewcommand{\arraystretch}{1.12}
-\begin{tabular}{p{2.2cm} p{4.5cm} p{4.1cm} p{6.1cm}}
+\begin{tabular}{p{1.8cm} p{2.6cm} p{3.0cm} p{3.6cm}}
 \hline
-\textbf{Method family} & \textbf{Representative contributions} &
-\textbf{Native output and assumptions} & \textbf{Relationship to z-shift} \\
+\textbf{Authors} & \textbf{Algorithm/Techniques} & \textbf{Pros} & \textbf{Cons} \\
 \hline
-Classical geometry &
-Projective multi-view geometry \cite{b1}; incremental SfM \cite{b2}; MVS evaluation
-\cite{b3}; MVS taxonomy and limitations \cite{b4}; pixelwise view selection
-\cite{b25}. &
-Camera estimates and sparse structure from SfM, followed by depth maps or dense
-points from MVS; performance depends on correspondence and photo-consistency cues. &
-Provides mature reconstruction pipelines, but camera estimation precedes dense MVS.
-z-shift instead places an unposed learned model behind a replaceable reconstruction
-interface. \\
+Hartley \& Zisserman \cite{b1} & Projective multi-view geometry & Foundational theory for camera and scene structure recovery & Assumes calibrated cameras; limited to sparse geometry \\
 \hline
-Learned view synthesis &
-NeRF's implicit radiance field \cite{b6}; Instant-NGP's hash encoding \cite{b7};
-explicit Gaussian Splatting \cite{b8}; unbounded-scene rendering \cite{b9};
-generalizable few-view methods MVSNeRF \cite{b10} and pixelNeRF \cite{b11}. &
-Radiance fields or explicit Gaussians optimized primarily for novel-view synthesis;
-inputs and per-scene optimization requirements vary by method. &
-These representations are not natively clean polygonal assets. Frameworks may add
-geometry extraction, as Nerfstudio does \cite{b27}, but extraction remains a separate
-stage. \\
+Schönberger \& Frahm \cite{b2} & Incremental Structure-from-Motion & Robust sparse structure and camera estimation & Requires correspondence cues; scales poorly to large scenes \\
 \hline
-Pose-free dense reconstruction &
-DUSt3R regresses pairwise point maps from unposed images \cite{b14}; MASt3R adds a
-dense local-feature head for matching \cite{b15}. &
-Confidence-weighted point maps for each image pair without prior camera calibration
-or poses; multi-pair reconstruction still requires alignment. &
-MASt3R occupies z-shift's reconstruction slot. The surrounding job, artifact, and
-refinement interfaces turn its geometric estimate into a routed deliverable. \\
+Seitz et al. \cite{b3} & Multi-view stereo (MVS) evaluation & Comprehensive MVS algorithm comparison & Performance depends on photo-consistency; struggles with textureless surfaces \\
 \hline
-Fusion and surface processing &
-Signed-distance fusion \cite{b21}; real-time TSDF mapping \cite{b22}; Poisson surface
-reconstruction from oriented points \cite{b23}; Taubin fairing \cite{b16}; QEM
-simplification \cite{b17}; mesh-hole filling \cite{b35}. &
-Implicit fused surfaces, reconstructed meshes, or transformations of an existing
-mesh. TSDF fusion and Poisson reconstruction are distinct techniques with different
-input requirements. &
-z-shift optionally uses TSDF fusion, then applies a fixed repair and refinement
-sequence. The fixed sequence makes interface-dependent cost measurable. \\
+Furukawa \& Hernández \cite{b4} & MVS taxonomy and analysis & Identifies key limitations and failure modes & Does not address solutions for problematic surface types \\
 \hline
-Systems and reusable tooling &
-MeshLab's interactive mesh operators \cite{b18}; polygon-mesh processing methods
-\cite{b19}; Meshroom's photogrammetry graph \cite{b26}; Nerfstudio's radiance-field
-framework \cite{b27}; Open3D components \cite{b28}; Kaolin components \cite{b29}. &
-Interactive applications, configurable pipelines, or reusable library primitives
-rather than one shared output contract. &
-z-shift differs in scope by combining heterogeneous ingestion, a learned backend,
-fixed refinement, compatibility-based routing, and manifests in one bounded path. \\
+Mildenhall et al. \cite{b6} & Neural Radiance Fields (NeRF) & Implicit representation enables novel-view synthesis; high quality rendering & Per-scene optimization required; not a native mesh asset; slow rendering \\
 \hline
-Evaluation data &
-DTU provides calibrated views and structured-light reference scans \cite{b36}; CO3D
-provides real-world multi-view captures of common object categories \cite{b37}. &
-DTU supports geometric accuracy/completeness evaluation against independent
-reference geometry; CO3D provides diverse real captures without serving the same
-reference-scan role. &
-The current paper uses CO3D only for an illustrative trace. A DTU-style
-end-to-end accuracy benchmark remains future work. \\
+Müller et al. \cite{b7} & Instant-NGP with hash encoding & Accelerates neural graphics primitives significantly & Still requires per-scene training; GPU-intensive \\
+\hline
+Kerbl et al. \cite{b8} & 3D Gaussian Splatting & Real-time novel-view synthesis; explicit representation & Not a clean polygonal mesh; requires post-processing for asset export \\
+\hline
+Barron et al. \cite{b9} & Mip-NeRF 360 & Handles unbounded scenes effectively & Complex training procedure; limited to novel-view synthesis \\
+\hline
+Chen et al. \cite{b10} & MVSNeRF & Fast generalization from few views & Still requires view synthesis pipeline; mesh extraction is separate step \\
+\hline
+Yu et al. \cite{b11} & pixelNeRF & Generalizes to new scenes with few images & Radiance field formulation; not natively polygonal output \\
+\hline
+Wang et al. \cite{b14} & DUSt3R: Pose-free dense regression & No calibration or poses required; recovers dense geometry & Confidence-weighted output; requires alignment; point clouds not meshes \\
+\hline
+Leroy et al. \cite{b15} & MASt3R: Learned local features & Improved image matching over DUSt3R; better geometry estimates & Still produces confidence-weighted point maps; refinement needed \\
+\hline
+Taubin \cite{b16} & Alternating low-pass filtering & Reduces noise while avoiding shrinkage artifacts & Parameter-dependent; may over-smooth fine details \\
+\hline
+Garland \& Heckbert \cite{b17} & Quadric Error Metrics (QEM) simplification & Preserves mesh topology and visual quality & May alter intended geometry; requires careful threshold selection \\
+\hline
+Curless \& Levoy \cite{b21} & Signed-distance fusion (TSDF) & Robust implicit surface representation & Voxel memory-intensive; expensive at high resolution \\
+\hline
+Newcombe et al. \cite{b22} & KinectFusion: Real-time TSDF & Dense surface mapping with camera tracking & Requires depth sensor; limited to small scenes; memory-bound \\
+\hline
+Kazhdan et al. \cite{b23} & Poisson surface reconstruction & Creates watertight meshes from oriented points & Computationally expensive; may smooth geometric details \\
+\hline
+Cignoni et al. \cite{b18} & MeshLab: Interactive mesh operators & Flexible, widely-used tool with many algorithms & Interactive tool; not suitable for automated pipelines \\
+\hline
+Griwodz et al. \cite{b26} & AliceVision Meshroom photogrammetry & Complete open-source pipeline; customizable workflow & Complex parameter tuning; primarily SfM-based approach \\
+\hline
+Tancik et al. \cite{b27} & Nerfstudio: Neural field framework & Modular, standardized training and visualization & Radiance-field focus; geometry extraction remains separate \\
+\hline
+Zhou et al. \cite{b28} & Open3D: 3D data processing library & Reusable primitives for general 3D operations & Low-level tools; requires custom orchestration \\
+\hline
+Jatavallabhula et al. \cite{b29} & Kaolin: PyTorch 3D deep learning & Differentiable 3D components for learning & Research-focused; limited for industrial deployment \\
+\hline
+Ånes et al. \cite{b36} & DTU: Multi-view stereo benchmark & Ground-truth reference scans enable quantitative evaluation & Limited to structured indoor scenes; calibrated setup required \\
+\hline
+Reizenstein et al. \cite{b37} & CO3D: Real-world 3D captures & Diverse real-world categories; unconstrained viewpoints & No ground-truth reference geometry; limited accuracy evaluation \\
 \hline
 \end{tabular}
 \end{table*}
