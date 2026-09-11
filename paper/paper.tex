@@ -339,6 +339,102 @@ record manifest metadata.}
 \label{fig:overview}
 \end{figure*}
 
+\section{Comparative Analysis Against Existing Systems}
+\label{sec:comparison}
+
+Section~\ref{sec:litreview} situated z-shift relative to individual
+algorithms; this section situates it relative to complete systems that
+occupy comparable ground. Five points of comparison follow: input
+heterogeneity, pose dependence, output artifact, automated
+post-processing, and reproducibility guarantees. Table~\ref{tab:sys-compare}
+summarizes the comparison; the prose below explains what the columns do
+and do not capture.
+
+\begin{table*}[tbp]
+\caption{Comparison Against Existing Reconstruction Systems}
+\label{tab:sys-compare}
+\centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{p{2.0cm} p{2.3cm} p{1.6cm} p{2.4cm} p{2.5cm} p{2.5cm}}
+\hline
+\textbf{System} & \textbf{Input Handling} & \textbf{Pose Required} & \textbf{Reconstruction Core} & \textbf{Post-Processing} & \textbf{Reproducibility} \\
+\hline
+COLMAP \cite{b2,b25} & Static image sets only; no video/live/sync tracks & Estimated internally via SfM & Incremental SfM + dense MVS & None built in; downstream tools required & Deterministic given fixed correspondences, but not manifest-recorded \\
+\hline
+AliceVision Meshroom \cite{b26} & Image sets via a configurable node graph & Estimated internally via SfM & Photogrammetry graph (SfM + MVS) & Optional mesh nodes, manually wired per project & Graph is inspectable but not auto-manifested \\
+\hline
+Nerfstudio \cite{b27} & Posed image sets (from COLMAP or similar) & Required as a preprocessing dependency & Radiance-field training (NeRF-family) & Geometry extraction is a separate, optional step & Training configs logged; scene-to-mesh path not standardized \\
+\hline
+Open3D / Kaolin \cite{b28,b29} & N/A -- libraries, not pipelines & N/A & N/A; primitives for custom orchestration & Operators available but sequencing left to the user & No manifest concept; reproducibility is the integrator's responsibility \\
+\hline
+DUSt3R / MASt3R alone \cite{b14,b15} & Unposed image pairs only & Not required & Direct point-map regression & None; output is a raw confidence-weighted point map & Model-level determinism only; no run manifest, no ingestion/refinement stages \\
+\hline
+\textbf{z-shift (this work)} & Images, image folders, video, synchronized video folders, live WebSocket frames, unified into one schema & Not required (MASt3R backend) & MASt3R + optional TSDF fusion, with point-map fallback & Fixed, automatic sequence: filter, fill, smooth, finalize, color-transfer, watertightness check & Manifests record model, device, pairing, seed, thresholds; byte-identical reruns observed on fixed hardware \\
+\hline
+\end{tabular}
+\end{table*}
+
+\textbf{Input heterogeneity.} COLMAP and Meshroom expect a static image
+set as their unit of input; neither natively distinguishes a video from
+an image folder, and neither offers a live-capture track. Nerfstudio
+inherits this constraint indirectly, since it consumes pose data
+typically produced by COLMAP. z-shift instead classifies and normalizes
+five distinct source shapes -- single image, image folder, video, video
+folder, live stream -- into one schema before any source-specific logic
+runs (Section~\ref{sec:architecture}). This is a difference in scope
+rather than in algorithmic novelty: none of the compared systems is
+solving a harder reconstruction problem by lacking this stage, but each
+pushes the classification and normalization work onto the user or onto
+a separate preprocessing script.
+
+\textbf{Pose dependence.} COLMAP, Meshroom, and Nerfstudio all require or
+produce camera pose as a precondition for dense reconstruction, which
+ties their accuracy to the correspondence and calibration quality
+discussed in Section~\ref{sec:litreview}. z-shift's reconstruction slot
+is occupied by MASt3R specifically because it dispenses with that
+precondition \cite{b15}; the pipeline's ingestion and refinement stages
+are written against that assumption throughout, e.g., the EXIF-derived
+intrinsic initialization in Section~\ref{sec:reconstruction} is an aid to
+alignment rather than a calibration requirement.
+
+\textbf{Post-processing.} Open3D and Kaolin provide the operators
+(smoothing, simplification, hole filling) that a refinement stage would
+need, but leave sequencing, thresholds, and invocation order to the
+integrator \cite{b28,b29}. MeshLab exposes the same operators
+interactively \cite{b18}. Raw DUSt3R/MASt3R output is not carried
+through any fixed cleanup path at all \cite{b14,b15}. z-shift's
+contribution at this layer is not a new operator but the removal of
+per-model human choice: Section~\ref{sec:comp-performance} shows that
+this fixed sequence has cost behavior -- the component-count knee near
+100 components -- that would not be visible, or even well-defined,
+in a system where the sequence and its parameters vary per run.
+
+\textbf{Reproducibility.} COLMAP and Meshroom are deterministic given
+fixed inputs and correspondences, but neither writes a manifest tying a
+specific output back to model version, device, seed, and configuration.
+Nerfstudio logs training configuration but not a geometry-export
+manifest, since mesh export is an optional downstream step \cite{b27}.
+z-shift's run and refinement manifests (Sections~\ref{sec:reconstruction}
+and~\ref{sec:architecture}) are what made the byte-identical repeat-run
+result in Section~\ref{sec:comp-performance} checkable in the first
+place; the manifest is the artifact that a claim of reproducibility
+attaches to, not the determinism itself.
+
+\textbf{What this comparison does not establish.} None of the above
+claims that z-shift reconstructs more accurately than COLMAP, Meshroom,
+or a trained NeRF/3DGS scene -- that comparison requires the ground-truth
+evaluation identified as future work in Section~\ref{sec:future-work},
+and is a claim about the reconstruction core, not the surrounding
+architecture. What Table~\ref{tab:sys-compare} documents is scope:
+which of these systems accept heterogeneous, pose-free, live-capable
+input and return a manifested, refined, delivery-routed asset without
+additional user-assembled tooling. Among the systems compared, z-shift
+is the only one for which all of those columns are checked
+simultaneously; each individual column, taken alone, is met by at least
+one other system.
+
 \section{System Architecture}
 \label{sec:architecture}
 
