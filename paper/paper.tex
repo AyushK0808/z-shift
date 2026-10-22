@@ -774,6 +774,46 @@ recognizable and the defects of raw reconstruction are visibly corrected, though
 residual background geometry remains. No quantitative reconstruction accuracy is
 claimed from it.
 
+\begin{table}[tbp]
+\caption{CO3D Teddybear Output-Quality Scores ($n=1$)}
+\begin{center}
+\footnotesize
+\begin{tabular}{|p{2.9cm}|p{1.1cm}|p{2.8cm}|}
+\hline
+\textbf{Score} & \textbf{Value} & \textbf{Interpretation} \\
+\hline
+Confidence retention & 0.3424 & Fraction of MASt3R points retained after confidence masking \\
+\hline
+Pairing coverage & 1.0000 & 56/56 directed complete pairs processed \\
+\hline
+TSDF success & 1.0000 & No point-map fallback was used \\
+\hline
+Cell reduction & 0.6599 & 860,302 $\to$ 292,622 cells after refinement \\
+\hline
+Point reduction & 0.7609 & 311,067 $\to$ 74,365 points after refinement \\
+\hline
+Non-manifold cleanliness & 0.2543 & 218,205 non-manifold edges remain \\
+\hline
+Watertightness & 0.0000 & Output is not watertight \\
+\hline
+Rigging validity & 1.0000 & Skeleton graph, skin coverage, weight normalization, and influence cap pass \\
+\hline
+Warning-free rigging & 0.0000 & Axis-alignment warning recorded for template fitting \\
+\hline
+\end{tabular}
+\label{tab:co3d-quality-scores}
+\end{center}
+\end{table}
+
+\begin{figure}[tbp]
+\centerline{\includegraphics[width=\columnwidth]{figures/fig13-co3d-teddybear-quality.png}}
+\caption{CO3D teddybear output-quality diagnostics generated from the notebook
+artifacts: (a) reconstruction/refinement scores and (b) rigging validity
+scores. These are output diagnostics, not ground-truth reconstruction accuracy
+metrics such as F-score or Chamfer distance against a reference scan.}
+\label{fig:co3d-quality-scores}
+\end{figure}
+
 \section{Conclusions}
 
 z-shift is a systems architecture of independently replaceable stages
