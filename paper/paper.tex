@@ -39,40 +39,32 @@
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 \begin{document}
 
-\title{Z-Shift: A Unified Ingestion-to-Deliverable Pipeline for
-Converting Heterogeneous 2D Media into Refined 3D Assets}
+\title{A Unified Ingestion-to-Delivery Pipeline for Converting Heterogeneous
+2D Media into 3D Assets}
 
-% Author block is laid out 3 + 3. The \linebreak after the third author forces
-% the second row; without it IEEEtran fits only two blocks per row, because the
-% department line is wide. The department is split over two lines for the same
-% reason -- if you restore it to a single line, three blocks will not fit.
-\author{\IEEEauthorblockN{Siddhant Kishor Jain}
+% Seven authors, in the order of the submitted manuscript. The department line
+% is split over two lines so that three blocks fit per row; if you restore it
+% to a single line, IEEEtran fits only two blocks per row.
+\author{\IEEEauthorblockN{Charanya R}
+\IEEEauthorblockA{\textit{School of Computer Science and} \\
+\textit{Engineering and Information Systems} \\
+\textit{Vellore Institute of Technology}\\
+Vellore, India \\
+charanya.r@vit.ac.in}
+\and
+\IEEEauthorblockN{Priya M}
+\IEEEauthorblockA{\textit{School of Computer Science and} \\
+\textit{Engineering and Information Systems} \\
+\textit{Vellore Institute of Technology}\\
+Vellore, India \\
+priya.m@vit.ac.in}
+\and
+\IEEEauthorblockN{Siddhant Kishor Jain}
 \IEEEauthorblockA{\textit{School of Computer Science} \\
 \textit{and Engineering} \\
 \textit{Vellore Institute of Technology}\\
 Vellore, India \\
 siddhj2206@gmail.com}
-\and
-\IEEEauthorblockN{Rakshit Mathur}
-\IEEEauthorblockA{\textit{School of Computer Science} \\
-\textit{and Engineering} \\
-\textit{Vellore Institute of Technology}\\
-Vellore, India \\
-rakshitmathur01@gmail.com}
-\and
-\IEEEauthorblockN{Jhanvi Vashishth}
-\IEEEauthorblockA{\textit{School of Computer Science} \\
-\textit{and Engineering} \\
-\textit{Vellore Institute of Technology}\\
-Vellore, India \\
-vashishthjhanvi@gmail.com}
-\and
-\IEEEauthorblockN{Shardul Parag}
-\IEEEauthorblockA{\textit{School of Computer Science} \\
-\textit{and Engineering} \\
-\textit{Vellore Institute of Technology}\\
-Vellore, India \\
-email@vitstudent.ac.in}
 \and
 \IEEEauthorblockN{Ayush Kumar}
 \IEEEauthorblockA{\textit{School of Computer Science} \\
@@ -81,336 +73,173 @@ email@vitstudent.ac.in}
 Vellore, India \\
 theofficialayush.kumar@gmail.com}
 \and
-\IEEEauthorblockN{Given Name Surname}
+\IEEEauthorblockN{Rakshit Mathur}
 \IEEEauthorblockA{\textit{School of Computer Science} \\
 \textit{and Engineering} \\
 \textit{Vellore Institute of Technology}\\
 Vellore, India \\
-email@vitstudent.ac.in}
+rakshitmathur01@gmail.com}
+\and
+\IEEEauthorblockN{Shardul Parag Rawal}
+\IEEEauthorblockA{\textit{School of Computer Science} \\
+\textit{and Engineering} \\
+\textit{Vellore Institute of Technology}\\
+Vellore, India \\
+shardulrawal02@gmail.com}
+\and
+\IEEEauthorblockN{Jhanvi Vashishth}
+\IEEEauthorblockA{\textit{School of Computer Science} \\
+\textit{and Engineering} \\
+\textit{Vellore Institute of Technology}\\
+Vellore, India \\
+vashishthjhanvi@gmail.com}
 }
 
 \maketitle
 
-% Pulls the abstract up under the 3+3 author block. IEEEtran leaves a fixed
-% gap below \author, sized for a one- or two-row block of short affiliations;
-% with six four-line blocks it reads as a hole. -14pt closes it without
-% crowding the rule above the abstract. If the author list ever shrinks to one
-% row, drop this -- the default spacing is correct at that size.
+% Pulls the abstract up under the multi-row author block. IEEEtran leaves a
+% fixed gap below \author, sized for a one- or two-row block of short
+% affiliations; with seven four-line blocks it reads as a hole. -14pt closes it
+% without crowding the rule above the abstract. If the author list ever shrinks
+% to one row, drop this -- the default spacing is correct at that size.
 \vspace{-14pt}
 
 \begin{abstract}
-DUSt3R and MASt3R recover dense geometry from a scene based on 2D observations
-alone, without requiring information about camera pose and without prior
-calibration. A readily deployable 2D-to-3D system, however, cannot be built
-from the reconstruction network by itself: ingestion, frame selection,
-temporal synchronization, geometry refinement, and application-specific
-delivery must operate in concert. We present z-shift, a four-stage pipeline in
-which each individual stage can be replaced if desired, and in which data
-passes between stages only as serializable artifacts. During ingestion,
-images, videos, synchronized captures, and live feeds are unified into a
-common spatial schema. Reconstruction uses MASt3R for its initial estimate of
-scene geometry, may optionally fuse TSDFs, and falls back to a point map where
-fusion is unavailable. Refinement applies a fixed sequence of operations, and
-delivery routes GLB or point-cloud output under a compatibility contract. Our
-evaluation consists of a constrained benchmark suite together with one eight-
-view capture in which each stage was individually traced. Unless capture order
-is preserved, motion-ranked frame retention degrades sliding-window pairing
-locality by 6.6x, and restoring that order costs nothing. Refinement cost is
-affected by the number of disconnected components in a mesh more than by its
-triangle count, remaining nearly constant below approximately 100 components
-and rising close to linearly thereafter, reaching 23x at 1,000. Repeating a
-run on the same GPU under the same configuration produces byte-identical
-output. Component- and integration-level correctness is established across the
-pipeline. Real-time delivery, efficient large-scale mesh processing, and
-quantitative reconstruction accuracy against ground truth remain future work.
+DUSt3R (Dense Unconstrained Stereo 3D Reconstruction) and MASt3R (Matching and
+Stereo 3D Reconstruction) recover dense scene geometry from 2D observations
+alone, without camera pose or prior calibration. A deployable 2D-to-3D system,
+however, requires ingestion, frame selection, temporal synchronization,
+geometry refinement, and application-specific delivery to work together. We
+present z-shift, a four-stage pipeline in which each stage is replaceable, and
+data passes between stages only as serializable artifacts. Ingestion unifies
+images, videos, synchronized captures, and live feeds under a common spatial
+schema. Reconstruction uses MASt3R for the initial scene geometry, may
+optionally fuse Truncated Signed Distance Functions (TSDFs), and falls back to
+a point map when fusion is unavailable. Refinement applies a fixed sequence of
+operations, while delivery routes GLB or point-cloud output under a
+compatibility contract. Our evaluation combines a constrained benchmark suite
+with one eight-view capture in which each stage was traced. Without preserving
+capture order, motion-ranked frame retention degrades sliding-window pairing
+locality 6.6-fold, while restoring order costs nothing. Refinement cost depends
+more on disconnected mesh components than triangle count, remaining nearly
+constant below approximately 100 components and rising close to linearly
+thereafter, reaching 23-fold at 1,000 components. Repeating a run on the same
+GPU and configuration produces byte-identical output. Component- and
+integration-level correctness is established across the pipeline. Real-time
+delivery, efficient large-scale mesh processing, and quantitative
+reconstruction accuracy against ground truth remain future work.
 \end{abstract}
 
 \begin{IEEEkeywords}
-3D reconstruction, multi-view stereo, MASt3R, computer vision, mesh processing,
-point clouds, 2D-to-3D generation, spatial computing
+2D-to-3D generation, 3D reconstruction, computer vision, MASt3R, mesh
+processing, multi-view stereo, point clouds, spatial computing
 \end{IEEEkeywords}
 
 \section{Introduction}
 
-Computer vision and graphics have long treated the recovery of three-dimensional
-structure from two-dimensional images as a foundational problem. Multiple-view
-geometry provides the projective foundations for recovering camera and scene
-structure \cite{b1}. Incremental structure-from-motion (SfM) estimates camera
-parameters and sparse geometry from image correspondences \cite{b2}, after which
-multi-view stereo (MVS) estimates dense geometry \cite{b3}. MVS accuracy remains
-sensitive to viewpoint coverage, image quality, texture, and the reliability of
-photo-consistency cues \cite{b4}. Learned methods widened what was achievable.
-Neural Radiance Fields (NeRF) introduced a continuous volumetric representation
-for view synthesis \cite{b6}. Instant-NGP accelerated neural graphics primitives
-with a multiresolution hash encoding \cite{b7}; 3D Gaussian Splatting instead
-uses explicit anisotropic Gaussians for real-time novel-view synthesis \cite{b8};
-and Mip-NeRF 360 addresses unbounded scenes \cite{b9}. MVSNeRF generalizes
-radiance-field reconstruction across scenes from a few views \cite{b10}, whereas
-pixelNeRF conditions a radiance field on one or a few input images \cite{b11}.
-DUSt3R directly regresses point maps from unposed, uncalibrated image pairs
-\cite{b14}, and MASt3R adds learned local features for improved image matching
-\cite{b15}.
+The recovery of three-dimensional structure from two-dimensional imagery is a
+well-known problem in computer vision and computer graphics. This topic has
+progressed from recent approaches to image-based 3D reconstruction \cite{b2}
+and Structure-from-Motion methods \cite{b3}, through deep learning-based 3D
+reconstruction from multiple images \cite{b4} and learning-based multi-view
+stereo \cite{b5}, to more recent approaches exploring pose-free dense
+regression with DUSt3R \cite{b6} and MASt3R \cite{b7}, as well as learned
+approaches such as MVSNeRF \cite{b13}, pixelNeRF \cite{b14}, Neural Radiance
+Fields \cite{b16}, Instant-NGP \cite{b20}, 3D Gaussian Splatting \cite{b21},
+and Mip-NeRF 360 \cite{b22}. While each of these techniques improves upon the
+ability to perform three-dimensional reconstruction, an operational system
+also requires input normalization, frame selection, synchronization, geometry
+refinement, and output delivery tailored to the application.
 
-Suppose a capable reconstruction engine is already in hand. What remains
-unsettled is the arrangement of the stages around it: how heterogeneous raw
-media are to reach a usable deliverable at predictable cost, reproducibly.
-z-shift offers one arrangement, a fixed sequence of independently replaceable
-stages that communicate only through serializable artifacts, with MASt3R
-occupying the reconstruction slot. A single claim runs through our evaluation.
-Stages that are individually correct do not combine into a correct or
-predictable system for free, and the interfaces between them carry correctness
-and cost behavior of their own.
+z-shift is presented as a four-stage process where individually replaceable
+stages exchange data in the form of serializable artifacts. The ingestion stage
+unites images, videos, synchronized captures, and live streams under a uniform
+spatial representation. The reconstruction stage uses MASt3R optionally with
+TSDF fusion and a fallback point-map representation, while the refinement and
+delivery stages respectively handle geometry post-processing and routing of
+outputs according to media type and application requirements. Thus, the focus
+is on how heterogeneous media can move through the reconstruction and
+refinement stages without tying the stages to any specific internal
+representation.
 
-In the field, input rarely arrives uniformly. The same entry point receives
-photographs, directories containing images, videos, synchronized multi-camera
-captures, and continuous frame streams. A video can contain more frames than
-the reconstruction budget admits. z-shift therefore normalizes all sources
-into a common spatial schema and limits the number of frames admitted to
-reconstruction (Section~\ref{sec:architecture}). Nor is raw reconstruction
-output necessarily ready for production. Surface fairing addresses noise
-\cite{b16}, quadric-error simplification controls mesh complexity \cite{b17},
-and dedicated repair methods close holes caused by incomplete source geometry
-\cite{b35}. Interactive systems such as MeshLab expose these and related mesh
-operators \cite{b18}; z-shift instead applies a fixed procedure in a dedicated
-refinement stage and transfers vertex colors to the result.
-
-Five systems abstractions constitute our contribution. (1) A unified ingestion
-schema, which decouples heterogeneous batch and live media from everything
-downstream and renders a normalized input replayable. (2) Bounded orchestration
-of frame selection and pairing beneath an explicit frame budget. (3) A backend
-layer that wraps MASt3R with optional TSDF fusion and a recorded point-map
-fallback. (4) An automated geometry-processing stage applying a fixed refinement
-sequence, with no per-model human choices. (5) A delivery layer that treats
-source-type and use-case compatibility as a contract and emits reproducibility
-manifests.
-
-Three empirical findings about stage interaction follow. Pairing locality
-degrades 6.6x under motion-ranked frame ordering, and the remedy costs nothing.
-Refinement cost answers to mesh fragmentation more than to triangle count, and
-it does so as a threshold near 100 components rather than a smooth gradient.
-Where hardware is held fixed, repeat runs of one configuration on a single GPU
-were byte-identical in the tested environment.
+The focus of our evaluation is on the performance of the stage interfaces. We
+found that motion-ranked frame retention degrades sliding-window pairing by a
+factor of 6.6 when frames are left unsorted, and that restoring capture order
+recovers this at no additional cost. In contrast, refinement runtime is more
+sensitive to mesh fragmentation than to the number of triangles, with the
+transition occurring around 100 connected components and a 23x increase at
+1,000 components in the studied configurations. Repeated runs on the same GPU
+and configuration yielded byte-wise identical results.
 
 \section{Related Work}
 
-Classical SfM recovers camera parameters and sparse structure from image
-correspondences \cite{b2}, while MVS uses those camera estimates to recover dense
-geometry \cite{b3}. Textureless, specular, or sparsely covered surfaces remain
-challenging because they weaken photo-consistency and correspondence cues
-\cite{b4}. Learned scene representations loosen some of those constraints.
-NeRF uses an implicit volumetric radiance field \cite{b6}; Instant-NGP accelerates
-such neural representations \cite{b7}; 3D Gaussian Splatting uses explicit
-Gaussians rather than a polygonal surface \cite{b8}; and Mip-NeRF 360 extends
-radiance-field rendering to unbounded scenes \cite{b9}. MVSNeRF \cite{b10} and
-pixelNeRF \cite{b11} target generalization from few input views. These methods
-primarily optimize novel-view synthesis and do not natively produce a clean
-polygonal asset; where mesh export is provided, it requires an additional
-geometry-extraction step \cite{b27}.
+Several established research directions in the field of 3D reconstruction
+provide well-developed techniques for geometric reconstruction from multiple
+images. Recent surveys of dense 3D reconstruction describe the geometric
+foundations and datasets used for image-based reconstruction \cite{b2}, while
+Herrera-Granda et al.\ \cite{b3} review Structure-from-Motion, visual odometry,
+and SLAM methods for 3D reconstruction. Wang et al.\ \cite{b4} survey deep
+learning-based approaches for 3D reconstruction from multiple images, while
+Wang et al.\ \cite{b5} consider learning-based multi-view stereo for dense
+reconstruction. Machine learning has enabled many contributions in the field of
+3D reconstruction with neural representations like NeRF \cite{b16},
+Instant-NGP \cite{b20}, 3D Gaussian Splatting \cite{b21}, and others
+\cite{b13}, \cite{b14}, \cite{b22}. DUSt3R \cite{b6} and MASt3R \cite{b7}
+enable dense geometry estimation with minimal reliance on conventional pose
+estimation techniques. The above-mentioned contributions mostly deal with
+reconstruction problems themselves, while the organization of other stages
+depends on the application at hand.
 
-Among prior work, DUSt3R \cite{b14} and MASt3R \cite{b15} bear most directly on
-ours. For each unposed image pair, both regress dense per-pixel point maps in a
-common reference frame, dispensing with calibration and pose as prerequisites;
-MASt3R further adds a dense local-feature head that improves matching. What each
-produces is a confidence-weighted point map rather than a clean surface, and
-that is what motivates the refinement stage described below. MASt3R serves as
-the current z-shift backend. Because stages communicate only through
-serializable artifacts (Section~\ref{sec:architecture}), a comparable method
-could take its place without disturbing anything around it. The optional fusion
-stage follows the signed-distance volume formulation of Curless and Levoy
-\cite{b21}; KinectFusion demonstrates a related real-time
-implicit-surface pipeline \cite{b22}. The refinement stage separately uses
-Taubin fairing \cite{b16}, mesh simplification \cite{b17}, and hole repair
-\cite{b35}. Our contribution lies in the assembled system and in what becomes
-measurable once it is assembled: which interface properties determine cost,
-and what a run must record to be reproducible.
+In general, reconstructed geometry needs some processing to become useful as a
+resource. Yang et al.\ \cite{b1} propose a feature-driven mesh denoising
+technique aimed at reducing noise while preserving important geometric
+features, while Maruani et al.\ \cite{b8} present a neural mesh representation
+based on Quadric Error Metrics. Surface fusion of reconstructed geometry in
+volumetric representations is shown by Hu et al.\ \cite{b9} through color
+truncated signed distance field fusion, while Johari et al.\ \cite{b23}
+reconstruct dense surface geometry using a hybrid representation of signed
+distance fields. Kazhdan and Hoppe \cite{b24} present a distributed approach to
+Poisson surface reconstruction for producing surface geometry from oriented
+points. Even though the above-mentioned works address geometry processing
+tasks, they use different representations of input geometry, assumptions, and
+parameters.
 
-A smaller literature concerns complete reconstruction \emph{systems} rather
-than individual algorithms, and z-shift belongs to it. COLMAP chains
-incremental SfM \cite{b2} with dense MVS \cite{b25}; its SfM stage estimates the
-camera parameters consumed by MVS. AliceVision's Meshroom exposes a customizable
-photogrammetry graph through both graphical and batch interfaces \cite{b26}.
-For radiance-field methods, Nerfstudio standardizes data loading, training,
-visualization, and geometry export \cite{b27}. Open3D provides reusable 3D data-
-processing primitives \cite{b28}, while Kaolin provides differentiable 3D deep-
-learning components \cite{b29}. z-shift differs in scope rather than in merely
-being non-interactive: it combines heterogeneous-media ingestion, an unposed
-learned backend, fixed refinement, compatibility-based routing, and manifests
-in one bounded path.
+% Single-column raster taken from the submitted manuscript. NOTE: the image
+% itself contains a typo in the COLMAP post-processing cell
+% ("simpllification (CULAR)"); regenerate it before camera-ready.
+\begin{figure}[tbp]
+\centerline{\includegraphics[width=\columnwidth]{figures/fig2-system-comparison.png}}
+\caption{Comparison of representative reconstruction systems, summarized from
+their documentation \cite{b26}, \cite{b27}, \cite{b28}.}
+\label{fig:sys-compare}
+\end{figure}
 
-Two consequences follow. Interactive mesh-processing tools expose multiple
-repair and refinement operators and parameters \cite{b18}; standard treatments
-likewise present mesh repair, smoothing, and simplification as distinct choices
-\cite{b19}. z-shift fixes one sequence and parameterization in advance, so its
-cost becomes a property of the input's structure rather than of an operator's
-per-model judgment. Reconstruction benchmarks such as DTU instead evaluate
-geometry against independently captured reference scans \cite{b36}. Such
-protocols evaluate a reconstruction method on its own, and say nothing about
-whether surrounding stages preserve the properties a downstream tool requires.
-That is the gap our benchmark addresses.
-
-\section{Literature Review}
-\label{sec:litreview}
-
-The preceding discussion establishes the individual methods. Table~\ref{tab:litreview}
-summarizes representative authors and techniques by their reported advantages and
-practical limitations. The comparisons remain specific to each method's native output,
-assumptions, and role in an end-to-end reconstruction system.
-
-\begin{table*}[tbp]
-\caption{Literature Review: Authors, Algorithms, Pros, and Cons}
-\label{tab:litreview}
-\centering
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.12}
-\begin{tabular}{>{\raggedright\arraybackslash}p{2.8cm} >{\raggedright\arraybackslash}p{3.8cm} >{\raggedright\arraybackslash}p{5.1cm} >{\raggedright\arraybackslash}p{5.4cm}}
-\hline
-\textbf{Authors} & \textbf{Algorithm/Techniques} & \textbf{Pros} & \textbf{Cons} \\
-\hline
-Hartley \& Zisserman \cite{b1} & Projective multi-view geometry & Foundational treatment of camera geometry and multi-view reconstruction & A general theoretical reference rather than an end-to-end reconstruction system \\
-\hline
-Schönberger \& Frahm \cite{b2} & Incremental Structure-from-Motion & Robust sparse structure and camera estimation & Requires reliable feature correspondences; dense geometry needs a subsequent MVS stage \\
-\hline
-Seitz et al. \cite{b3} & Multi-view stereo (MVS) evaluation & Comprehensive MVS algorithm comparison & Performance depends on photo-consistency; struggles with textureless surfaces \\
-\hline
-Furukawa \& Hernández \cite{b4} & MVS taxonomy and analysis & Organizes major MVS approaches, assumptions, and failure modes & Surveys reconstruction methods rather than defining a deployable pipeline \\
-\hline
-Mildenhall et al. \cite{b6} & Neural Radiance Fields (NeRF) & Implicit representation enables novel-view synthesis; high quality rendering & Per-scene optimization required; not a native mesh asset; slow rendering \\
-\hline
-Müller et al. \cite{b7} & Instant-NGP with hash encoding & Substantially accelerates several neural graphics primitives & Acceleration does not itself provide a clean polygonal asset \\
-\hline
-Kerbl et al. \cite{b8} & 3D Gaussian Splatting & Real-time novel-view synthesis; explicit representation & Not a clean polygonal mesh; requires post-processing for asset export \\
-\hline
-Barron et al. \cite{b9} & Mip-NeRF 360 & Extends radiance-field rendering to unbounded scenes & Its native representation targets novel-view synthesis rather than mesh delivery \\
-\hline
-Chen et al. \cite{b10} & MVSNeRF & Generalizes radiance-field reconstruction from sparse input views & Targets novel-view synthesis; mesh extraction is a separate step \\
-\hline
-Yu et al. \cite{b11} & pixelNeRF & Generalizes to new scenes with few images & Radiance field formulation; not natively polygonal output \\
-\hline
-Wang et al. \cite{b14} & DUSt3R: Pose-free dense regression & No calibration or poses required; recovers dense geometry & Confidence-weighted output; requires alignment; point clouds not meshes \\
-\hline
-Leroy et al. \cite{b15} & MASt3R: Learned local features & Adds dense local features for stronger image matching & Produces confidence-weighted point maps; alignment and surface processing remain separate \\
-\hline
-Taubin \cite{b16} & Alternating low-pass filtering & Reduces noise while avoiding shrinkage artifacts & Parameter-dependent; may over-smooth fine details \\
-\hline
-Garland \& Heckbert \cite{b17} & Quadric Error Metrics (QEM) simplification & Reduces mesh complexity while minimizing accumulated geometric error & Simplification can remove fine geometry; the target reduction must be selected \\
-\hline
-Curless \& Levoy \cite{b21} & Signed-distance fusion (TSDF) & Robust implicit surface representation & Voxel memory-intensive; expensive at high resolution \\
-\hline
-Newcombe et al. \cite{b22} & KinectFusion: Real-time TSDF & Dense surface mapping with camera tracking & Requires depth sensor; limited to small scenes; memory-bound \\
-\hline
-Kazhdan et al. \cite{b23} & Poisson surface reconstruction & Creates watertight meshes from oriented points & Requires oriented points and may smooth detail or close unsupported regions \\
-\hline
-Cignoni et al. \cite{b18} & MeshLab: Mesh-processing system & Exposes a broad collection of repair and refinement operators & Operator choice and parameterization remain external to a fixed pipeline contract \\
-\hline
-Griwodz et al. \cite{b26} & AliceVision Meshroom photogrammetry & Complete open-source pipeline with a customizable processing graph & Estimates cameras through SfM before dense reconstruction; has a different ingestion-to-delivery scope \\
-\hline
-Tancik et al. \cite{b27} & Nerfstudio: Neural field framework & Modular, standardized training and visualization & Radiance-field focus; geometry extraction remains separate \\
-\hline
-Zhou et al. \cite{b28} & Open3D: 3D data processing library & Reusable primitives for general 3D operations & Low-level tools; requires custom orchestration \\
-\hline
-Jatavallabhula et al. \cite{b29} & Kaolin: PyTorch 3D deep learning & Provides reusable differentiable 3D learning components & Supplies components rather than an ingestion-to-deliverable workflow \\
-\hline
-Aanæs et al. \cite{b36} & DTU multi-view stereo benchmark & Structured-light reference scans enable quantitative geometric evaluation & Controlled calibrated captures do not represent every deployment condition \\
-\hline
-Reizenstein et al. \cite{b37} & CO3D: Real-world 3D captures & Diverse real-world categories; unconstrained viewpoints & No ground-truth reference geometry; limited accuracy evaluation \\
-\hline
-\end{tabular}
-\end{table*}
+On a system level, AliceVision Meshroom \cite{b12} presents an open-source
+photogrammetry system, while Nerfstudio \cite{b25} gives a flexible framework
+for neural field geometry reconstruction and visualization. Open3D \cite{b18}
+and Kaolin \cite{b17} provide reusable 3D processing and learning components
+instead of a fixed ingestion-to-delivery workflow. Evaluation datasets such as
+DTU \cite{b19} and CO3D \cite{b15} further support research in reconstruction
+with both controlled and real-world capturing conditions. All these works
+present strong individual components and frameworks that vary greatly in their
+input normalization, stage connections, and output processing for downstream
+usage. Fig.~\ref{fig:sys-compare} shows how the boundaries between stages of
+these works differ from those proposed in our paper.
 
 \section{Research Gap and Problem Statement}
 
-The reconstruction stages surveyed above have each been individually shown to
-be valid. Assembling them into a complete deployment system, alongside the
-surrounding stages enumerated in Section~\ref{sec:architecture}, creates a
-problem of another kind. A stage may comply with its own specification and yet
-violate an assumption made by the stage that follows it. A stage may also
-carry a cost profile that does not appear when each stage is measured
-separately. What this paper addresses is therefore the correctness and cost of
-the interfaces between stages, rather than the validity or cost of whichever
-model occupies the reconstruction slot.
+A stage may comply with its own specification yet violate an assumption made
+by the following stage. It may also introduce a cost profile that does not
+appear when stages are measured separately. This paper therefore focuses on
+the correctness and cost of the interfaces between stages, rather than the
+validity or cost of the model used in the reconstruction stage.
 
 \begin{figure*}[tbp]
 \centering
 \includegraphics[width=\textwidth]{figures/fig1-overview.png}
-\caption{Component architecture. Cylinders denote buffered or persistent
-interface artifacts; solid arrows carry media or geometry, and dashed arrows
-record manifest metadata.}
+\caption{System architecture.}
 \label{fig:overview}
 \end{figure*}
-
-\section{Comparative Analysis Against Existing Systems}
-\label{sec:comparison}
-
-Table~\ref{tab:sys-compare} compares representative reconstruction systems
-along five dimensions: accepted input, pose handling, native output,
-post-processing workflow, and recorded provenance. These are differences in
-system scope and interface design, not claims of superior reconstruction
-accuracy.
-
-\begin{table*}[tbp]
-\caption{Comparison of Representative Reconstruction Systems}
-\label{tab:sys-compare}
-\centering
-\footnotesize
-\setlength{\tabcolsep}{2pt}
-\renewcommand{\arraystretch}{1.12}
-\begin{tabular}{>{\raggedright\arraybackslash}p{1.9cm} >{\raggedright\arraybackslash}p{3.3cm} >{\raggedright\arraybackslash}p{2.6cm} >{\raggedright\arraybackslash}p{2.8cm} >{\raggedright\arraybackslash}p{3.4cm} >{\raggedright\arraybackslash}p{3.1cm}}
-\hline
-\textbf{System} & \textbf{Accepted Input} & \textbf{Pose Handling} & \textbf{Native Output} & \textbf{Post-Processing Workflow} & \textbf{Recorded Provenance} \\
-\hline
-COLMAP \cite{b41} & Image directory; video frames must first be extracted & Estimates cameras through SfM & Sparse/dense points and meshes & Built-in meshing and simplification; configurable CLI/GUI stages & Database and workspace artifacts; invocation and software environment captured externally \\
-\hline
-AliceVision Meshroom \cite{b42} & Images; video through keyframe extraction; watched image folder for live reconstruction & Estimates cameras through SfM & Point clouds and textured meshes & Default photogrammetry graph with configurable mesh-processing nodes \cite{b26} & Saved graph parameters and cached node outputs \\
-\hline
-Nerfstudio \cite{b43} & Images, video, and supported capture/application formats & Imports poses or estimates them during data preparation & Trained neural scene representation & Rendering and optional point-cloud/mesh export \cite{b27} & Training configuration, checkpoints, and processed dataset metadata \\
-\hline
-\textbf{z-shift (this work)} & Batch images/folders, video, and synchronized video folders; WebSocket frames are ingestion-only & MASt3R estimates geometry without input poses & Refined GLB or colored PLY on implemented routes & Fixed filter, fill, smooth, finalize, color-transfer, and validation sequence & Run/refinement manifests; exact reruns observed only in the tested fixed environment \\
-\hline
-\end{tabular}
-\end{table*}
-
-\textbf{Input and pose handling.} COLMAP operates on an image directory
-\cite{b41}. Meshroom also accepts video through a keyframe-selection step,
-although its documented workflow requires computing that node before importing
-the extracted frames into reconstruction \cite{b42}. Nerfstudio directly
-supports image and video preprocessing, using COLMAP to estimate poses when
-needed \cite{b43}. z-shift's additional scope is synchronized multi-video
-normalization behind one schema. It also accepts WebSocket frames at ingestion,
-but the live reconstruction and delivery route remains unimplemented; the table
-does not present live input as an end-to-end deliverable path.
-
-COLMAP and Meshroom estimate camera parameters through SfM before dense
-reconstruction. Nerfstudio either imports poses or obtains them during data
-preparation. z-shift instead places MASt3R behind its reconstruction interface;
-MASt3R operates without camera calibration or poses as input prerequisites
-\cite{b15}. This is a difference in where pose estimation occurs, not evidence
-that one reconstruction core is more accurate.
-
-\textbf{Outputs and post-processing.} COLMAP includes dense fusion, meshing,
-and mesh simplification commands \cite{b41}; Meshroom provides a configurable
-photogrammetry graph and mesh-processing stages \cite{b26}; and Nerfstudio can
-export derived point clouds or meshes from trained representations \cite{b27}.
-z-shift differs by fixing one refinement sequence and routing its result to a
-small set of declared deliverables. Fixing that sequence makes its interface
-cost measurable: Section~\ref{sec:comp-performance} reports the observed
-component-count knee near 100 components.
-
-\textbf{Recorded provenance.} The systems retain different reproducibility
-artifacts, so the table avoids claiming that any implementation is inherently
-deterministic. z-shift records run and refinement manifests, while its exact
-repeatability result is limited to one tested software and hardware environment
-(Section~\ref{sec:repeat-behavior}). PyTorch does not guarantee identical
-results across releases or platforms \cite{b40}.
-
-\textbf{Scope of the comparison.} The comparison establishes neither superior
-reconstruction accuracy nor a complete live workflow. Accuracy against
-independent reference geometry remains future work
-(Section~\ref{sec:future-work}); live reconstruction and delivery are likewise
-unimplemented. The supported distinction is narrower: z-shift combines
-synchronized heterogeneous-media normalization, pose-free reconstruction,
-fixed refinement, compatibility-based routing, and explicit run artifacts in
-one batch-oriented path.
 
 \section{System Architecture}
 \label{sec:architecture}
@@ -428,18 +257,18 @@ services and artifact stores that implement these boundaries.
 
 An HTTP/WebSocket gateway with pluggable authentication and rate limiting
 ingests single images, image folders, videos, video folders, and live
-WebSocket frames. MIME type and file extension determine which processing
-track a payload enters. Mixed or unrecognized payloads are rejected outright,
-never partially processed. Normalization then follows on the batch track:
-images are resized while aspect ratio and EXIF metadata are preserved, and
-videos are probed using FFmpeg and sampled by a motion-adaptive sampler whose
-interval shortens during motion and lengthens across static spans. When the
-input is a video folder, a multi-source synchronizer estimates a per-source
-clock offset by matching motion signatures against the source with the most
-frames, then aligns frames to that anchor by nearest timestamp. On the live
-track, frames are buffered instead in a bounded ring buffer with explicit
-backpressure. Oversized payloads are denied, and a full buffer evicts its
-oldest frame. Compute priority goes first to live work.
+WebSocket frames. MIME type and file extension decide which processing track a
+payload enters. Mixed or unrecognized payloads are rejected outright, never
+partially processed. Normalization then follows on the batch track: images are
+resized while aspect ratio and EXIF metadata are preserved, and videos are
+probed using FFmpeg and sampled by a motion-adaptive sampler whose interval
+shortens during motion and lengthens across static spans. When the input is a
+video folder, a multi-source synchronizer estimates a per-source clock offset
+by matching motion signatures against the source with the most frames, then
+aligns frames to that anchor by nearest timestamp. On the live track, frames
+are buffered instead in a bounded ring buffer with explicit backpressure.
+Oversized payloads are denied, and a full buffer evicts its oldest frame.
+Compute priority goes first to live work.
 
 \subsection{Unified Spatial Representation}
 
@@ -460,114 +289,91 @@ processed as multi-view, a single video as a video-sequence, and a folder of
 videos as synchronized-views. Since alignment requires at least two views of
 one subject, single images and live streams are rejected. For video jobs, the
 system treats adjacent frames as potentially redundant and applies a
-configurable frame budget to each job. Above that budget
-the highest-motion frames are retained in preference to a uniform subsample.
-When processing synchronized captures, the budget applies to entire groups
-rather than to individual frames, so cross-camera groupings remain intact.
-Pairing then occurs either through a complete scene graph or by sliding
-window, the latter preferred for videos and larger image sets. On
-synchronized-views jobs, cross-camera pairings form within each group, so that
-simultaneous observations are matched directly. Frames then proceed to pairing
-in motion-rank order, not capture order. Section~\ref{sec:bench-validation}
+configurable frame budget to each job. Above that budget the highest-motion
+frames are retained in preference to a uniform subsample. When processing
+synchronized captures, the budget applies to entire groups rather than to
+individual frames, so cross-camera groupings stay intact. Pairing then occurs
+either through a complete scene graph or by sliding window, the latter
+preferred for videos and larger image sets. On synchronized-views jobs,
+cross-camera pairings form within each group, so that simultaneous
+observations are matched directly. Frames then proceed to pairing in
+motion-rank order, not capture order. Section~\ref{sec:bench-validation}
 evaluates this cross-stage interaction.
 
-Prior to alignment, the pipeline selects an execution device among CUDA, CPU,
+Before alignment, the pipeline selects an execution device among CUDA, CPU,
 and Metal backends, seeds the Python, NumPy, and PyTorch generators if a seed
-has been supplied, and derives an approximate pinhole-intrinsic initialization from the EXIF 35~mm-
-equivalent focal length \cite{b38}, assuming square pixels, a centered principal
-point, and no lens distortion. The MASt3R backend then performs sparse global
-alignment using its official implementation \cite{b39}, with intermediate
-results cached to disk so that repeated runs over the same frames reuse prior
-work. TSDF fusion may optionally precede geometry export. If
-fusion is disabled by user option, or fails under memory or runtime pressure,
-the pipeline falls back to a dense point-map export and records the event. GLB
-is the default output format for the colored mesh, with OBJ and PLY also
-supported, and a confidence threshold discards low-confidence points. A
-confidence-masked dense point cloud is written alongside it. Recorded in the
-run manifest are the model, device, input resolution, pairing strategy,
-thresholds, seed, and reproducibility metadata.
+has been supplied, and derives an approximate pinhole-intrinsic initialization
+from the EXIF 35~mm-equivalent focal length \cite{b10}, assuming square
+pixels, a centered principal point, and no lens distortion. The MASt3R backend
+then performs sparse global alignment using its official implementation
+\cite{b11}, with intermediate results cached to disk so that repeated runs
+over the same frames reuse prior work. TSDF fusion may optionally precede
+geometry export. If fusion is disabled by a user option, or fails under memory
+or runtime pressure, the pipeline falls back to a dense point-map export and
+records the event. GLB is the default output format for the colored mesh, with
+OBJ and PLY also supported, and a confidence threshold discards low-confidence
+points. A confidence-masked dense point cloud is written alongside it.
+Recorded in the run manifest are the model, device, input resolution, pairing
+strategy, thresholds, seed, and reproducibility metadata.
 
 \subsection{Mesh Refinement}
 
-So that operator and threshold settings need not be chosen per model by a
-human working in an interactive tool, every mesh undergoes a single fixed
-procedure during the refinement stage. Validation occurs first: container
-formats such as GLB scenes are unwrapped, and meshes are rejected if they are
-empty or if their vertices carry non-finite coordinates. Mode then determines
-how components are processed. Under object mode, only the largest connected
-component remains. Under room mode, the mesh is broken down into bodies, every
-component above a minimum cell count is kept, and the survivors are merged,
-preserving scenes that were legitimately created from multiple parts. Holes in
-the mesh boundary are closed up to a maximum size derived from the bounding-
-box diagonal. Where the geometry is thin and open along one axis, closure is
-skipped, so that an intentionally planar capture is preserved.
+To avoid operator and threshold selection on a per-model basis, a fixed
+refinement procedure is applied to every mesh. The validation phase starts by
+unwrapping container formats such as GLB, and rejects empty meshes and meshes
+whose vertices have non-finite coordinates. The mode decides how components
+are processed further. In object mode, only the largest connected component
+remains. In room mode, the mesh is split into bodies, and components that meet
+a minimum cell-count threshold are selected and merged.
 
-Taubin's alternating low-pass filter is designed to reduce surface noise while
-avoiding the shrinkage associated with straightforward Laplacian smoothing
-\cite{b16}; under room mode, feature edges above a configurable angle are
-additionally preserved. Finalization then
-merges coincident points, triangulates, optionally decimates to a target
-reduction, and recomputes consistently oriented normals where orientation is
-resolvable. Because smoothing and decimation modify the vertex set, vertex
-colors are approximated on the cleaned mesh by nearest-point transfer. The interface between these two stages must hold that
-invariant, and Section~\ref{sec:bench-validation} verifies it. Open boundary
-edges are counted in a final pass, which flags the mesh watertight or not and
-treats a non-watertight result as a warning that does not terminate the
-workflow. A refinement manifest records input and output counts, the
-watertightness result, and any warnings.
+Boundary holes are closed up to a size derived from the bounding-box diagonal,
+but for slender geometry that is open along only one axis, hole closure is
+skipped. Taubin's alternating low-pass filter is used to reduce surface noise
+while avoiding the mesh shrinkage characteristic of Laplacian smoothing. In
+room mode, feature edges above a configurable angle are preserved. The
+finalization step merges vertices, triangulates, decimates towards the target
+reduction, and recomputes consistent normals.
+
+Smoothing and decimation change the vertex set, so vertex colors are mapped to
+the new mesh by nearest-point transfer. Open boundary edges are counted to
+check the watertightness of the mesh. A non-watertight result is reported to
+the user as a warning rather than stopping pipeline execution.
 
 \subsection{Application-Specific Deliverables}
 
-Compatibility between source type and use case is a contract at the outcomes
-stage, not a default. Each use case declares the source types it can
-meaningfully consume; every other combination is rejected with a routing error
-before anything is exported. All 24 combinations route or reject correctly in
-our benchmark (Table~\ref{tab3}). A Blender-ready GLB leaves by the editing
-pathway. The viewing pathway packages the confidence-masked point cloud into a
-colored PLY, short of a full Gaussian Splatting representation \cite{b8}. Defined at the
-routing level, the live pathway rejects requests explicitly.
+Compatibility between source type and use case is treated as a contract at
+the outcomes stage, rather than as a default behavior. Each use case declares
+the source types it can meaningfully consume. Every other combination is
+rejected with a routing error before anything is exported. All 24 combinations
+route or reject correctly in our benchmark, as shown in Table~\ref{tab3}.
+
+A Blender-ready GLB leaves through the editing pathway. The viewing pathway
+packages the confidence-masked point cloud into a colored PLY, rather than
+producing a full Gaussian Splatting representation \cite{b21}. Defined at the
+routing level, the live pathway explicitly rejects requests.
 
 \section{Results and Discussion}
 
 \subsection{Computational Performance}
 \label{sec:comp-performance}
 
-% Two log-log panels side by side (triangle-count-only panel dropped; Table I's
-% removal made the caption reference this figure's own (b)-panel dashed line
-% instead of a table row). Generated by trim-refine-scaling-figure.py at
-% exactly \columnwidth, so no height cap is needed and the point sizes set in
-% that script are the ones that reach the page.
+Per-component processing overhead dominates refinement cost in the current
+implementation, while triangle count has a smaller effect. When considered
+alone on a single connected mesh, triangle count shows mild super-linear
+growth. A log-log fit over 50K to 2.5M triangles gives an exponent of 1.16 to
+1.31 across the eight configuration and geometry combinations, with
+$R^2 > 0.98$ throughout.
+
+% Two log-log panels side by side. Generated by trim-refine-scaling-figure.py
+% at exactly \columnwidth, so no height cap is needed and the point sizes set
+% in that script are the ones that reach the page.
 \begin{figure}[tbp]
 \centerline{\includegraphics[width=\columnwidth]{figures/fig9-refine-scaling.png}}
-\caption{Refinement wall time vs.\ (a) component count and (b) component and
-triangle count together, log-log, error bars SD over 3 repeats. Dashed line
-in (b) marks the $\sim$7-minute combined-load case.}
+\caption{Refinement wall time versus (a) component count and (b) component and
+triangle count together, shown on log-log axes. Error bars indicate SD over 3
+repeats. The dashed line in (b) marks the $\sim$7-minute combined-load case.}
 \label{fig:refine-scaling}
 \end{figure}
-
-Per-component processing overhead dominates refinement cost in the current
-implementation; triangle count matters less. Taken alone on a single connected
-mesh, triangle count is only mildly super-linear: a log-log fit over 50K--2.5M
-triangles yields an exponent of 1.16--1.31 across the eight
-configuration/geometry combinations, with $R^2 > 0.98$ throughout, and the
-default configuration adds no more than 23\% over the smoothing-off baseline.
-The stronger driver is component count. At a fixed $\sim$96,000 triangles
-(Fig.~\ref{fig:refine-scaling}(a)), cost grows 23x between 1 and 1,000
-components on the pooled means, and 17--33x across the four configurations.
-
-Nor is that growth a clean power law; the endpoint ratio alone would overstate
-how evenly it accumulates. Fitted over the whole component ladder, a single
-log-log exponent of 0.39--0.48 (0.43 pooled) fits poorly, at $R^2 = 0.85$,
-because the curve has a knee. Its local exponent is 0.22 from 1 to 100
-components and 0.94 from 100 to 1,000. Below roughly 100 components,
-fragmentation is nearly free: 0.45~s to 1.23~s, under 3x over two decades.
-Above that point cost rises close to linearly in component count, supplying
-the remaining $\sim$8.5x. Fragmentation thus behaves as a threshold rather
-than a gradient. Refinement stays cheap until component count reaches the low
-hundreds, past which each additional component costs roughly a fixed amount.
-The two axes are also super-additive: the combined configuration costs roughly
-4x the additive prediction and reaches the $\sim$7-minute regime marked in
-Fig.~\ref{fig:refine-scaling}(b).
 
 \begin{table}[tbp]
 \caption{Mean Refinement Cost over 5 Runs}
@@ -594,8 +400,25 @@ Watertightness check & 1.19 s (15.7\%) & 0.10 s (0.9\%) \\
 \end{center}
 \end{table}
 
+The default configuration adds no more than 23\% over the smoothing-off
+baseline. The stronger driver is component count. At a fixed $\sim$96,000
+triangles, shown in Fig.~\ref{fig:refine-scaling}(a), cost grows 23x between 1
+and 1,000 components on pooled means, and 17--33x across the four
+configurations.
+
+Nor is this growth a clean power law. The endpoint ratio alone would overstate
+how evenly the cost accumulates. Fitted over the full component ladder, a
+single log-log exponent of 0.39--0.48 (0.43 pooled) fits poorly, with
+$R^2 = 0.85$, because the curve has a knee. Its local exponent is 0.22 from 1
+to 100 components and 0.94 from 100 to 1,000.
+
+Below roughly 100 components, fragmentation is nearly free, rising from
+0.45~s to 1.23~s, under 3x over two decades. Above this point, cost rises
+close to linearly with component count, supplying the remaining $\sim$8.5x.
+Fragmentation therefore behaves as a threshold rather than a gradient.
+
 Table~\ref{tab-stage-profile} attributes this cost to different substeps in
-each regime. Finalization dominates on a large connected mesh, at 53.7\%,
+each regime. Finalization dominates on a large, connected mesh, at 53.7\%,
 mostly point deduplication and normal recomputation. On a many-component mesh,
 component filtering dominates instead, at 95.9\%, driven by repeated per-piece
 processing during body splitting. A mechanical explanation for the knee
@@ -617,18 +440,18 @@ output representation that depends on those resources.
 
 Run manifests record the reconstruction model, device, pairing strategy, seed,
 and configuration, which supports repeatable re-execution on the same
-hardware. On three scenes (\texttt{scan24}, \texttt{scan37}, \texttt{scan40}),
-a small GPU benchmark tested this, running each twice on one Tesla~T4 under
-one seed with the cache cleared between runs. Hausdorff-95 and Chamfer
-distance between repeats were exactly 0.0, point counts matched, and exported
-GLB files were byte-identical by SHA-256; this held regardless of PyTorch's
-deterministic-algorithms mode, which added $\sim$21\% wall time without
-measurably improving repeatability here. PyTorch does not guarantee identical
-results across releases, platforms, or CPU and GPU executions \cite{b40}, so
-reproducibility in the general sense is not established by six runs on one
-device. What they show is narrower: the recorded manifest was sufficient for
-bit-identical reruns in this tested environment, and enabling deterministic
-algorithms did not improve repeatability in these trials.
+hardware. On three DTU scenes \cite{b19} (\texttt{scan24}, \texttt{scan37},
+\texttt{scan40}), a small GPU benchmark evaluated this, running each twice on
+one Tesla~T4 under one seed with the cache cleared between runs. Hausdorff-95
+and Chamfer distance between repeats were exactly 0.0, point counts matched,
+and exported GLB files were byte-identical by SHA-256; this held regardless of
+PyTorch's deterministic-algorithms mode, which added $\sim$21\% wall time
+without measurably improving repeatability here. PyTorch does not guarantee
+identical results across releases, platforms, or CPU and GPU executions
+\cite{b29}, so reproducibility in the general sense is not established by six
+runs on one device. What they show is narrower: the recorded manifest was
+sufficient for bit-identical reruns in this tested environment, and enabling
+deterministic algorithms did not improve repeatability in these trials.
 
 \subsection{Component and Integration Correctness}
 \label{sec:bench-validation}
@@ -646,36 +469,18 @@ within 0.15\% of the unsmoothed baseline, against 0.52\% drift for Laplacian
 (Fig.~\ref{fig:refine-quality}(c)). Synchronization, motion-sampling, routing,
 and color-transfer correctness are established by the remaining rows.
 
-\textbf{Frame ordering and pairing locality.} Motion-ranked retention above the
-frame budget (Section~\ref{sec:reconstruction}) changes frame ordering before
+\subsubsection{Frame Ordering and Pairing Locality}
+Motion-ranked retention above the frame budget
+(Section~\ref{sec:reconstruction}) changes frame ordering before
 sliding-window pairing, which assumes capture order. Re-sorting the retained
 frames into capture order reduces the median pair-index gap from 184.5 to 27.8
 across the three over-budget schedules. That is 6.6x pooled and 4.4x to 10x
 per schedule, at no additional cost, and complete pairing is unaffected
-because it does not depend on order. On its own neither stage is incorrect:
+because it does not depend on order. On its own, neither stage is incorrect:
 selection returns the frames it was asked for, and pairing windows the
 sequence it is given. Only when the two are put together does the defect
 appear, and no test that exercises either stage alone would find it. Its
 effect on reconstruction quality we do not measure.
-
-Together these establish component-level correctness against synthetic ground
-truth, integration correctness across the routing, manifest, and color-transfer
-invariants, and systems-level behavior under controlled conditions, covering
-scaling, determinism, and robustness to injected corruption. End-to-end
-reconstruction accuracy against captured ground truth is a separate question,
-which the protocols in Section~\ref{sec:future-work} address.
-
-% 2x2: panels (a)-(c) plus the legend (a) and (b) share in the fourth cell.
-% Generated by trim-refine-quality-figure.py at exactly \columnwidth. It was
-% three stacked panels behind a height=0.62\textheight cap, which printed
-% ~5.7 in -- over half a column for three small line plots.
-\begin{figure}[tbp]
-\centerline{\includegraphics[width=\columnwidth]{figures/fig12-refine-quality.png}}
-\caption{Refinement effect vs.\ corruption level: (a) Chamfer distance,
-(b) normal consistency, and (c) volume retained under Taubin vs.\ Laplacian
-smoothing. Error bars are SEM over holes, fragments, and seeds.}
-\label{fig:refine-quality}
-\end{figure}
 
 \begin{table}[tbp]
 \caption{Component and Integration Correctness Checks (CPU-Only, Synthetic Conditions)}
@@ -702,15 +507,37 @@ Color transfer & Analytic color field & $<$1/255 mean per-channel error across a
 \end{center}
 \end{table}
 
+% 2x2: panels (a)-(c) plus the legend (a) and (b) share in the fourth cell.
+% Generated by trim-refine-quality-figure.py at exactly \columnwidth.
+\begin{figure}[tbp]
+\centerline{\includegraphics[width=\columnwidth]{figures/fig12-refine-quality.png}}
+\caption{Refinement effect vs.\ corruption level: (a) Chamfer distance,
+(b) normal consistency, and (c) volume retained under Taubin vs.\ Laplacian
+smoothing. Error bars are SEM over holes, fragments, and seeds.}
+\label{fig:refine-quality}
+\end{figure}
+
 \subsection{Illustrative End-to-End Trace}
 
-The results above are the paper's evidence. This subsection adds a single traced
-run ($n=1$) of the offline workflow of Fig.~\ref{fig:overview} on a real
-eight-view CO3D \emph{teddybear} capture \cite{b37}. We include it to show the assembled
-pipeline running end to end at full scale, and to check whether the cost model of
+This subsection adds a single traced run ($n=1$) of the offline workflow in
+Fig.~\ref{fig:overview} on a real eight-view CO3D \emph{teddybear} capture
+\cite{b15}. We include it to show the assembled pipeline running end to end at
+full scale and to check whether the model in
 Section~\ref{sec:comp-performance} predicts where the time goes. One run
 supports neither a timing claim nor a quality claim. Table~\ref{tab2} reports
-the per-stage timings for that purpose only.
+the per-stage timings for this purpose only.
+
+Alignment peaked at 5259.6 MB resident and retained 64.3\% of points after
+confidence masking. Total runtime was $\approx$78 min. Component filtering
+alone accounted for 99.9\% of refinement wall time, while every other substep
+took under one second individually and about 2~s combined (Table~\ref{tab2}).
+This matches the fragmentation regime described in
+Section~\ref{sec:comp-performance} at full scale. The mesh has 1.90M triangles
+and is far past the component-count knee, where the benchmark predicts
+component filtering will dominate the remaining stages. It does. The output was
+correctly flagged as non-watertight, and the warning did not halt the
+workflow. The pipeline therefore reports geometry defects instead of
+terminating on them.
 
 \begin{table}[tbp]
 \caption{Stage Timings for CO3D Teddybear Multi-View Capture}
@@ -728,13 +555,13 @@ Mesh export & 1.90M tri / 669K pts, 64.3\% conf. retained & 71.8 s \\
 \hline
 Component filtering & 1.90M $\to$ 0.41M cells & 3069.3 s \\
 \hline
-Hole filling & & 0.33 s \\
+Hole filling & --- & 0.33 s \\
 \hline
-Taubin smoothing & & 0.12 s \\
+Taubin smoothing & --- & 0.12 s \\
 \hline
-Finalization & & 0.85 s \\
+Finalization & --- & 0.85 s \\
 \hline
-Vertex-color transfer & & 0.18 s \\
+Vertex-color transfer & --- & 0.18 s \\
 \hline
 Watertightness check & non-watertight & 0.53 s \\
 \hline
@@ -747,76 +574,44 @@ Watertightness check & non-watertight & 0.53 s \\
 \end{center}
 \end{table}
 
-Alignment peaked at 5259.6 MB resident and retained 64.3\% of points after
-confidence masking. Total runtime was $\approx$78 min. Component filtering alone
-accounted for 99.9\% of refinement wall time, and every other substep together
-cost under one second (Table~\ref{tab2}). This is the fragmentation regime of
-Section~\ref{sec:comp-performance} at full scale. The mesh has 1.90M triangles
-and sits far past the component-count knee, where the benchmark predicts
-component filtering will swamp everything else. It does. The output was
-correctly flagged as non-watertight and the warning did not halt the workflow,
-so the pipeline reports geometry defects instead of terminating on them.
-
 % Composed side by side by compose-case-study-figure.py at exactly
-% \columnwidth, so no height cap is needed: the file's own aspect ratio prints
-% it ~1.2 in tall. It was previously two stacked panels behind a
-% height=0.44\textheight cap, which cost ~4 in of column for two photographs.
+% \columnwidth, so no height cap is needed.
 \begin{figure}[tbp]
 \centerline{\includegraphics[width=\columnwidth]{figures/fig6-case-study-validation.png}}
-\caption{Case-study result: (a) input photograph and (b) reconstructed,
-refined mesh. The subject is recognizable, with residual background
+\caption{Case-study result: (a) input photograph and (b) reconstructed and
+refined mesh. The subject is recognizable, with some residual background
 fragments and surface holes visible.}
 \label{fig:validation}
 \end{figure}
 
 Fig.~\ref{fig:validation} shows the result qualitatively: the subject is
-recognizable and the defects of raw reconstruction are visibly corrected, though
-residual background geometry remains. No quantitative reconstruction accuracy is
-claimed from it.
+recognizable, and the defects of raw reconstruction are visibly corrected,
+though residual background geometry remains. No quantitative reconstruction
+accuracy is claimed from it. Table~\ref{tab:quality-repro} summarizes the
+headline quality and reproducibility benchmarks.
 
+% Row 1 from bench/results/a3_refine_quality.csv (object mode, pooled means);
+% row 2 from bench/results/b7_determinism.csv.
 \begin{table}[tbp]
-\caption{CO3D Teddybear Output-Quality Scores ($n=1$)}
+\caption{Quality and Reproducibility Benchmarks}
 \begin{center}
 \footnotesize
-\begin{tabular}{|p{2.9cm}|p{1.1cm}|p{2.8cm}|}
+\begin{tabular}{|>{\raggedright\arraybackslash}p{2.5cm}|>{\raggedright\arraybackslash}p{5.1cm}|}
 \hline
-\textbf{Score} & \textbf{Value} & \textbf{Interpretation} \\
+\textbf{Evaluation} & \textbf{Headline Result} \\
 \hline
-Confidence retention & 0.3424 & Fraction of MASt3R points retained after confidence masking \\
+Controlled mesh corruption; 648 paired refinement trials & Object mode: Chamfer $-64.0$\%, F@1\% $+3.77$ points, normal consistency $+0.158$; all injected fragments removed. \\
 \hline
-Pairing coverage & 1.0000 & 56/56 directed complete pairs processed \\
-\hline
-TSDF success & 1.0000 & No point-map fallback was used \\
-\hline
-Cell reduction & 0.6599 & 860,302 $\to$ 292,622 cells after refinement \\
-\hline
-Point reduction & 0.7609 & 311,067 $\to$ 74,365 points after refinement \\
-\hline
-Non-manifold cleanliness & 0.2543 & 218,205 non-manifold edges remain \\
-\hline
-Watertightness & 0.0000 & Output is not watertight \\
-\hline
-Rigging validity & 1.0000 & Skeleton graph, skin coverage, weight normalization, and influence cap pass \\
-\hline
-Warning-free rigging & 0.0000 & Axis-alignment warning recorded for template fitting \\
+Three DTU scenes; six paired repeat comparisons on Tesla T4 & All pairs have zero Chamfer/H95, identical point counts and byte-identical GLBs; deterministic kernels add 21.3\% time. \\
 \hline
 \end{tabular}
-\label{tab:co3d-quality-scores}
+\label{tab:quality-repro}
 \end{center}
 \end{table}
 
-\begin{figure}[tbp]
-\centerline{\includegraphics[width=\columnwidth]{figures/fig13-co3d-teddybear-quality.png}}
-\caption{CO3D teddybear output-quality diagnostics generated from the notebook
-artifacts: (a) reconstruction/refinement scores and (b) rigging validity
-scores. These are output diagnostics, not ground-truth reconstruction accuracy
-metrics such as F-score or Chamfer distance against a reference scan.}
-\label{fig:co3d-quality-scores}
-\end{figure}
-
 \section{Conclusions}
 
-z-shift is a systems architecture of independently replaceable stages
+This paper presents a system architecture of independently replaceable stages
 communicating through explicit artifacts (Fig.~\ref{fig:overview}), and not a
 new reconstruction network. Its findings concern how those stages fit
 together. Correct at the selection stage, frame ordering nonetheless breaks
@@ -829,63 +624,61 @@ components, then close to linear in component count, reaching 23x at 1,000.
 That shape, more than the endpoint ratio, is what makes cost predictable in
 advance, since a single structural property of the incoming mesh determines
 which regime a run lands in. Repeat runs of a fixed configuration on one GPU
-were deterministic down to the byte, with identical SHA-256 mesh hashes. None
-of this would surface from a benchmark of a single stage on its own. Component
-correctness does not imply system correctness or predictable system cost.
-Outside this evaluation there remains end-to-end reconstruction accuracy
-against captured ground truth (Section~\ref{sec:future-work}).
+were deterministic down to the byte, with identical SHA-256 mesh hashes.
+
+None of this would surface from a benchmark of a single stage on its own.
+Component correctness does not imply system correctness or predictable system
+cost. Outside this evaluation, there remains end-to-end reconstruction
+accuracy against captured ground truth (Section~\ref{sec:future-work}).
 
 \section{Limitations and Future Work}
 \label{sec:future-work}
 
 Three principal limitations attach to the prototype. Real-time delivery is
-incomplete: WebSocket ingestion works, but RTSP/WebRTC and the live outcome
+incomplete: WebSocket ingestion works, but RTSP/WebRTC and the live output
 route are unimplemented, and viewing exports a colored point cloud instead of
 Gaussian Splatting. Refinement is CPU-bound and expensive on fragmented
 meshes. There is no end-to-end ground-truth reconstruction benchmark.
 Reconstruction requires at least two views, and authentication, rate limiting,
-and streaming state remain in-memory and single-process, reflecting research-
-prototype status.
+and streaming state remain in-memory and single-process, reflecting
+research-prototype status.
 
 Component-, integration-, and systems-level behavior is therefore what our
 evaluation establishes, not reconstruction accuracy. Quantitative comparison
 against classical MVS, DUSt3R, and MASt3R baselines, using Chamfer distance,
 point-to-surface error, and F-score, is the priority for future work.
 
+% Keys b1--b29 match the reference numbers of the submitted manuscript.
 \begin{thebibliography}{00}
-\bibitem{b1} R. Hartley and A. Zisserman, Multiple View Geometry in Computer Vision, 2nd ed. Cambridge, U.K.: Cambridge Univ. Press, 2004.
-\bibitem{b2} J. L. Sch\"onberger and J.-M. Frahm, ``Structure-from-motion revisited,'' in Proc. IEEE CVPR, 2016, pp. 4104--4113.
-\bibitem{b3} S. M. Seitz, B. Curless, J. Diebel, D. Scharstein, and R. Szeliski, ``A comparison and evaluation of multi-view stereo reconstruction algorithms,'' in Proc. IEEE CVPR, 2006, pp. 519--528.
-\bibitem{b4} Y. Furukawa and C. Hern\'andez, ``Multi-view stereo: A tutorial,'' Foundations and Trends in Computer Graphics and Vision, vol. 9, no. 1--2, pp. 1--148, 2015.
-\bibitem{b6} B. Mildenhall, P. P. Srinivasan, M. Tancik, J. T. Barron, R. Ramamoorthi, and R. Ng, ``NeRF: Representing scenes as neural radiance fields for view synthesis,'' in Proc. ECCV, 2020, pp. 405--421.
-\bibitem{b7} T. M\"uller, A. Evans, C. Schied, and A. Keller, ``Instant neural graphics primitives with a multiresolution hash encoding,'' ACM Trans. Graph., vol. 41, no. 4, 2022.
-\bibitem{b8} B. Kerbl, G. Kopanas, T. Leimk\"uhler, and G. Drettakis, ``3D Gaussian splatting for real-time radiance field rendering,'' ACM Trans. Graph., vol. 42, no. 4, 2023.
-\bibitem{b9} J. T. Barron et al., ``Mip-NeRF 360: Unbounded anti-aliased neural radiance fields,'' in Proc. IEEE/CVF CVPR, 2022, pp. 5470--5479.
-\bibitem{b10} A. Chen et al., ``MVSNeRF: Fast generalizable radiance field reconstruction from multi-view stereo,'' in Proc. IEEE/CVF ICCV, 2021, pp. 14124--14133.
-\bibitem{b11} A. Yu et al., ``pixelNeRF: Neural radiance fields from one or few images,'' in Proc. IEEE/CVF CVPR, 2021, pp. 4578--4587.
-\bibitem{b14} S. Wang, V. Leroy, Y. Cabon, B. Chidlovskii, and J. Revaud, ``DUSt3R: Geometric 3D vision made easy,'' in Proc. IEEE/CVF CVPR, 2024.
-\bibitem{b15} V. Leroy, Y. Cabon, and J. Revaud, ``Grounding image matching in 3D with MASt3R,'' in Proc. IEEE/CVF ECCV, 2024.
-\bibitem{b16} G. Taubin, ``A signal processing approach to fair surface design,'' in Proc. ACM SIGGRAPH, 1995, pp. 351--358.
-\bibitem{b17} M. Garland and P. S. Heckbert, ``Surface simplification using quadric error metrics,'' in Proc. ACM SIGGRAPH, 1997, pp. 209--216.
-\bibitem{b18} P. Cignoni, M. Callieri, M. Corsini, M. Dellepiane, F. Ganovelli, and G. Ranzuglia, ``MeshLab: An open-source mesh processing tool,'' in Proc. Eurographics Italian Chapter Conference, 2008, pp. 129--136.
-\bibitem{b19} M. Botsch et al., Polygon Mesh Processing. Natick, MA, USA: A K Peters/CRC Press, 2010.
-\bibitem{b21} B. Curless and M. Levoy, ``A volumetric method for building complex models from range images,'' in Proc. ACM SIGGRAPH, 1996, pp. 303--312.
-\bibitem{b22} R. A. Newcombe et al., ``KinectFusion: Real-time dense surface mapping and tracking,'' in Proc. IEEE ISMAR, 2011, pp. 127--136.
-\bibitem{b23} M. Kazhdan, M. Bolitho, and H. Hoppe, ``Poisson surface reconstruction,'' in Proc. Eurographics Symposium on Geometry Processing, 2006, pp. 61--70.
-\bibitem{b25} J. L. Sch\"onberger, E. Zheng, M. Pollefeys, and J.-M. Frahm, ``Pixelwise view selection for unstructured multi-view stereo,'' in Proc. ECCV, 2016, pp. 501--518.
-\bibitem{b26} C. Griwodz et al., ``AliceVision and Meshroom: An open-source photogrammetric pipeline,'' in Proc. ACM Multimedia Systems Conference (MMSys), 2021, pp. 241--247.
-\bibitem{b27} M. Tancik et al., ``Nerfstudio: A modular framework for neural radiance field development,'' in Proc. ACM SIGGRAPH Conference, 2023.
-\bibitem{b28} Q.-Y. Zhou, J. Park, and V. Koltun, ``Open3D: A modern library for 3D data processing,'' arXiv:1801.09847, 2018.
-\bibitem{b29} K. M. Jatavallabhula et al., ``Kaolin: A PyTorch library for accelerating 3D deep learning research,'' arXiv:1911.05063, 2019.
-\bibitem{b35} P. Liepa, ``Filling holes in meshes,'' in Proc. Eurographics/ACM SIGGRAPH Symp. Geometry Processing, 2003, pp. 200--205.
-\bibitem{b36} H. Aan\ae s, R. R. Jensen, G. Vogiatzis, E. Tola, and A. B. Dahl, ``Large-scale data for multiple-view stereopsis,'' Int. J. Comput. Vis., vol. 120, pp. 153--168, 2016.
-\bibitem{b37} J. Reizenstein et al., ``Common Objects in 3D: Large-scale learning and evaluation of real-life 3D category reconstruction,'' in Proc. IEEE/CVF ICCV, 2021, pp. 10901--10911.
-\bibitem{b38} Camera \& Imaging Products Association, ``Exchangeable image file format for digital still cameras: Exif Version 3.0,'' CIPA DC-008-2024, 2024.
-\bibitem{b39} NAVER Corp., ``MASt3R: Grounding image matching in 3D,'' software repository, 2024. [Online]. Available: https://github.com/naver/mast3r. Accessed: Sep. 11, 2026.
-\bibitem{b40} PyTorch Contributors, ``Reproducibility,'' PyTorch documentation. [Online]. Available: https://pytorch.org/docs/stable/notes/randomness.html. Accessed: Sep. 11, 2026.
-\bibitem{b41} COLMAP Contributors, ``Command-line interface,'' COLMAP documentation. [Online]. Available: https://colmap.github.io/cli.html. Accessed: Sep. 11, 2026.
-\bibitem{b42} AliceVision Contributors, ``KeyframeSelection,'' Meshroom documentation. [Online]. Available: https://meshroom-manual.readthedocs.io/en/latest/feature-documentation/nodes/KeyframeSelection.html. Accessed: Sep. 11, 2026.
-\bibitem{b43} Nerfstudio Contributors, ``Using custom data,'' Nerfstudio documentation. [Online]. Available: \url{https://docs.nerf.studio/quickstart/custom_dataset.html}. Accessed: Sep. 11, 2026.
+\bibitem{b1} J. Yang, C. Wang, H. Hou, M. Wang, and X. Li, ``Feature-driven variational mesh denoising,'' \textit{IEEE/CAA J. Autom. Sinica}, vol. 12, no. 5, pp. 913--924, May 2025, doi: 10.1109/JAS.2024.124923.
+\bibitem{b2} Y. Lee, ``Three-dimensional dense reconstruction: A review of algorithms and datasets,'' \textit{Sensors}, vol. 24, no. 18, p. 5861, 2024, doi: 10.3390/s24185861.
+\bibitem{b3} E. P. Herrera-Granda, J. C. Torres-Cantero, and D. H. Peluffo-Ord\'o\~nez, ``Monocular visual SLAM, visual odometry, and structure from motion methods applied to 3D reconstruction: A comprehensive survey,'' \textit{Heliyon}, vol. 10, no. 18, p. e37356, 2024, doi: 10.1016/j.heliyon.2024.e37356.
+\bibitem{b4} C. Wang et al., ``Deep learning-based 3D reconstruction from multiple images: A survey,'' \textit{Neurocomputing}, vol. 597, p. 128018, 2024, doi: 10.1016/j.neucom.2024.128018.
+\bibitem{b5} F. Wang et al., ``Learning-based multi-view stereo: A survey,'' 2024, arXiv:2408.15235.
+\bibitem{b6} S. Wang, V. Leroy, Y. Cabon, B. Chidlovskii, and J. Revaud, ``DUSt3R: Geometric 3D vision made easy,'' in \textit{Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR)}, 2024.
+\bibitem{b7} V. Leroy, Y. Cabon, and J. Revaud, ``Grounding image matching in 3D with MASt3R,'' in \textit{Proc. Eur. Conf. Comput. Vis. (ECCV)}, 2024.
+\bibitem{b8} N. Maruani, M. Ovsjanikov, P. Alliez, and M. Desbrun, ``PoNQ: A neural QEM-based mesh representation,'' in \textit{Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR)}, 2024, pp. 3647--3657.
+\bibitem{b9} Q. Hu et al., ``RGBTSDF: An efficient and simple method for color truncated signed distance field (TSDF) volume fusion based on RGB-D images,'' \textit{Remote Sens.}, vol. 16, no. 17, p. 3188, 2024, doi: 10.3390/rs16173188.
+\bibitem{b10} \textit{Exchangeable Image File Format for Digital Still Cameras: Exif Version 3.0}, CIPA DC-008-2024, Camera \& Imaging Products Association, 2024.
+\bibitem{b11} NAVER Corp., ``MASt3R: Grounding image matching in 3D,'' software repository, 2024. [Online]. Available: \url{https://github.com/naver/mast3r} (accessed Sep. 11, 2026).
+\bibitem{b12} C. Griwodz et al., ``AliceVision Meshroom: An open-source 3D reconstruction pipeline,'' in \textit{Proc. 12th ACM Multimedia Syst. Conf. (MMSys)}, 2021, pp. 241--247.
+\bibitem{b13} A. Chen et al., ``MVSNeRF: Fast generalizable radiance field reconstruction from multi-view stereo,'' in \textit{Proc. IEEE/CVF Int. Conf. Comput. Vis. (ICCV)}, 2021, pp. 14124--14133.
+\bibitem{b14} A. Yu et al., ``pixelNeRF: Neural radiance fields from one or few images,'' in \textit{Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR)}, 2021, pp. 4578--4587.
+\bibitem{b15} J. Reizenstein et al., ``Common Objects in 3D: Large-scale learning and evaluation of real-life 3D category reconstruction,'' in \textit{Proc. IEEE/CVF Int. Conf. Comput. Vis. (ICCV)}, 2021, pp. 10901--10911.
+\bibitem{b16} B. Mildenhall, P. P. Srinivasan, M. Tancik, J. T. Barron, R. Ramamoorthi, and R. Ng, ``NeRF: Representing scenes as neural radiance fields for view synthesis,'' in \textit{Proc. Eur. Conf. Comput. Vis. (ECCV)}, 2020, pp. 405--421.
+\bibitem{b17} K. M. Jatavallabhula et al., ``Kaolin: A PyTorch library for accelerating 3D deep learning research,'' 2019, arXiv:1911.05063.
+\bibitem{b18} Q.-Y. Zhou, J. Park, and V. Koltun, ``Open3D: A modern library for 3D data processing,'' 2018, arXiv:1801.09847.
+\bibitem{b19} R. Jensen, A. Dahl, G. Vogiatzis, E. Tola, and H. Aan\ae s, ``Large scale multi-view stereopsis evaluation,'' in \textit{Proc. IEEE Conf. Comput. Vis. Pattern Recognit. (CVPR)}, 2014, pp. 406--413.
+\bibitem{b20} T. M\"uller, A. Evans, C. Schied, and A. Keller, ``Instant neural graphics primitives with a multiresolution hash encoding,'' \textit{ACM Trans. Graph.}, vol. 41, no. 4, 2022.
+\bibitem{b21} B. Kerbl, G. Kopanas, T. Leimk\"uhler, and G. Drettakis, ``3D Gaussian splatting for real-time radiance field rendering,'' \textit{ACM Trans. Graph.}, vol. 42, no. 4, 2023.
+\bibitem{b22} J. T. Barron et al., ``Mip-NeRF 360: Unbounded anti-aliased neural radiance fields,'' in \textit{Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR)}, 2022, pp. 5470--5479.
+\bibitem{b23} M. M. Johari, C. Carta, and F. Fleuret, ``ESLAM: Efficient dense SLAM system based on hybrid representation of signed distance fields,'' in \textit{Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR)}, 2023, pp. 17408--17419, doi: 10.1109/CVPR52729.2023.01670.
+\bibitem{b24} M. Kazhdan and H. Hoppe, ``Distributed Poisson surface reconstruction,'' \textit{Comput. Graph. Forum}, vol. 42, no. 6, Art. no. e14925, 2023, doi: 10.1111/cgf.14925.
+\bibitem{b25} M. Tancik et al., ``Nerfstudio: A modular framework for neural radiance field development,'' in \textit{Proc. ACM SIGGRAPH Conf.}, 2023.
+\bibitem{b26} COLMAP Contributors, ``Command-line interface,'' COLMAP Documentation. [Online]. Available: \url{https://colmap.github.io/cli.html} (accessed Sep. 11, 2026).
+\bibitem{b27} AliceVision Contributors, ``KeyframeSelection,'' Meshroom Documentation. [Online]. Available: \url{https://meshroom-manual.readthedocs.io/en/latest/feature-documentation/nodes/KeyframeSelection.html} (accessed Sep. 11, 2026).
+\bibitem{b28} Nerfstudio Contributors, ``Using custom data,'' Nerfstudio Documentation. [Online]. Available: \url{https://docs.nerf.studio/quickstart/custom_dataset.html} (accessed Sep. 11, 2026).
+\bibitem{b29} PyTorch Contributors, ``Reproducibility,'' PyTorch Documentation. [Online]. Available: \url{https://pytorch.org/docs/stable/notes/randomness.html} (accessed Sep. 11, 2026).
 \end{thebibliography}
 
 \end{document}
