@@ -18,6 +18,8 @@ bench/
   exp_a*.py            CPU-only experiments — no MASt3R, no GPU
   exp_b*.py            experiments requiring MASt3R weights and a GPU
   run_tier_a.py        runs all of Tier A in the protocol's order
+  fetch_dtu.py         pulls DTU scans + reference clouds by HTTP byte range
+  run_tier_b.py        runs Tier B locally, one subprocess per (experiment, scene)
   plots.py             regenerates every figure from the CSVs
   generate_case_study_plots.py
                        optional visual cross-check of Table II's case-study
@@ -53,6 +55,25 @@ Tier B needs a scene manifest (see `scenes/example.json`) and a GPU:
 ```bash
 uv run python -m bench.exp_b4_frame_budget_ablation --manifest bench/scenes/dtu.json
 ```
+
+On a local CUDA GPU (no notebook), one command sets up the environment,
+fetches the DTU scans by byte range, runs a smoke lane and then B2, B4 and B6
+once per scan, and merges the per-scan CSVs into `results/`. It is resumable:
+finished scans are skipped on a re-run. Environment, data and logs live under
+`~/zshift` on the Linux side.
+
+```bash
+bash scripts/run-review-experiments.sh            # Linux or inside WSL2
+```
+
+```powershell
+# Windows: runs the same script inside WSL2 and keeps the machine awake.
+# Native Windows Python is not used: Smart App Control blocks uv's venv
+# launcher and the unsigned DLLs torch needs.
+powershell -ExecutionPolicy Bypass -File scripts\run-review-experiments.ps1
+```
+
+The two Python steps it wraps are `bench.fetch_dtu` and `bench.run_tier_b`.
 
 ## Ground rules, and how they are enforced
 
