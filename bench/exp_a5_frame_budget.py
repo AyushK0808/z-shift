@@ -16,13 +16,12 @@ adjacency, without needing MASt3R weights or a GPU.
 Variants
     V1_as_implemented   current _cap_frames
     V2_motion_resort    same selection, re-sorted into capture order
-    V3_uniform          every k-th frame, k = ceil(N / budget)
+    V3_uniform          `budget` frames evenly spaced in capture order
 """
 
 from __future__ import annotations
 
 import logging
-import math
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -106,9 +105,14 @@ def select_variant(
         return sorted(capped, key=lambda f: (f.source_id or "", f.index))
 
     if variant == "V3_uniform":
+        # Exactly `budget` frames, so V3 is matched to V1/V2 on frame count. A
+        # fixed stride of ceil(N / budget) undershoots: 49 frames at a budget of
+        # 40 gives a stride of 2 and only 25 frames.
         ordered = sorted(frames, key=lambda f: (f.source_id or "", f.index, f.frame_id))
-        step = max(1, math.ceil(len(ordered) / budget))
-        return _to_handoff(ordered[::step][:budget])
+        if len(ordered) <= budget:
+            return _to_handoff(ordered)
+        picks = np.linspace(0, len(ordered) - 1, budget).round().astype(int)
+        return _to_handoff([ordered[index] for index in picks])
 
     raise ValueError(f"unknown variant '{variant}'")
 
