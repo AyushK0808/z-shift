@@ -54,6 +54,15 @@ class MeshCleaningConfig:
     # "split_bodies" is the original per-component VTK path, kept so the
     # bottleneck it caused (bench A1/A2) can still be measured.
     component_filter: ComponentFilter = "labels"
+    # Object mode only. Off, the object is the largest connected component.
+    # On, a dominant plane (floor, table) is cut away first and the fragments
+    # lying inside the largest remaining piece's box are kept with it. A real
+    # capture's support surface is usually reconstructed as one sheet the
+    # subject sits on, and the more views the more of it there is: on the
+    # CO3D teddybear at 24 views the floor outgrew the bear and "largest
+    # component" kept the floor alone. Off by default so the synthetic
+    # single-body benchmarks (A1-A3) measure what they always measured.
+    isolate_object: bool = False
 
     def __post_init__(self):
         if self.mode not in ("object", "room"):
@@ -244,20 +253,152 @@ def extract_regions(mesh: pv.DataSet, regions: np.ndarray, keep: np.ndarray) -> 
     return surface
 
 
+# Gathering (isolate_object): a fragment joins the object when this share of
+# its cells lies inside the largest piece's bounding box, padded by
+# _GATHER_BOX_PAD of its size. Fragments below _GATHER_MIN_CELLS are debris.
+_GATHER_BOX_PAD = 0.15
+_GATHER_INSIDE_FRAC = 0.9
+_GATHER_MIN_CELLS = 200
+
+
+def gather_object_regions(mesh: pv.DataSet, regions: np.ndarray) -> np.ndarray:
+    """The largest region plus every sizeable fragment inside its padded box.
+
+    A TSDF mesh of a real capture breaks its subject into many pieces (the
+    CO3D teddybear's largest held 8-18% of its cells once the floor was
+    cut), so the largest alone is a partial subject.
+    """
+    counts = np.bincount(regions)
+    largest = int(np.argmax(counts))
+    centres = np.asarray(mesh.cell_centers().points)
+    main = centres[regions == largest]
+    lo, hi = main.min(axis=0), main.max(axis=0)
+    pad = _GATHER_BOX_PAD * (hi - lo)
+    inside = np.all((centres >= lo - pad) & (centres <= hi + pad), axis=1)
+    inside_frac = np.bincount(regions, weights=inside, minlength=len(counts)) / counts
+    keep = (inside_frac >= _GATHER_INSIDE_FRAC) & (counts >= _GATHER_MIN_CELLS)
+    keep[largest] = True
+    return np.flatnonzero(keep)
+
+
 def keep_object_components(
-    mesh: pv.DataSet, *, device: Device = "auto", method: ComponentFilter = "labels"
+    mesh: pv.DataSet,
+    *,
+    device: Device = "auto",
+    method: ComponentFilter = "labels",
+    gather: bool = False,
 ) -> pv.PolyData:
     # Keeps the single largest piece by cell count and discards the rest --
     # object-mode captures are one subject, and stray fragments below the
     # main body are debris, not additional geometry to preserve (bench/
     # FINDINGS.md #2; the architecture text already described this behaviour
-    # before the code implemented it).
+    # before the code implemented it). `gather` also keeps the fragments
+    # inside the largest piece's box (gather_object_regions).
     regions = label_components(mesh, device, method)
     if regions is None:
+        if gather:
+            logger.warning(
+                "isolate_object gathers fragments only on the labels path; "
+                "keeping the largest component alone"
+            )
         pieces = get_component_pieces(mesh)
         return max(pieces, key=lambda piece: piece.n_cells)
+    if gather:
+        return extract_regions(mesh, regions, gather_object_regions(mesh, regions))
     # argmax takes the first of equal counts, as max() over split_bodies does.
     return extract_regions(mesh, regions, np.array([np.argmax(np.bincount(regions))]))
+
+
+# A plane is a support surface when its faces are at least this share of the
+# mesh; a subject's own flat side is smaller than the floor it was shot on.
+_SUPPORT_PLANE_MIN_FRAC = 0.3
+# If cutting the plane would leave less than this share, the mesh *was* the
+# plane (a sheet, a wall scan) and is left alone.
+_SUPPORT_PLANE_MIN_REMAINDER = 0.01
+_RANSAC_ITERATIONS = 300
+_RANSAC_SAMPLE = 200_000
+
+
+def _fit_plane(points: np.ndarray) -> tuple[np.ndarray, float]:
+    centroid = points.mean(axis=0)
+    normal = np.linalg.svd(points - centroid, full_matrices=False)[2][-1]
+    return normal, float(-normal @ centroid)
+
+
+def find_support_plane(
+    points: np.ndarray, *, seed: int = 0
+) -> tuple[np.ndarray, float, float] | None:
+    """The dominant plane through `points` as (unit normal, offset, inlier tolerance).
+
+    RANSAC at 1% of the bounding-box diagonal finds the plane; the tolerance
+    is then narrowed to the plane's own thickness (3 robust SDs of its
+    inliers' distances), so the subject's base is not cut along with a noisy
+    floor's full search band.
+    """
+    rng = np.random.default_rng(seed)
+    if len(points) < 3:
+        return None
+    sample = points[rng.choice(len(points), min(len(points), _RANSAC_SAMPLE), replace=False)]
+    search = 0.01 * float(np.linalg.norm(np.ptp(points, axis=0)))
+    if search <= 0:
+        return None
+
+    best_count, best = 0, None
+    for _ in range(_RANSAC_ITERATIONS):
+        a, b, c = sample[rng.choice(len(sample), 3, replace=False)]
+        normal = np.cross(b - a, c - a)
+        length = np.linalg.norm(normal)
+        if length < 1e-12:
+            continue
+        normal /= length
+        count = int(np.count_nonzero(np.abs((sample - a) @ normal) < search))
+        if count > best_count:
+            best_count, best = count, (normal, float(-normal @ a))
+    if best is None:
+        return None
+
+    normal, offset = best
+    inliers = sample[np.abs(sample @ normal + offset) < search]
+    normal, offset = _fit_plane(inliers)
+    distances = np.abs(inliers @ normal + offset)
+    spread = 1.4826 * float(np.median(np.abs(distances - np.median(distances))))
+    tolerance = min(search, max(3.0 * spread, 1e-3 * search))
+    return normal, offset, tolerance
+
+
+def cut_support_plane(mesh: pv.DataSet, *, seed: int = 0) -> tuple[pv.DataSet, dict[str, Any]]:
+    """Drop the faces lying in a dominant plane, if one covers enough of the mesh."""
+    info: dict[str, Any] = {"support_plane_removed": False}
+    points = np.asarray(mesh.points, dtype=float)
+    plane = find_support_plane(points, seed=seed)
+    if plane is None:
+        return mesh, info
+    normal, offset, tolerance = plane
+
+    near = np.abs(points @ normal + offset) < tolerance
+    arrays = cell_arrays(mesh)
+    if arrays is not None:
+        offsets, connectivity = arrays
+        on_plane = np.logical_and.reduceat(near[connectivity], offsets[:-1])
+    else:
+        on_plane = np.array(
+            [bool(np.all(near[mesh.get_cell(i).point_ids])) for i in range(mesh.n_cells)]
+        )
+    plane_frac = float(on_plane.mean()) if len(on_plane) else 0.0
+    info.update(
+        support_plane_normal=[round(float(v), 6) for v in normal],
+        support_plane_tolerance=round(tolerance, 6),
+        support_plane_face_frac=round(plane_frac, 4),
+    )
+    if plane_frac < _SUPPORT_PLANE_MIN_FRAC or 1.0 - plane_frac < _SUPPORT_PLANE_MIN_REMAINDER:
+        return mesh, info
+
+    kept = mesh.extract_cells(np.flatnonzero(~on_plane)).extract_surface(algorithm=None)
+    info["support_plane_removed"] = True
+    logger.info(
+        "Removed a support plane: %.1f%% of faces within %.4g of it", 100 * plane_frac, tolerance
+    )
+    return kept, info
 
 
 def filter_room_components(
@@ -407,13 +548,20 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
         device,
     )
 
+    plane_info: dict[str, Any] = {}
     if cfg.mode == "object":
+        candidates = mesh
+        if cfg.isolate_object:
+            candidates, plane_info = run_step(
+                "support_plane", cut_support_plane, mesh, stage_log=stage_log
+            )
         filtered = run_step(
             "component_filter",
             keep_object_components,
-            mesh,
+            candidates,
             device=device,
             method=cfg.component_filter,
+            gather=cfg.isolate_object,
             stage_log=stage_log,
         )
     else:
@@ -510,6 +658,7 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
         "open_edge_count": open_edge_count,
         "boundary_edge_count": topology["boundary_edge_count"],
         "non_manifold_edge_count": topology["non_manifold_edge_count"],
+        **plane_info,
         "warnings": warnings,
         "stage_timings": stage_log.as_list(),
         "total_stage_seconds": stage_log.total_seconds,
