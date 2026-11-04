@@ -1,0 +1,11 @@
+metric,value,unit_or_note
+F-score,0.0010341093691649697,tau=0.01 scene units
+Precision,0.283328,tau=0.01 scene units
+Recall,0.000518,tau=0.01 scene units
+Chamfer-L1,0.7920007836009995,scene units
+Hausdorff-95,2.5339307501998403,scene units
+Normal consistency,,mean |cos|
+Alignment RMSE,0.015689,scene units
+Alignment scale,0.556718,factor
+Reconstruction points scored,500000,points
+Ground-truth points scored,500000,points

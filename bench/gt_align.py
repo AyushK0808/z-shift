@@ -135,6 +135,9 @@ def align_to_reference(
     with_scale: bool = False,
     iterations: int = 30,
     tolerance: float = 1e-7,
+    pca_seeds: bool = True,
+    max_correspondence_distance: float | None = None,
+    tree: KDTree | None = None,
 ) -> tuple[np.ndarray, AlignmentResult]:
     """Nearest-neighbour ICP onto `target`, multi-seeded to escape rotation traps.
 
@@ -146,14 +149,20 @@ def align_to_reference(
     and keeps whichever run ends with the lowest RMSE; it is still plain
     point-to-point ICP underneath, and the winning residual is reported rather
     than trusted.
+
+    `pca_seeds=False` is for a source that is already roughly in place (DTU's
+    camera fit, bench/dtu_eval.py): one run, starting where the source is,
+    without the re-centring that the seeded runs do. `max_correspondence_distance`
+    leaves pairs further apart than that out of each fit, so points with no
+    counterpart in the target (background, a partial scan) cannot drag it.
     """
     source = np.asarray(source, dtype=float)
     target = np.asarray(target, dtype=float)
-    tree = KDTree(target)
+    tree = tree if tree is not None else KDTree(target)
     source_mean = source.mean(axis=0)
     target_mean = target.mean(axis=0)
 
-    seed_rotations = _seed_rotations(source, target)
+    seed_rotations = _seed_rotations(source, target) if pca_seeds else [None]
     logger.info(
         "ICP: aligning %d points to %d GT points across %d seed rotations (<=%d iterations each)",
         len(source),
@@ -165,14 +174,31 @@ def align_to_reference(
     best_current: np.ndarray | None = None
     best_alignment: AlignmentResult | None = None
     for seed_index, rotation in enumerate(seed_rotations):
-        current = (source - source_mean) @ rotation.T + target_mean
+        current = source if rotation is None else (source - source_mean) @ rotation.T + target_mean
         alignment = umeyama(source[:3], source[:3], with_scale=with_scale)
         previous_rmse = float("inf")
 
         for step in range(iterations):  # noqa: B007 (used after loop for logging)
-            _, indices = tree.query(current, k=1)
+            if max_correspondence_distance is None:
+                distances, indices = tree.query(current, k=1, workers=-1)
+            else:
+                # Pairs beyond the cutoff are discarded anyway, so the search
+                # stops there; misses come back as index len(target).
+                distances, indices = tree.query(
+                    current, k=1, workers=-1, distance_upper_bound=max_correspondence_distance
+                )
+                indices = np.minimum(indices, len(target) - 1)
             correspondences = target[np.asarray(indices, dtype=int)]
-            alignment = umeyama(source, correspondences, with_scale=with_scale)
+            if max_correspondence_distance is None:
+                alignment = umeyama(source, correspondences, with_scale=with_scale)
+            else:
+                inliers = distances < max_correspondence_distance
+                if inliers.sum() < 3:
+                    logger.warning("ICP: fewer than 3 correspondences within the cutoff")
+                    break
+                alignment = umeyama(
+                    source[inliers], correspondences[inliers], with_scale=with_scale
+                )
             current = apply_alignment(source, alignment)
             if abs(previous_rmse - alignment.rmse) < tolerance:
                 break

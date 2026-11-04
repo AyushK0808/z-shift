@@ -10,7 +10,10 @@ this measures what that does to the reconstruction.
     V3 uniform subsample, temporal order
 
 All three are matched at the same frame count, so this compares selection
-strategy rather than budget.
+strategy rather than budget. Every cell runs under three seeds: MASt3R's TSDF
+depth refinement samples with torch.randn, so the seed is a genuine source of
+run-to-run variation, and one run per cell cannot separate a variant effect
+from it.
 
 Either outcome is publishable, and the paper should say which happened:
 V2 > V1 means a real integration bug was found, fixed and quantified. V1 ~ V2
@@ -18,7 +21,9 @@ means swin pairing is more robust to ordering than expected, which is itself a
 finding no component-level benchmark would surface.
 
 A second sweep varies MAX_RECONSTRUCTION_FRAMES over {10, 20, 40, 60} on one
-scene, which is what turns "bounds reconstruction cost" into a curve.
+scene, which is what turns "bounds reconstruction cost" into a curve. Its
+budget-40 point is the ablation's V3 run, reused rather than reconstructed
+again; a budget above the frame count takes every frame (`n_selected`).
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ from typing import Any
 import numpy as np
 
 from bench.csvio import ResultWriter
+from bench.dtu_eval import DtuReference
 from bench.exp_a5_frame_budget import VARIANTS, select_variant
 from bench.harness import experiment_parser, finish
 from bench.tier_b_common import (
@@ -53,6 +59,7 @@ from spatial_ingestion.reconstruction.models import (
 EXP_ID = "b4_frame_budget_ablation"
 BUDGET_SWEEP: tuple[int, ...] = (10, 20, 40, 60)
 DEFAULT_BUDGET = 40
+N_SEEDS = 3
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +116,7 @@ def _run_variant(
     seed: int,
     with_scale: bool,
     reconstruction_scale: float,
+    reference: DtuReference | None = None,
 ) -> dict[str, Any]:
     from spatial_ingestion.reconstruction._io import uri_to_path
 
@@ -149,6 +157,8 @@ def _run_variant(
         with_scale=with_scale,
         seed=seed,
         reconstruction_scale=reconstruction_scale,
+        reference=reference,
+        output_dir=run_info["output_dir"],
     )
     logger.info(
         "%s/%s (budget=%d): F=%.3f chamfer=%.4f",
@@ -180,7 +190,7 @@ def run(
     *,
     manifest: Path,
     scene_names: list[str] | None = None,
-    seed: int = 0,
+    seeds: tuple[int, ...] = tuple(range(N_SEEDS)),
     image_size: int = 512,
     tsdf_thresh: float = 0.2,
     with_scale: bool = False,
@@ -190,13 +200,16 @@ def run(
     writer = ResultWriter(EXP_ID, results_dir)
     scenes = iter_scenes(SceneSet.from_manifest(manifest), scene_names)
     root = output_root or (Path("data") / "bench" / EXP_ID)
-    params = Mast3rRunParams(
-        image_size=image_size,
-        tsdf_thresh=tsdf_thresh,
-        seed=seed,
-        pairing_strategy="swin",
-        device=require_cuda_device(),
-    )
+    device = require_cuda_device()
+
+    def params_for(seed: int) -> Mast3rRunParams:
+        return Mast3rRunParams(
+            image_size=image_size,
+            tsdf_thresh=tsdf_thresh,
+            seed=seed,
+            pairing_strategy="swin",
+            device=device,
+        )
 
     for scene_index, scene in enumerate(scenes):
         if scene.gt_path is None:
@@ -211,31 +224,51 @@ def run(
                 len(image_paths),
             )
         frames = _frames_from_image_dir(image_paths)
-        gt_points = load_gt_points(scene.gt_path, seed=seed)
+        gt_points = load_gt_points(scene.gt_path, seed=seeds[0])
+        common = {
+            "gt_points": gt_points,
+            "tau": scene.tau,
+            "with_scale": with_scale,
+            "reconstruction_scale": reconstruction_scale_for(scene.units),
+            "reference": scene.dtu_reference(),
+        }
+        sweep_here = sweep_budgets and scene_index == 0
 
-        for variant in VARIANTS:
-            writer.add(
-                part="variant_ablation",
-                n_frames_available=len(frames),
-                pairing_strategy=params.pairing_strategy,
-                **_run_variant(
+        for seed in seeds:
+            params = params_for(seed)
+            seed_root = root / f"seed{seed}"
+            for variant in VARIANTS:
+                result = _run_variant(
                     scene.name,
                     variant,
                     frames,
                     DEFAULT_BUDGET,
                     params=params,
-                    output_root=root,
-                    gt_points=gt_points,
-                    tau=scene.tau,
+                    output_root=seed_root,
                     seed=seed,
-                    with_scale=with_scale,
-                    reconstruction_scale=reconstruction_scale_for(scene.units),
-                ),
-            )
+                    **common,
+                )
+                writer.add(
+                    part="variant_ablation",
+                    n_frames_available=len(frames),
+                    pairing_strategy=params.pairing_strategy,
+                    **result,
+                )
+                if sweep_here and variant == "V3_uniform" and DEFAULT_BUDGET in BUDGET_SWEEP:
+                    writer.add(
+                        part="budget_sweep",
+                        n_frames_available=len(frames),
+                        pairing_strategy=params.pairing_strategy,
+                        reused_from="variant_ablation",
+                        **result,
+                    )
 
-        # The quality-vs-budget curve only needs one scene to be informative.
-        if sweep_budgets and scene_index == 0:
+            # The quality-vs-budget curve only needs one scene to be informative.
+            if not sweep_here:
+                continue
             for budget in BUDGET_SWEEP:
+                if budget == DEFAULT_BUDGET:
+                    continue
                 writer.add(
                     part="budget_sweep",
                     n_frames_available=len(frames),
@@ -246,12 +279,9 @@ def run(
                         frames,
                         budget,
                         params=params,
-                        output_root=root / f"budget_{budget}",
-                        gt_points=gt_points,
-                        tau=scene.tau,
+                        output_root=seed_root / f"budget_{budget}",
                         seed=seed,
-                        with_scale=with_scale,
-                        reconstruction_scale=reconstruction_scale_for(scene.units),
+                        **common,
                     ),
                 )
     return writer
@@ -265,6 +295,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tsdf-thresh", type=float, default=0.2)
     parser.add_argument("--with-scale", action="store_true")
     parser.add_argument("--no-budget-sweep", action="store_true")
+    parser.add_argument(
+        "--seeds",
+        type=int,
+        nargs="+",
+        default=None,
+        help=f"seeds to repeat every cell under (default: --seed and the next {N_SEEDS - 1})",
+    )
     parser.add_argument("--output-root", type=Path, default=None)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
@@ -273,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         results_dir=args.results_dir,
         manifest=args.manifest,
         scene_names=args.scenes,
-        seed=args.seed,
+        seeds=tuple(args.seeds or range(args.seed, args.seed + N_SEEDS)),
         image_size=args.image_size,
         tsdf_thresh=args.tsdf_thresh,
         with_scale=args.with_scale,
@@ -284,7 +321,8 @@ def main(argv: list[str] | None = None) -> int:
     for row in writer.rows:
         print(
             f"  {row['part']:<17}{row['scene']:<12}{row['variant']:<20}"
-            f"budget={row['budget']:<4} F={row['f_score']:.3f} "
+            f"budget={row['budget']:<4} n={row['n_selected']:<3} seed={row['seed']} "
+            f"F={row['f_score']:.3f} pose_failure={row.get('pose_failure')} "
             f"chamfer={row['chamfer_l1']:.4f} align_s={row.get('stage_sparse_alignment_s')}"
         )
     return 0

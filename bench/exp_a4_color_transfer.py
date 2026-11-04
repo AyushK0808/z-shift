@@ -77,7 +77,7 @@ def _trial(source: str, smoothing: int, decimation: float | None, seed: int) -> 
 
     error = np.abs(np.asarray(transferred, dtype=float)[:, :3] - expected)
     per_vertex_max = error.max(axis=1)
-    nn_distance = KDTree(source_points).query(out_points, k=1)[0]
+    nn_distance = KDTree(source_points).query(out_points, k=1, workers=-1)[0]
 
     return {
         "status": "ok",

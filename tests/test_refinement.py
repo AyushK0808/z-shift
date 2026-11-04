@@ -245,3 +245,92 @@ def test_preserve_data_arrays_only_transfers_recognized_color_names() -> None:
 
     assert "COLOR_0" in result.point_data
     assert "Confidence" not in result.point_data
+
+
+def _fragments_of_unequal_size(seed: int = 0) -> pv.PolyData:
+    """Spheres and sheets of different sizes, with shuffled cell order and colors."""
+    rng = np.random.default_rng(seed)
+    parts = [
+        pv.Sphere(theta_resolution=8 + 4 * i, phi_resolution=8 + 2 * i, center=(3.0 * i, 0, 0))
+        for i in range(6)
+    ]
+    parts += [pv.Plane(i_resolution=3, j_resolution=3, center=(0, 5.0 * i, 0)) for i in range(4)]
+    merged = (
+        parts[0].merge(parts[1:], merge_points=False).triangulate().extract_surface(algorithm=None)
+    )
+    faces = merged.faces.reshape(-1, 4)[rng.permutation(merged.n_cells)]
+    mesh = pv.PolyData(merged.points, faces=faces.ravel())
+    mesh.point_data["rgb"] = rng.integers(0, 255, (mesh.n_points, 3), dtype=np.uint8)
+    return mesh
+
+
+def _same_geometry(a: pv.PolyData, b: pv.PolyData) -> bool:
+    def triangles(mesh: pv.PolyData) -> np.ndarray:
+        tri = np.sort(mesh.points[mesh.faces.reshape(-1, 4)[:, 1:]].reshape(-1, 9), axis=0)
+        return tri[np.lexsort(tri.T[::-1])]
+
+    return a.n_cells == b.n_cells and np.allclose(triangles(a), triangles(b))
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_labelled_component_filter_matches_split_bodies(device: str) -> None:
+    from spatial_ingestion.refinement.core import (
+        filter_room_components,
+        keep_object_components,
+        label_components,
+    )
+
+    torch = pytest.importorskip("torch")
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("no CUDA device")
+    mesh = _fragments_of_unequal_size()
+
+    regions = label_components(mesh, device)
+    bodies = mesh.split_bodies()
+    assert regions is not None
+    assert np.bincount(regions).tolist() == [body.n_cells for body in bodies]
+
+    old = keep_object_components(mesh, method="split_bodies")
+    new = keep_object_components(mesh, device=device)
+    assert _same_geometry(old, new)
+    assert "rgb" in new.point_data
+
+    for threshold in (0, 50, 300):
+        old = filter_room_components(mesh, threshold, method="split_bodies")
+        new = filter_room_components(mesh, threshold, device=device)
+        assert _same_geometry(old, new)
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_edge_use_counts_match_vtk_feature_edges(device: str) -> None:
+    from spatial_ingestion.refinement.core import count_topology_issues
+
+    torch = pytest.importorskip("torch")
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("no CUDA device")
+    open_sphere = _make_colored_sphere_with_hole()
+    fan = pv.PolyData(
+        np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1.0]]),
+        faces=np.array([3, 0, 1, 2, 3, 0, 1, 3, 3, 0, 1, 4]),  # edge 0-1 used three times
+    )
+    for mesh in (open_sphere, fan, _fragments_of_unequal_size(), pv.Sphere().triangulate()):
+        vtk = {
+            "boundary_edge_count": mesh.extract_feature_edges(
+                boundary_edges=True,
+                feature_edges=False,
+                manifold_edges=False,
+                non_manifold_edges=False,
+            ).n_cells,
+            "non_manifold_edge_count": mesh.extract_feature_edges(
+                boundary_edges=False,
+                feature_edges=False,
+                manifold_edges=False,
+                non_manifold_edges=True,
+            ).n_cells,
+        }
+        assert count_topology_issues(mesh, device=device) == vtk
+
+
+def test_clean_mesh_reports_compute_device() -> None:
+    result = clean_mesh(_make_colored_sphere_with_hole(), MeshCleaningConfig(device="cpu"))
+    assert result["compute_device"] == "cpu"

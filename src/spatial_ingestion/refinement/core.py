@@ -9,10 +9,18 @@ import pyvista as pv
 import trimesh
 
 from spatial_ingestion.instrumentation import StageLog
+from spatial_ingestion.refinement.gpu import (
+    Device,
+    cell_arrays,
+    edge_use_counts,
+    region_ids,
+    resolve_device,
+)
 
 logger = logging.getLogger(__name__)
 
 Mode = Literal["object", "room"]
+ComponentFilter = Literal["labels", "split_bodies"]
 
 _COLOR_ARRAY_NAMES = ("RGBA", "RGB", "rgba", "rgb", "COLOR_0", "color_0")
 
@@ -40,10 +48,23 @@ class MeshCleaningConfig:
     merge_tolerance: float = 1e-5
     decimate_target_reduction: float | None = None
     verify_watertight: bool = True
+    # Where the mesh-graph steps (component labelling, edge counting) run;
+    # "auto" is CUDA when torch sees a GPU. See refinement/gpu.py.
+    device: Device = "auto"
+    # "split_bodies" is the original per-component VTK path, kept so the
+    # bottleneck it caused (bench A1/A2) can still be measured.
+    component_filter: ComponentFilter = "labels"
 
     def __post_init__(self):
         if self.mode not in ("object", "room"):
             raise ValueError(f"Unknown mode '{self.mode}'; use 'object' or 'room'")
+        if self.device not in ("auto", "cuda", "cpu"):
+            raise ValueError(f"Unknown device '{self.device}'; use 'auto', 'cuda' or 'cpu'")
+        if self.component_filter not in ("labels", "split_bodies"):
+            raise ValueError(
+                f"Unknown component_filter '{self.component_filter}'; "
+                "use 'labels' or 'split_bodies'"
+            )
         if self.smoothing_iters < 0:
             raise ValueError("smoothing_iters must be >= 0")
         if self.min_cell_count < 0:
@@ -200,29 +221,71 @@ def merge_components(pieces: Sequence[pv.PolyData]) -> pv.PolyData:
     return surface
 
 
-def keep_object_components(mesh: pv.DataSet) -> pv.PolyData:
+def label_components(
+    mesh: pv.DataSet, device: Device = "auto", method: ComponentFilter = "labels"
+) -> np.ndarray | None:
+    """Per-cell component ids in `split_bodies()` order, or None to use split_bodies."""
+    if method == "split_bodies":
+        return None
+    arrays = cell_arrays(mesh)
+    if arrays is None:
+        return None
+    return region_ids(mesh.n_points, *arrays, device=resolve_device(device))
+
+
+def extract_regions(mesh: pv.DataSet, regions: np.ndarray, keep: np.ndarray) -> pv.PolyData:
+    # One extraction for every kept component, in input cell order. Pieces
+    # share no points, so this equals merging them with merge_points=False.
+    surface = mesh.extract_cells(np.flatnonzero(np.isin(regions, keep))).extract_surface(
+        algorithm=None
+    )
+    if surface.n_cells == 0:
+        raise MeshProcessingError("Component extraction produced an empty surface")
+    return surface
+
+
+def keep_object_components(
+    mesh: pv.DataSet, *, device: Device = "auto", method: ComponentFilter = "labels"
+) -> pv.PolyData:
     # Keeps the single largest piece by cell count and discards the rest --
     # object-mode captures are one subject, and stray fragments below the
     # main body are debris, not additional geometry to preserve (bench/
     # FINDINGS.md #2; the architecture text already described this behaviour
     # before the code implemented it).
-    pieces = get_component_pieces(mesh)
-    return max(pieces, key=lambda piece: piece.n_cells)
+    regions = label_components(mesh, device, method)
+    if regions is None:
+        pieces = get_component_pieces(mesh)
+        return max(pieces, key=lambda piece: piece.n_cells)
+    # argmax takes the first of equal counts, as max() over split_bodies does.
+    return extract_regions(mesh, regions, np.array([np.argmax(np.bincount(regions))]))
 
 
-def filter_room_components(mesh: pv.DataSet, min_cell_count: int) -> pv.PolyData:
-    pieces = get_component_pieces(mesh)
-    valid_pieces = [body for body in pieces if body.n_cells > min_cell_count]
+def filter_room_components(
+    mesh: pv.DataSet,
+    min_cell_count: int,
+    *,
+    device: Device = "auto",
+    method: ComponentFilter = "labels",
+) -> pv.PolyData:
+    regions = label_components(mesh, device, method)
+    if regions is None:
+        pieces = get_component_pieces(mesh)
+        counts = np.array([body.n_cells for body in pieces])
+    else:
+        counts = np.bincount(regions)
+    keep = np.flatnonzero(counts > min_cell_count)
 
-    if not valid_pieces:
-        largest_found = max((body.n_cells for body in pieces), default=0)
+    if keep.size == 0:
+        largest_found = int(counts.max(initial=0))
         raise MeshValidationError(
             f"No component exceeded min_cell_count={min_cell_count} "
             f"(largest component had {largest_found} cells); "
             "lower the threshold or check the input mesh"
         )
 
-    return merge_components(valid_pieces)
+    if regions is None:
+        return merge_components([pieces[i] for i in keep])
+    return extract_regions(mesh, regions, keep)
 
 
 def fill_mesh_holes(
@@ -282,7 +345,7 @@ def preserve_data_arrays(source: pv.DataSet, target: pv.DataSet) -> pv.DataSet:
     from scipy.spatial import KDTree
 
     tree = KDTree(np.asarray(source.points))
-    _, nearest = tree.query(np.asarray(target.points), k=1)
+    _, nearest = tree.query(np.asarray(target.points), k=1, workers=-1)
     transferred = target.copy(deep=True)
     for name, array in color_arrays.items():
         transferred.point_data[name] = array[nearest]
@@ -302,7 +365,11 @@ def finalize_mesh(
     return mesh
 
 
-def count_topology_issues(mesh: pv.PolyData) -> dict[str, int]:
+def count_topology_issues(mesh: pv.PolyData, *, device: Device = "auto") -> dict[str, int]:
+    arrays = cell_arrays(mesh)
+    if arrays is not None and np.all(np.diff(arrays[0]) == 3):
+        return edge_use_counts(mesh.n_points, *arrays, device=resolve_device(device))
+
     boundary = mesh.extract_feature_edges(
         boundary_edges=True,
         feature_edges=False,
@@ -330,19 +397,33 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
     stage_log = StageLog()
     mesh = validate_mesh_input(mesh)
     warnings: list[str] = []
+    device = resolve_device(cfg.device)
 
     logger.info(
-        "Cleaning mesh: mode=%s, in_points=%d, in_cells=%d", cfg.mode, mesh.n_points, mesh.n_cells
+        "Cleaning mesh: mode=%s, in_points=%d, in_cells=%d, device=%s",
+        cfg.mode,
+        mesh.n_points,
+        mesh.n_cells,
+        device,
     )
 
     if cfg.mode == "object":
-        filtered = run_step("component_filter", keep_object_components, mesh, stage_log=stage_log)
+        filtered = run_step(
+            "component_filter",
+            keep_object_components,
+            mesh,
+            device=device,
+            method=cfg.component_filter,
+            stage_log=stage_log,
+        )
     else:
         filtered = run_step(
             "component_filter",
             filter_room_components,
             mesh,
             cfg.min_cell_count,
+            device=device,
+            method=cfg.component_filter,
             stage_log=stage_log,
         )
 
@@ -384,7 +465,11 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
     is_watertight = None
     if cfg.verify_watertight:
         topology = run_step(
-            "watertight_check", count_topology_issues, final_mesh, stage_log=stage_log
+            "watertight_check",
+            count_topology_issues,
+            final_mesh,
+            device=device,
+            stage_log=stage_log,
         )
         is_watertight = (
             topology["boundary_edge_count"] == 0 and topology["non_manifold_edge_count"] == 0
@@ -416,6 +501,7 @@ def clean_mesh(mesh, config: MeshCleaningConfig | None = None, **overrides: Any)
     return {
         "mesh": final_mesh,
         "mode": cfg.mode,
+        "compute_device": device,
         "input_point_count": mesh.n_points,
         "input_cell_count": mesh.n_cells,
         "output_point_count": final_mesh.n_points,

@@ -82,7 +82,7 @@ def run(
         gt_mesh = load_gt_object(scene.gt_path)
         gt_is_mesh = isinstance(gt_mesh, trimesh.Trimesh)
 
-        image_paths = scene.image_paths(n_images)
+        image_paths = scene.image_paths(n_images, spread=True)
         reconstruction_scale = reconstruction_scale_for(scene.units)
         params = Mast3rRunParams(
             image_size=image_size, tsdf_thresh=tsdf_thresh, seed=seed, device=require_cuda_device()
@@ -102,8 +102,12 @@ def run(
             "tsdf_thresh": tsdf_thresh,
             "units": scene.units,
             "sample_points": SAMPLE_POINTS,
+            "view_selection": "spread",
         }
 
+        # Refinement does not move the mesh out of the reconstruction's frame,
+        # so the raw and refined meshes are both placed by the same cameras.
+        dtu = {"reference": scene.dtu_reference(), "output_dir": run_info["output_dir"]}
         raw_scores = score_against_gt(
             _mesh_points(raw_mesh, seed),
             gt_points,
@@ -111,6 +115,7 @@ def run(
             with_scale=with_scale,
             seed=seed,
             reconstruction_scale=reconstruction_scale,
+            **dtu,
         )
         writer.add(
             **base_row,
@@ -156,6 +161,7 @@ def run(
                     with_scale=with_scale,
                     seed=seed,
                     reconstruction_scale=reconstruction_scale,
+                    **dtu,
                 )
                 writer.add(
                     **base_row,
@@ -164,6 +170,7 @@ def run(
                     smoothing_iters=smoothing,
                     status="ok",
                     refine_seconds=refine_seconds,
+                    refine_device=result["compute_device"],
                     n_vertices=int(len(refined.vertices)),
                     n_faces=int(len(refined.faces)),
                     is_watertight=result["is_watertight"],

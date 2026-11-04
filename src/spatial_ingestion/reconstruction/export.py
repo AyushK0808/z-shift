@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from spatial_ingestion.reconstruction._io import write_ply
+from spatial_ingestion.reconstruction._io import write_json, write_ply
 from spatial_ingestion.reconstruction.device import reproducibility_metadata
 from spatial_ingestion.reconstruction.models import SyncViewGroup
 
@@ -171,6 +171,31 @@ def _patch_tsdf_sample_budget(nsamples: int = _TSDF_SAMPLE_BUDGET) -> None:
     _tsdf_sample_budget_patched = True
 
 
+def write_cameras(scene: Any, path: Path) -> None:
+    """Write each image's estimated pose, in the same frame as point_cloud.ply.
+
+    Evaluating against a ground truth with its own calibration (DTU) needs
+    them: matching camera centres fixes the frame and the scale without
+    guessing correspondences (bench/dtu_eval.py).
+    """
+    if not hasattr(scene, "get_im_poses"):
+        return
+    from dust3r.utils.device import to_numpy
+
+    poses = np.asarray(to_numpy(scene.get_im_poses()), dtype=float)
+    focals = np.asarray(to_numpy(scene.get_focals()), dtype=float).reshape(len(poses), -1)
+    write_json(
+        path,
+        {
+            "convention": "cam2world, OpenCV axes, the frame of point_cloud.ply",
+            "cameras": [
+                {"image": str(image), "cam2world": pose.tolist(), "focal_px": focal.tolist()}
+                for image, pose, focal in zip(scene.img_paths, poses, focals, strict=True)
+            ],
+        },
+    )
+
+
 def export_scene_to_mesh(
     scene: Any,
     output_path: Path,
@@ -226,6 +251,7 @@ def export_scene_to_mesh(
 
     xyz, rgb = _dense_points_xyz_rgb(imgs, pts3d, confs, min_conf_thr)
     write_ply(output_dir / "point_cloud.ply", xyz, rgb)
+    write_cameras(scene, output_dir / "cameras.json")
 
     if stats is not None:
         total_points = int(sum(int(np.prod(img.shape[:2])) for img in imgs))

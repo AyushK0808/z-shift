@@ -66,7 +66,7 @@ def _sample(mesh: trimesh.Trimesh, n: int, seed: int) -> tuple[np.ndarray, np.nd
 
 def _dists(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """Nearest-neighbour distance from every point of `a` to the set `b`."""
-    return np.asarray(KDTree(b).query(a, k=1)[0], dtype=float)
+    return np.asarray(KDTree(b).query(a, k=1, workers=-1)[0], dtype=float)
 
 
 def chamfer_l1(a: np.ndarray, b: np.ndarray) -> float:
@@ -121,7 +121,7 @@ def normal_consistency(
         gt_points, gt_all_normals = sample_points_with_normals(
             gt, max(n * gt_oversample, 1000), seed + 1
         )
-        nearest = KDTree(gt_points).query(pred_points, k=1)[1]
+        nearest = KDTree(gt_points).query(pred_points, k=1, workers=-1)[1]
         gt_normals = gt_all_normals[np.asarray(nearest, dtype=int)]
 
     return float(np.abs((pred_normals * gt_normals).sum(axis=1)).mean())
