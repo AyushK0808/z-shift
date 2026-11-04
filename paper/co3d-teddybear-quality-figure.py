@@ -28,11 +28,21 @@ import matplotlib.pyplot as plt
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RUN_MANIFEST = ROOT / "out" / "new_raw_4cdcf66f3342" / "run_manifest.json"
-REFINE_MANIFEST = ROOT / "out" / "new_raw_4cdcf66f3342" / "refinement_manifest.json"
-SKELETON_JSON = ROOT / "out" / "rigging_new" / "skeleton.json"
-SKINNING_JSON = ROOT / "out" / "rigging_new" / "skinning_weights.json"
-RIGGING_MANIFEST = ROOT / "out" / "rigging_new" / "rigging_manifest.json"
+# A re-run by bench/exp_b9_case_study.py keeps everything under one run
+# directory (run_manifest.json, refinement_manifest.json, rig/*.json); point
+# ZSHIFT_CASE_STUDY_DIR at it. Unset, the original notebook layout is read.
+_CASE_STUDY_DIR = os.environ.get("ZSHIFT_CASE_STUDY_DIR")
+if _CASE_STUDY_DIR:
+    _RUN_DIR = Path(_CASE_STUDY_DIR)
+    _RIG_DIR = _RUN_DIR / "rig"
+else:
+    _RUN_DIR = ROOT / "out" / "new_raw_4cdcf66f3342"
+    _RIG_DIR = ROOT / "out" / "rigging_new"
+RUN_MANIFEST = _RUN_DIR / "run_manifest.json"
+REFINE_MANIFEST = _RUN_DIR / "refinement_manifest.json"
+SKELETON_JSON = _RIG_DIR / "skeleton.json"
+SKINNING_JSON = _RIG_DIR / "skinning_weights.json"
+RIGGING_MANIFEST = _RIG_DIR / "rigging_manifest.json"
 
 CSV_PATH = ROOT / "paper" / "outputs" / "co3d-teddybear-quality-scores.csv"
 FIGURE_PATH = ROOT / "paper" / "figures" / "fig13-co3d-teddybear-quality.png"
