@@ -72,7 +72,16 @@ def aggregate(rows, group_by, value_key):
             continue
         key = tuple(row.get(col) for col in group_by)
         buckets.setdefault(key, []).append(float(value))
-    return {key: mean_std(vals) for key, vals in sorted(buckets.items(), key=repr)}
+
+    # Numbers in numeric order (sorting the keys' repr put 1000000 before
+    # 250000 and drew the lines back across the plot), strings and None after.
+    def order(item):
+        return tuple(
+            (0, value, "") if isinstance(value, (int, float)) else (1, 0, str(value))
+            for value in item[0]
+        )
+
+    return {key: mean_std(vals) for key, vals in sorted(buckets.items(), key=order)}
 
 
 # The figure describes the as-submitted split_bodies filter; A1 also times the
@@ -130,8 +139,10 @@ left.set_ylabel("wall clock (s)")
 left.set_title("(a) cost vs component count")
 left.legend(fontsize=4.2, handlelength=1.2, borderpad=0.25, labelspacing=0.2, handletextpad=0.4)
 
+worst_combined = None
 if interaction:
     stats = aggregate(interaction, ["n_tri_nominal"], "seconds")
+    worst_combined = max(value[0] for value in stats.values())
     right.errorbar(
         [key[0] for key in stats],
         [value[0] for value in stats.values()],
@@ -157,8 +168,10 @@ if stats:
         color="C0",
         label="1 component",
     )
-right.axhline(7 * 60, color="black", linestyle="--", linewidth=0.8)
-right.text(6e4, 7 * 60 * 0.85, "~7 min", fontsize=4.5, va="top")
+# The worst combined-load case, as measured, rather than a hand-typed value.
+if worst_combined is not None:
+    right.axhline(worst_combined, color="black", linestyle="--", linewidth=0.8)
+    right.text(6e4, worst_combined * 0.85, f"{worst_combined:.0f} s", fontsize=4.5, va="top")
 right.set_xlabel("input triangles")
 right.set_ylabel("wall clock (s)")
 right.set_title("(b) both axes together")
