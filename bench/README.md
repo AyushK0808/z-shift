@@ -57,14 +57,37 @@ uv run python -m bench.exp_b4_frame_budget_ablation --manifest bench/scenes/dtu.
 ```
 
 On a local CUDA GPU (no notebook), one command sets up the environment,
-fetches the DTU scans by byte range, runs a smoke lane and then B2, B4 and B6
-once per scan, and merges the per-scan CSVs into `results/`. It is resumable:
-finished scans are skipped on a re-run. Environment, data and logs live under
-`~/zshift` on the Linux side.
+fetches the DTU scans by byte range, runs a smoke lane and then B2, B7, B4 and
+B6 once per scan, and merges the per-scan CSVs into `results/`. It is
+resumable: finished scans are skipped on a re-run. Environment, data and logs
+live under `~/zshift` on the Linux side. `--tier-a` also re-runs Tier A and
+regenerates the figures afterwards.
 
 ```bash
 bash scripts/run-review-experiments.sh            # Linux or inside WSL2
+bash scripts/run-review-experiments.sh --tier-a   # and every CPU result too
 ```
+
+What each Tier B experiment runs on DTU:
+
+- B2: 10 views and all 49, spread evenly over the rig (`view_selection`). The
+  first ten views by number are one short arc of the robot arm's path, and
+  score as a narrow-baseline capture.
+- B4: every scan, three seeds a cell. MASt3R's TSDF depth refinement samples
+  with `torch.randn`, so the seed is a real source of variation. V3 takes
+  exactly `budget` frames, evenly spaced; the budget-60 point takes all 49.
+- B6: the same 10 spread views as B2.
+- B7: the first three scans, as in the paper.
+- B9 (`--case-study`): the CO3D teddybear trace behind Table II, rebuilt from
+  CO3D's single-sequence chunk (sequence `187_20215_38541`, the one holding
+  `paper/outputs/teddy.jpeg`; 8 evenly spaced frames, complete pairing, seed
+  42, object-mode refinement, biped rig). Refinement runs with `split_bodies`
+  on the CPU, as submitted, and then with `labels` on the same raw mesh.
+
+A1 and A2 time both component filters (`filter_method`): `split_bodies` on the
+CPU, which is what the submitted paper's Fig. 9 and stage table measured, and
+the batched `labels` path that replaced it. The figure scripts plot the
+`split_bodies` rows.
 
 ```powershell
 # Windows: runs the same script inside WSL2 and keeps the machine awake.
@@ -74,6 +97,53 @@ powershell -ExecutionPolicy Bypass -File scripts\run-review-experiments.ps1
 ```
 
 The two Python steps it wraps are `bench.fetch_dtu` and `bench.run_tier_b`.
+Setup also installs nvcc at torch's CUDA version into `~/zshift/cuda-<ver>`
+(`scripts/install-cuda-toolkit.sh`, no sudo) and compiles MASt3R's RoPE CUDA
+kernel; preflight refuses to start if MASt3R would fall back to the PyTorch
+RoPE.
+
+Refinement's component filter and watertight check run on CUDA through torch
+(`src/spatial_ingestion/refinement/gpu.py`); B6 records the device in
+`refine_device`. The output matches the old `split_bodies` path (tests in
+`tests/test_refinement.py`), which stays available as
+`MeshCleaningConfig(component_filter="split_bodies")`. Nearest-neighbour
+queries (ICP, Chamfer, F-score, colour transfer) stay on a CPU KD-tree using
+every core: on 500k x 500k points it takes 0.08-0.28 s, where an exact GPU
+brute force needs about 2.5e11 distance evaluations per query.
+
+### DTU scoring protocol
+
+DTU scenes are scored the way DTU's own evaluation does it, adapted to a
+method that estimates its own cameras (`dtu_eval.py`):
+
+1. Phase 2 writes `cameras.json`, each image's estimated pose.
+2. Those camera centres are matched to DTU's calibration
+   (`rect_NNN_*` to `pos_NNN.txt`), and a similarity transform fitted to the
+   pairs places the reconstruction in DTU's frame. Its scale, over the 1000x
+   metre-to-mm factor, is `mast3r_scale_ratio`: 1.0 means MASt3R's metric
+   output was exactly right.
+3. Accuracy is scored on points inside the scan's observation mask, and
+   completeness on ground-truth points above the table plane. The
+   `dtu_accuracy` / `dtu_completeness` / `dtu_overall` means ignore distances
+   over 20 mm, as DTU does; `chamfer_l1` is `dtu_overall` here. The
+   `*_outlier_frac` columns give the share beyond 20 mm. `f_score` uses
+   tau = 2 mm.
+4. A rigid ICP refinement is reported in `*_icp` columns, but the headline
+   scores use the camera fit alone. ICP minimises the distances being scored,
+   so on a sparse reconstruction it can find a pose that scores better and is
+   wrong. On the first 4-view smoke run it rotated 14 degrees away from a
+   camera fit with a 2 mm residual. Large `icp_rotation_deg` / `icp_shift_mm`
+   values flag this.
+5. `pose_failure` is true when the camera fit's residual is over 10 mm. Working
+   runs on DTU sit at 3-6 mm; above 10 mm MASt3R's poses have broken, and the
+   row's scores measure that failure rather than the surface. Report those
+   rows as failures, not as low accuracy.
+
+ICP from scratch (the fallback when a manifest has no `dtu_eval` entry) does
+not work on DTU. The reconstruction includes table and backdrop that the
+ground truth lacks, so every seed settles hundreds of millimetres off.
+`bench.fetch_dtu` downloads the calibration and masks (a few MB from
+SampleSet.zip) and adds them to the manifest.
 
 ## Ground rules, and how they are enforced
 
@@ -169,3 +239,4 @@ corresponding experiment's commentary and the Section IV/V text together.
 | B6 | refinement effect on reconstruction quality | yes |
 | B7 | §V-D determinism bound | yes |
 | B8 | §IV-C EXIF intrinsics initialisation | yes |
+| B9 | §V-D CO3D teddybear end-to-end trace (Table II, fig13) | yes |
