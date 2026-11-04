@@ -33,9 +33,17 @@ def _ok(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [row for row in rows if row.get("status", "ok") == "ok"]
 
 
+def _split_bodies(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A1/A2 rows for the as-submitted component filter the paper's figures describe.
+
+    Rows written before `filter_method` existed are all split_bodies.
+    """
+    return [row for row in rows if row.get("filter_method") in (None, "", "split_bodies")]
+
+
 def fig4_refine_scaling(results_dir: Path, figures_dir: Path) -> Path:
     """Fig. 4 - refinement cost on both axes, and on both together."""
-    rows = _ok(read_rows("a1_refine_scaling", results_dir))
+    rows = _split_bodies(_ok(read_rows("a1_refine_scaling", results_dir)))
     triangles = [r for r in rows if r["ladder"] == "triangles"]
     components = [r for r in rows if r["ladder"] == "components"]
     interaction = [r for r in rows if r["ladder"] == "interaction"]
@@ -408,7 +416,7 @@ def fig_a8_rigging(results_dir: Path, figures_dir: Path) -> Path:
 
 def fig_a2_stage_profile(results_dir: Path, figures_dir: Path) -> Path:
     """Stacked per-stage share of refinement time."""
-    rows = read_rows("a2_stage_profile", results_dir)
+    rows = _split_bodies(read_rows("a2_stage_profile", results_dir))
     configurations = list(dict.fromkeys(r["configuration"] for r in rows))
     stages = list(dict.fromkeys(r["stage"] for r in rows))
 
