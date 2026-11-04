@@ -161,6 +161,8 @@ def run(
                                 with_scale=with_scale,
                                 seed=seed,
                                 reconstruction_scale=reconstruction_scale_for(scene.units),
+                                reference=scene.dtu_reference(),
+                                output_dir=run_info["output_dir"],
                             )
                         )
                 except (MemoryError, RuntimeError) as exc:
