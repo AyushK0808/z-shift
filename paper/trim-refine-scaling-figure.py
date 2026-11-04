@@ -75,7 +75,13 @@ def aggregate(rows, group_by, value_key):
     return {key: mean_std(vals) for key, vals in sorted(buckets.items(), key=repr)}
 
 
-rows = [r for r in read_rows(CSV_PATH) if r.get("status", "ok") == "ok"]
+# The figure describes the as-submitted split_bodies filter; A1 also times the
+# batched GPU labelling that replaced it (filter_method == "labels").
+rows = [
+    r
+    for r in read_rows(CSV_PATH)
+    if r.get("status", "ok") == "ok" and r.get("filter_method") in (None, "", "split_bodies")
+]
 triangles = [r for r in rows if r["ladder"] == "triangles"]
 components = [r for r in rows if r["ladder"] == "components"]
 interaction = [r for r in rows if r["ladder"] == "interaction"]
