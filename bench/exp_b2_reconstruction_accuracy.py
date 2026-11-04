@@ -11,6 +11,14 @@ Not run on the authoring machine (CPU-only). Point it at a scene manifest:
     uv run python -m bench.exp_b2_reconstruction_accuracy \\
         --manifest bench/scenes/dtu.json --n-images 10 49 --seed 0
 
+Pairing is complete while its pairs fit `--max-pairs` and a non-cyclic
+sliding window above that (`tier_b_common.bounded_pairing`): 10 views is
+complete (90 pairs), 49 is swin-9-noncyclic (792). The 49-view complete graph
+is 2352 pairs and needs ~18 GB in MASt3R's scene optimizer; on an 8 GB card it
+ran out of memory on four of five scans. Each row records the graph it used
+(`pairing_strategy`, `out_n_pairs`). `--pairing complete` forces the full
+graph on a GPU that holds it.
+
 Manifest format (paths relative to the manifest file):
 
     {"tau": 2.0, "units": "mm",
@@ -28,7 +36,9 @@ from pathlib import Path
 from bench.csvio import ResultWriter
 from bench.harness import experiment_parser, finish
 from bench.tier_b_common import (
+    DEFAULT_MAX_PAIRS,
     SceneSet,
+    bounded_pairing,
     build_job,
     iter_scenes,
     load_gt_points,
@@ -82,13 +92,13 @@ def run(
     with_scale: bool = False,
     output_root: Path | None = None,
     discard_first: bool = True,
+    pairing: str = "auto",
+    max_pairs: int = DEFAULT_MAX_PAIRS,
 ) -> ResultWriter:
     writer = ResultWriter(EXP_ID, results_dir)
     scenes = iter_scenes(SceneSet.from_manifest(manifest), scene_names)
     root = output_root or (Path("data") / "bench" / EXP_ID)
-    params = Mast3rRunParams(
-        image_size=image_size, tsdf_thresh=tsdf_thresh, seed=seed, device=require_cuda_device()
-    )
+    device = require_cuda_device()
 
     for index, scene in enumerate(scenes):
         if scene.gt_path is None:
@@ -98,6 +108,17 @@ def run(
 
         for count_index, n_images in enumerate(view_counts):
             image_paths = scene.image_paths(n_images, spread=True)
+            params = Mast3rRunParams(
+                image_size=image_size,
+                tsdf_thresh=tsdf_thresh,
+                seed=seed,
+                device=device,
+                pairing_strategy=(
+                    bounded_pairing(len(image_paths), max_pairs, cyclic=False)
+                    if pairing == "auto"
+                    else pairing
+                ),
+            )
             base_row = {
                 "scene": scene.name,
                 "units": scene.units,
@@ -193,6 +214,13 @@ def main(argv: list[str] | None = None) -> int:
         "checkpoint is the metric variant and scale is part of what is tested",
     )
     parser.add_argument("--output-root", type=Path, default=None)
+    parser.add_argument(
+        "--pairing",
+        default="auto",
+        help="MASt3R scene graph for every view count; auto = complete while it fits "
+        "--max-pairs, else the widest non-cyclic swin that does",
+    )
+    parser.add_argument("--max-pairs", type=int, default=DEFAULT_MAX_PAIRS)
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
 
@@ -206,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
         tsdf_thresh=args.tsdf_thresh,
         with_scale=args.with_scale,
         output_root=args.output_root,
+        pairing=args.pairing,
+        max_pairs=args.max_pairs,
     )
     finish(writer)
     for row in writer.rows:
