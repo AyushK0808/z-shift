@@ -196,18 +196,25 @@ def run(
     with_scale: bool = False,
     output_root: Path | None = None,
     sweep_budgets: bool = True,
+    pairing: str = "swin",
+    variants: tuple[str, ...] = VARIANTS,
 ) -> ResultWriter:
     writer = ResultWriter(EXP_ID, results_dir)
     scenes = iter_scenes(SceneSet.from_manifest(manifest), scene_names)
     root = output_root or (Path("data") / "bench" / EXP_ID)
     device = require_cuda_device()
 
+    # "swin" is what Phase 2 gives video (reconstruction.jobs): a cyclic
+    # window of 3. Any other graph is a sensitivity run and is kept apart on disk.
+    if pairing != "swin":
+        root = root / pairing
+
     def params_for(seed: int) -> Mast3rRunParams:
         return Mast3rRunParams(
             image_size=image_size,
             tsdf_thresh=tsdf_thresh,
             seed=seed,
-            pairing_strategy="swin",
+            pairing_strategy=pairing,
             device=device,
         )
 
@@ -237,7 +244,7 @@ def run(
         for seed in seeds:
             params = params_for(seed)
             seed_root = root / f"seed{seed}"
-            for variant in VARIANTS:
+            for variant in variants:
                 result = _run_variant(
                     scene.name,
                     variant,
@@ -264,7 +271,7 @@ def run(
                     )
 
             # The quality-vs-budget curve only needs one scene to be informative.
-            if not sweep_here:
+            if not sweep_here or "V3_uniform" not in variants:
                 continue
             for budget in BUDGET_SWEEP:
                 if budget == DEFAULT_BUDGET:
@@ -303,6 +310,13 @@ def main(argv: list[str] | None = None) -> int:
         help=f"seeds to repeat every cell under (default: --seed and the next {N_SEEDS - 1})",
     )
     parser.add_argument("--output-root", type=Path, default=None)
+    parser.add_argument(
+        "--pairing",
+        default="swin",
+        help="MASt3R scene graph; the default is Phase 2's own for video (swin, cyclic, "
+        "window 3). Others (swin-3-noncyclic, swin-6, ...) are sensitivity runs",
+    )
+    parser.add_argument("--variants", nargs="+", choices=VARIANTS, default=list(VARIANTS))
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
 
@@ -316,6 +330,8 @@ def main(argv: list[str] | None = None) -> int:
         with_scale=args.with_scale,
         output_root=args.output_root,
         sweep_budgets=not args.no_budget_sweep,
+        pairing=args.pairing,
+        variants=tuple(args.variants),
     )
     finish(writer)
     for row in writer.rows:
