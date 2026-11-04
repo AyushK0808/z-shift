@@ -58,13 +58,24 @@ class Experiment:
 EXPERIMENTS: dict[str, Experiment] = {
     exp.key: exp
     for exp in (
-        # Ground-truth accuracy of MASt3R-as-integrated (reviewer 2, item 1).
+        # Ground-truth accuracy of MASt3R-as-integrated (reviewer 2, item 1), at
+        # 10 spread views and all 49; the 49-view complete graph is 2352 pairs.
         Experiment(
             "b2",
             "b2_reconstruction_accuracy",
             "bench.exp_b2_reconstruction_accuracy",
+            timeout_min=300,
+            smoke_args=("--n-images", "4"),
+        ),
+        # Repeat-run determinism (Section V-B's table), re-measured on this
+        # machine: three scenes, deterministic kernels on and off, two runs each.
+        Experiment(
+            "b7",
+            "b7_determinism",
+            "bench.exp_b7_determinism",
             timeout_min=120,
             smoke_args=("--n-images", "4"),
+            scene_limit=3,
         ),
         # Raw vs refined against GT: whether the cells refinement drops were
         # off-surface (reviewer 2, item 3). Four CPU refinements per scene, and
@@ -79,13 +90,14 @@ EXPERIMENTS: dict[str, Experiment] = {
         ),
         # Motion-rank vs capture order vs uniform at a 40-frame budget, plus a
         # budget sweep on the first scene (reviewer 2, item 1: retention order).
+        # Three seeds a cell, on every scene: the variant ranking flipped
+        # between scenes on a single seed and three scenes.
         Experiment(
             "b4",
             "b4_frame_budget_ablation",
             "bench.exp_b4_frame_budget_ablation",
             timeout_min=720,
-            smoke_args=("--no-budget-sweep",),
-            scene_limit=3,
+            smoke_args=("--no-budget-sweep", "--seeds", "0"),
         ),
         # complete vs swin pairing; optional, the 30-image complete cell alone
         # is 870 pairs.
@@ -99,9 +111,9 @@ EXPERIMENTS: dict[str, Experiment] = {
         ),
     )
 }
-# B6 last: its CPU refinement is the long, uncertain part, so the GPU results
-# land first.
-DEFAULT_EXPERIMENTS = ("b2", "b4", "b6")
+# Every Tier B experiment the paper reports. B6 last: refinement is the part
+# whose memory use is least predictable, so the other results land first.
+DEFAULT_EXPERIMENTS = ("b2", "b7", "b4", "b6")
 
 # The smoke scene: the first few frames of the first scene, copied so that B4,
 # which takes a scene's frames whole, also gets a small input.
@@ -182,6 +194,19 @@ def preflight(manifest_path: Path, work_dir: Path) -> dict[str, Any]:
             f"MASt3R is not importable ({exc}). Run scripts/setup-mast3r.sh, and re-run it "
             "after every `uv sync`, which removes the editable mast3r/dust3r installs."
         )
+    else:
+        # croco falls back to a pure-PyTorch RoPE, with only a printed warning,
+        # when its CUDA kernel was never compiled.
+        import dust3r.utils.path_to_croco  # noqa: F401  (puts croco's `models` on sys.path)
+        from models.pos_embed import RoPE2D
+
+        report["rope2d"] = RoPE2D.__name__
+        if report["rope2d"] != "cuRoPE2D":
+            problems.append(
+                "MASt3R's RoPE2D CUDA kernel is not compiled, so it would use the slow "
+                "PyTorch fallback. Re-run scripts/run-review-experiments.sh without "
+                "--skip-setup (it installs nvcc and builds the kernel)."
+            )
 
     # Phase 2 export and Phase 3 refinement pull in pyvista/VTK, which need
     # system GL libraries on Linux; fail here rather than an hour into B6.
@@ -207,6 +232,16 @@ def preflight(manifest_path: Path, work_dir: Path) -> dict[str, Any]:
             report.setdefault("n_images", {})[scene.name] = len(scene.image_paths())
         except FileNotFoundError as exc:
             problems.append(f"{scene.name}: {exc}")
+        report.setdefault("protocol", {})[scene.name] = (
+            "dtu_obsmask" if scene.dtu_reference() is not None else "icp_only"
+        )
+        if scene.dtu_reference() is None:
+            logger.warning(
+                "%s has no DTU calibration/ObsMask in the manifest, so it is scored by "
+                "ICP from scratch, which fails on a reconstruction with background or a "
+                "scale error. Re-run bench.fetch_dtu to add them.",
+                scene.name,
+            )
 
     work_dir.mkdir(parents=True, exist_ok=True)
     report["disk_free_gb"] = round(shutil.disk_usage(work_dir).free / 1024**3, 1)
@@ -238,18 +273,19 @@ def build_smoke_manifest(manifest_path: Path, work_dir: Path) -> Path:
         if not target.exists():
             shutil.copy2(path, target)
 
-    manifest = {
-        "tau": scene.tau,
-        "units": scene.units,
-        "scenes": [
-            {
-                "name": f"smoke_{scene.name}",
-                "image_dir": "images",
-                "gt_path": str(scene.gt_path),
-                "notes": f"first {SMOKE_FRAMES} frames of {scene.name}; smoke test only",
-            }
-        ],
+    entry: dict[str, Any] = {
+        "name": f"smoke_{scene.name}",
+        "image_dir": "images",
+        "gt_path": str(scene.gt_path),
+        "notes": f"first {SMOKE_FRAMES} frames of {scene.name}; smoke test only",
     }
+    if scene.dtu_reference() is not None:
+        entry["dtu_eval"] = {
+            "calibration_dir": str(scene.calibration_dir),
+            "obs_mask": str(scene.obs_mask_path),
+            "plane": str(scene.plane_path),
+        }
+    manifest = {"tau": scene.tau, "units": scene.units, "scenes": [entry]}
     path = smoke_dir / "manifest.json"
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return path
@@ -435,8 +471,12 @@ def _fmt(value: Any, digits: int = 3) -> str:
         return str(value or "-")
 
 
+def _flag(row: dict[str, Any]) -> str:
+    return "  POSE FAILURE" if str(row.get("pose_failure")) == "True" else ""
+
+
 def print_headlines(results_dir: Path) -> None:
-    from bench.csvio import read_rows
+    from bench.csvio import mean_std, read_rows
 
     def rows_of(exp_id: str) -> list[dict[str, Any]]:
         path = results_dir / f"{exp_id}.csv"
@@ -444,20 +484,35 @@ def print_headlines(results_dir: Path) -> None:
 
     b2 = rows_of("b2_reconstruction_accuracy")
     if b2:
-        print("\nB2 reconstruction accuracy (tau in GT units)")
+        print("\nB2 reconstruction accuracy (tau in GT units; spread views)")
         for row in b2:
+            if row.get("status", "ok") != "ok":
+                print(f"  {row['scene']:<10} views={row.get('n_images')!s:<3} {row['status']}")
+                continue
             print(
-                f"  {row['scene']:<10} F={_fmt(row.get('f_score'))} P={_fmt(row.get('precision'))} "
-                f"R={_fmt(row.get('recall'))} chamfer={_fmt(row.get('chamfer_l1'), 3)} "
-                f"align_rmse={_fmt(row.get('align_rmse'), 3)} tau={row.get('tau')}"
+                f"  {row['scene']:<10} views={row.get('n_images')!s:<3} "
+                f"F={_fmt(row.get('f_score'))} P={_fmt(row.get('precision'))} "
+                f"R={_fmt(row.get('recall'))} dtu_overall={_fmt(row.get('dtu_overall'), 3)} "
+                f"acc_out={_fmt(row.get('accuracy_outlier_frac'), 2)} "
+                f"cam_rmse={_fmt(row.get('camera_align_rmse_mm'), 2)} "
+                f"scale_ratio={_fmt(row.get('mast3r_scale_ratio'), 3)}{_flag(row)}"
+            )
+    b7 = rows_of("b7_determinism")
+    if b7:
+        print("\nB7 repeat-run determinism")
+        for row in b7:
+            print(
+                f"  {row['scene']:<10} det={row.get('deterministic_requested')!s:<6} "
+                f"chamfer={row.get('chamfer_between_runs')} "
+                f"h95={row.get('hausdorff95_between_runs')} "
+                f"byte_identical={row.get('glb_byte_identical')} "
+                f"wall_s={_fmt(row.get('wall_seconds_run1'), 1)}"
             )
     b6 = rows_of("b6_refinement_effect")
     if b6:
-        print(
-            "\nB6 raw vs refined (precision up with recall held = dropped cells were off-surface)"
-        )
+        print("\nB6 raw vs refined (mesh-sampled points; in_mask=0: the object was dropped)")
         for row in b6:
-            if row.get("status") not in (None, "ok"):
+            if row.get("status") not in (None, "", "ok"):
                 continue
             label = (
                 row["stage"]
@@ -467,23 +522,24 @@ def print_headlines(results_dir: Path) -> None:
             print(
                 f"  {row['scene']:<10} {label:<12} F={_fmt(row.get('f_score'))} "
                 f"P={_fmt(row.get('precision'))} R={_fmt(row.get('recall'))} "
-                f"faces={row.get('n_faces')} nc={_fmt(row.get('normal_consistency'))}"
+                f"faces={row.get('n_faces')} in_mask={row.get('n_points_in_mask')}{_flag(row)}"
             )
     b4 = rows_of("b4_frame_budget_ablation")
     if b4:
-        print("\nB4 frame budget (V1 motion order, V2 re-sorted, V3 uniform)")
+        print("\nB4 frame budget, mean +- sd over seeds (V1 motion, V2 re-sorted, V3 uniform)")
+        groups: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
         for row in b4:
+            groups.setdefault(
+                (row["part"], row["scene"], row["variant"], row["budget"]), []
+            ).append(row)
+        for (part, scene, variant, budget), rows in groups.items():
+            f_mean, f_sd, n = mean_std([float(row["f_score"]) for row in rows])
+            failures = sum(str(row.get("pose_failure")) == "True" for row in rows)
             print(
-                f"  {row['part']:<17} {row['scene']:<10} {row['variant']:<20} "
-                f"budget={row['budget']:<3} F={_fmt(row.get('f_score'))} "
-                f"chamfer={_fmt(row.get('chamfer_l1'))} "
-                f"align_s={_fmt(row.get('stage_sparse_alignment_s'), 1)}"
+                f"  {part:<17} {scene:<10} {variant:<20} budget={budget!s:<3} "
+                f"n_frames={rows[0].get('n_selected')!s:<3} F={f_mean:.3f}+-{f_sd:.3f} "
+                f"seeds={n} pose_failures={failures}"
             )
-    if any(_fmt(row.get("f_score")) == "0.000" for row in b2 + b4):
-        print(
-            "\nAn F-score of 0 with a large align_rmse usually means a scale mismatch between "
-            "MASt3R's metric output and the GT units; re-run with --with-scale and compare."
-        )
 
 
 # --- main -----------------------------------------------------------------
