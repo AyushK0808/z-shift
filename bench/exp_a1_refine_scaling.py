@@ -30,6 +30,12 @@ component and 100k triangles in 1000 components are each about 10 s, while
 
 Two mesh sources, so a result is not a property of one shape: a closed
 icosphere and a displaced grid standing in for a fused per-view pointmap.
+
+Every cell runs under two component filters (`filter_method`):
+`split_bodies` on the CPU is the refinement the submitted paper timed, and
+`labels` is the batched connected-component labelling that replaced it, on
+the GPU when one is present (`refine_device`). Both produce the same mesh
+(tests/test_refinement.py); only the cost differs.
 """
 
 from __future__ import annotations
@@ -46,7 +52,8 @@ from bench.harness import experiment_parser, finish
 from bench.meshes import SOURCES, fragmented_mesh, ladder_mesh, to_pyvista
 from spatial_ingestion.instrumentation import peak_rss_mb
 from spatial_ingestion.refinement import MeshCleaningConfig, clean_mesh
-from spatial_ingestion.refinement.core import Mode, is_sheet_like
+from spatial_ingestion.refinement.core import ComponentFilter, Mode, is_sheet_like
+from spatial_ingestion.refinement.gpu import Device
 
 EXP_ID = "a1_refine_scaling"
 
@@ -66,6 +73,13 @@ INTERACTION_CELLS: tuple[tuple[int, int], ...] = (
 INTERACTION_SMOOTHING = 0
 INTERACTION_WATERTIGHT = False
 
+# (component filter, device). The first is the as-submitted path the paper's
+# figure and stage table describe; the second is its batched replacement.
+FILTER_BACKENDS: tuple[tuple[ComponentFilter, Device], ...] = (
+    ("split_bodies", "cpu"),
+    ("labels", "auto"),
+)
+
 SMOOTHING_ITERS: tuple[int, ...] = (0, 15)
 WATERTIGHT: tuple[bool, ...] = (False, True)
 REPEATS = 3
@@ -84,10 +98,14 @@ def _measure(
     smoothing: int,
     watertight: bool,
     mode: Mode = "object",
+    filter_method: ComponentFilter = "split_bodies",
+    device: Device = "cpu",
 ) -> dict[str, Any]:
     """One timed `clean_mesh` call. Cleaning is timed; mesh building is not."""
     config = MeshCleaningConfig(
         mode=mode,
+        component_filter=filter_method,
+        device=device,
         smoothing_iters=smoothing,
         verify_watertight=watertight,
         # Room mode with min_cell_count=0 keeps every fragment, same as object
@@ -114,6 +132,7 @@ def _measure(
         "out_cells": result["output_cell_count"],
         "cell_ratio": round(result["output_cell_count"] / max(result["input_cell_count"], 1), 4),
         "is_watertight": result["is_watertight"],
+        "refine_device": result["compute_device"],
         "total_stage_seconds": result["total_stage_seconds"],
         "status": "ok",
         **stage_seconds,
@@ -150,131 +169,146 @@ def run(
     # nominal source rather than one per shape.
     plans.append(("components", "fragmented_icosphere", component_rungs))
 
-    for ladder, source, rungs in plans:
-        for smoothing in smoothings:
-            for watertight in watertights:
-                over_budget = False
-                for rung in rungs:
-                    common = {
-                        "ladder": ladder,
-                        "source": source,
-                        "rung": rung,
-                        "n_tri_nominal": (
-                            rung if ladder == "triangles" else COMPONENT_LADDER_TRIANGLES
-                        ),
-                        "n_components_nominal": 1 if ladder == "triangles" else rung,
-                        "smoothing_iters": smoothing,
-                        "verify_watertight": watertight,
-                        "seed": seed,
-                    }
-                    if over_budget:
+    for filter_method, device in FILTER_BACKENDS:
+        for ladder, source, rungs in plans:
+            for smoothing in smoothings:
+                for watertight in watertights:
+                    over_budget = False
+                    for rung in rungs:
+                        common = {
+                            "ladder": ladder,
+                            "source": source,
+                            "rung": rung,
+                            "n_tri_nominal": (
+                                rung if ladder == "triangles" else COMPONENT_LADDER_TRIANGLES
+                            ),
+                            "n_components_nominal": 1 if ladder == "triangles" else rung,
+                            "smoothing_iters": smoothing,
+                            "verify_watertight": watertight,
+                            "filter_method": filter_method,
+                            "seed": seed,
+                        }
+                        if over_budget:
+                            for repeat in range(n_repeats):
+                                writer.add(
+                                    **common,
+                                    repeat=repeat,
+                                    status="skipped_budget_exceeded",
+                                    cell_budget_s=cell_budget_s,
+                                )
+                            continue
+
+                        mesh = _build(ladder, source, rung, seed)
+                        sheet_like = bool(is_sheet_like(mesh))
+                        ladder_mode = "room" if ladder == "components" else "object"
                         for repeat in range(n_repeats):
+                            try:
+                                measured = _measure(
+                                    mesh,
+                                    smoothing=smoothing,
+                                    watertight=watertight,
+                                    mode=ladder_mode,
+                                    filter_method=filter_method,
+                                    device=device,
+                                )
+                            except MemoryError as exc:
+                                measured = {"status": f"MemoryError: {exc}"}
                             writer.add(
                                 **common,
                                 repeat=repeat,
-                                status="skipped_budget_exceeded",
+                                input_is_sheet_like=sheet_like,
                                 cell_budget_s=cell_budget_s,
+                                **measured,
                             )
-                        continue
-
-                    mesh = _build(ladder, source, rung, seed)
-                    sheet_like = bool(is_sheet_like(mesh))
-                    ladder_mode = "room" if ladder == "components" else "object"
-                    for repeat in range(n_repeats):
-                        try:
-                            measured = _measure(
-                                mesh, smoothing=smoothing, watertight=watertight, mode=ladder_mode
+                            logger.info(
+                                "%s %s %s rung=%s smooth=%d wt=%s rep=%d -> %s s",
+                                filter_method,
+                                ladder,
+                                source,
+                                rung,
+                                smoothing,
+                                watertight,
+                                repeat,
+                                measured.get("seconds"),
                             )
-                        except MemoryError as exc:
-                            measured = {"status": f"MemoryError: {exc}"}
-                        writer.add(
-                            **common,
-                            repeat=repeat,
-                            input_is_sheet_like=sheet_like,
-                            cell_budget_s=cell_budget_s,
-                            **measured,
-                        )
-                        logger.info(
-                            "%s %s rung=%s smooth=%d wt=%s rep=%d -> %s s",
-                            ladder,
-                            source,
-                            rung,
-                            smoothing,
-                            watertight,
-                            repeat,
-                            measured.get("seconds"),
-                        )
-                        if float(measured.get("seconds") or 0.0) > cell_budget_s:
-                            over_budget = True
+                            if float(measured.get("seconds") or 0.0) > cell_budget_s:
+                                over_budget = True
 
-    interaction_cells = INTERACTION_CELLS[:1] if quick else INTERACTION_CELLS
-    for n_tri, n_components in interaction_cells:
-        mesh = to_pyvista(fragmented_mesh(n_tri, n_components, seed=seed))
-        for repeat in range(n_repeats):
-            try:
-                measured = _measure(
-                    mesh,
-                    smoothing=INTERACTION_SMOOTHING,
-                    watertight=INTERACTION_WATERTIGHT,
-                    mode="room",
+        interaction_cells = INTERACTION_CELLS[:1] if quick else INTERACTION_CELLS
+        for n_tri, n_components in interaction_cells:
+            mesh = to_pyvista(fragmented_mesh(n_tri, n_components, seed=seed))
+            for repeat in range(n_repeats):
+                try:
+                    measured = _measure(
+                        mesh,
+                        smoothing=INTERACTION_SMOOTHING,
+                        watertight=INTERACTION_WATERTIGHT,
+                        mode="room",
+                        filter_method=filter_method,
+                        device=device,
+                    )
+                except MemoryError as exc:
+                    measured = {"status": f"MemoryError: {exc}"}
+                writer.add(
+                    ladder="interaction",
+                    source="fragmented_icosphere",
+                    rung=n_components,
+                    n_tri_nominal=n_tri,
+                    n_components_nominal=n_components,
+                    smoothing_iters=INTERACTION_SMOOTHING,
+                    verify_watertight=INTERACTION_WATERTIGHT,
+                    filter_method=filter_method,
+                    seed=seed,
+                    repeat=repeat,
+                    cell_budget_s=cell_budget_s,
+                    **measured,
                 )
-            except MemoryError as exc:
-                measured = {"status": f"MemoryError: {exc}"}
-            writer.add(
-                ladder="interaction",
-                source="fragmented_icosphere",
-                rung=n_components,
-                n_tri_nominal=n_tri,
-                n_components_nominal=n_components,
-                smoothing_iters=INTERACTION_SMOOTHING,
-                verify_watertight=INTERACTION_WATERTIGHT,
-                seed=seed,
-                repeat=repeat,
-                cell_budget_s=cell_budget_s,
-                **measured,
-            )
-            logger.info(
-                "interaction n_tri=%d components=%d rep=%d -> %s s",
-                n_tri,
-                n_components,
-                repeat,
-                measured.get("seconds"),
-            )
+                logger.info(
+                    "%s interaction n_tri=%d components=%d rep=%d -> %s s",
+                    filter_method,
+                    n_tri,
+                    n_components,
+                    repeat,
+                    measured.get("seconds"),
+                )
     return writer
 
 
 def _summarise(writer: ResultWriter) -> None:
     print(
         f"  {'ladder':<11}{'source':<22}{'rung':>9}{'sm':>4}"
-        f"{'wt':>4}{'mean_s':>9}{'sd':>7}{'MB':>8}"
+        f"{'wt':>4}{'filter':>14}{'mean_s':>9}{'sd':>7}{'MB':>8}"
     )
     seen: list[tuple[Any, ...]] = []
-    for row in writer.rows:
-        key = (
+
+    def key_of(row: dict[str, Any]) -> tuple[Any, ...]:
+        return (
             row["ladder"],
             row["source"],
             row["rung"],
             row["smoothing_iters"],
             row["verify_watertight"],
+            row["filter_method"],
         )
+
+    for row in writer.rows:
+        key = key_of(row)
         if key in seen:
             continue
         seen.append(key)
-        group = [
-            r
-            for r in writer.rows
-            if (r["ladder"], r["source"], r["rung"], r["smoothing_iters"], r["verify_watertight"])
-            == key
-        ]
+        group = [r for r in writer.rows if key_of(r) == key]
         values = [r["seconds"] for r in group if r.get("status") == "ok"]
         if not values:
-            print(f"  {key[0]:<11}{key[1]:<22}{key[2]:>9}{key[3]:>4}{str(key[4]):>4}{'skipped':>9}")
+            print(
+                f"  {key[0]:<11}{key[1]:<22}{key[2]:>9}{key[3]:>4}{str(key[4]):>4}"
+                f"{key[5]:>14}{'skipped':>9}"
+            )
             continue
         mean, std, _ = mean_std(values)
         peak = max(r.get("peak_rss_mb") or 0 for r in group)
         print(
             f"  {key[0]:<11}{key[1]:<22}{key[2]:>9}{key[3]:>4}{str(key[4]):>4}"
-            f"{mean:>9.2f}{std:>7.2f}{peak:>8.0f}"
+            f"{key[5]:>14}{mean:>9.2f}{std:>7.2f}{peak:>8.0f}"
         )
 
 
