@@ -22,7 +22,7 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -35,6 +35,9 @@ from spatial_ingestion.reconstruction.models import (
     ReconstructionJob,
     ReconstructionMode,
 )
+
+if TYPE_CHECKING:
+    from bench.dtu_eval import DtuReference
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +123,30 @@ class Scene:
     # whole feeds MASt3R seven near-duplicate copies of each pose, which
     # inflates the pair count and tells the reconstruction nothing new.
     image_glob: str | None = None
+    # DTU's calibration and evaluation masks. When present, scoring follows
+    # DTU's protocol (bench/dtu_eval.py) instead of ICP from scratch.
+    calibration_dir: Path | None = None
+    obs_mask_path: Path | None = None
+    plane_path: Path | None = None
 
-    def image_paths(self, limit: int | None = None) -> list[Path]:
+    def dtu_reference(self) -> DtuReference | None:
+        from bench.dtu_eval import DtuReference
+
+        fields = (self.gt_path, self.calibration_dir, self.obs_mask_path, self.plane_path)
+        if any(value is None for value in fields):
+            return None
+        cached = _DTU_REFERENCES.get(fields)
+        if cached is None:
+            cached = _DTU_REFERENCES[fields] = DtuReference(*fields)  # type: ignore[arg-type]
+        return cached
+
+    def image_paths(self, limit: int | None = None, *, spread: bool = False) -> list[Path]:
+        """The capture in order; `limit` takes the first N, or N evenly spaced with `spread`.
+
+        DTU numbers its views along the robot arm's path, so the first ten are
+        one short arc of the rig. `spread` picks views across the whole rig,
+        which is what a reconstruction-accuracy number should be measured on.
+        """
         candidates = (
             self.image_dir.glob(self.image_glob) if self.image_glob else self.image_dir.iterdir()
         )
@@ -129,7 +154,18 @@ class Scene:
         if not paths:
             detail = f" matching {self.image_glob}" if self.image_glob else ""
             raise FileNotFoundError(f"no images under {self.image_dir}{detail}")
-        return paths[:limit] if limit else paths
+        if not limit or limit >= len(paths):
+            return paths
+        if spread:
+            return [paths[index] for index in evenly_spaced_indices(len(paths), limit)]
+        return paths[:limit]
+
+
+def evenly_spaced_indices(n_items: int, count: int) -> list[int]:
+    """`count` distinct indices into `n_items`, first and last included."""
+    if count >= n_items:
+        return list(range(n_items))
+    return np.linspace(0, n_items - 1, count).round().astype(int).tolist()
 
 
 @dataclass
@@ -147,20 +183,33 @@ class SceneSet:
     def from_manifest(cls, path: Path | str) -> SceneSet:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
         root = Path(path).resolve().parent
+
+        def resolve(value: str | None) -> Path | None:
+            return (root / value).resolve() if value else None
+
         scenes = []
         for entry in data["scenes"]:
+            dtu = entry.get("dtu_eval", {})
             scenes.append(
                 Scene(
                     name=entry["name"],
                     image_dir=(root / entry["image_dir"]).resolve(),
-                    gt_path=((root / entry["gt_path"]).resolve() if entry.get("gt_path") else None),
+                    gt_path=resolve(entry.get("gt_path")),
                     tau=float(entry.get("tau", data.get("tau", DTU_TAU_MM))),
                     units=entry.get("units", data.get("units", "mm")),
                     notes=entry.get("notes", ""),
                     image_glob=entry.get("image_glob") or data.get("image_glob"),
+                    calibration_dir=resolve(dtu.get("calibration_dir")),
+                    obs_mask_path=resolve(dtu.get("obs_mask")),
+                    plane_path=resolve(dtu.get("plane")),
                 )
             )
         return cls(scenes=scenes)
+
+
+# One DtuReference per scan per process, so its full ground-truth cloud and
+# KD-tree are built once and shared by every scoring call on that scan.
+_DTU_REFERENCES: dict[tuple[Path | None, ...], DtuReference] = {}
 
 
 # B2, B3, B5 and B6 each run as their own subprocess (section 13 of the Tier B
@@ -354,18 +403,38 @@ def score_against_gt(
     with_scale: bool = False,
     seed: int = 0,
     reconstruction_scale: float = 1.0,
+    reference: DtuReference | None = None,
+    output_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Align to GT, then report accuracy/completeness/F-score and the residual.
 
     The alignment residual is reported alongside the metrics, not instead of
     them: a good Chamfer after a badly-fitted alignment means nothing.
 
-    `reconstruction_scale` converts MASt3R's native metric (metre) output into
-    the ground truth's units before alignment -- see `reconstruction_scale_for`.
-    `with_scale`'s ICP fit cannot be trusted to recover this on its own: with
-    unknown correspondences it can "solve" a real scale mismatch by shrinking
-    to a point instead of finding the true ratio.
+    With a DTU `reference` (`Scene.dtu_reference()`) and the run's
+    `output_dir`, scoring follows DTU's protocol: placed by the estimated
+    cameras, masked, then refined by ICP (bench/dtu_eval.py). `gt_points`,
+    `with_scale` and `reconstruction_scale` are then unused for the fit, since
+    the camera fit measures the scale; `reconstruction_scale` is kept on the
+    row so `mast3r_scale_ratio` reads 1.0 for a perfectly metric output.
+
+    Otherwise, `reconstruction_scale` converts MASt3R's native metric (metre)
+    output into the ground truth's units before alignment -- see
+    `reconstruction_scale_for`. `with_scale`'s ICP fit cannot be trusted to
+    recover this on its own: with unknown correspondences it can "solve" a
+    real scale mismatch by shrinking to a point instead of finding the true
+    ratio.
     """
+    if reference is not None:
+        if output_dir is None:
+            raise ValueError("DTU scoring needs the run's output_dir for its cameras.json")
+        from bench.dtu_eval import score_dtu
+
+        scores = score_dtu(reconstruction_points, reference, output_dir, tau=tau, seed=seed)
+        scores["reconstruction_scale"] = reconstruction_scale
+        scores["mast3r_scale_ratio"] = round(scores["camera_align_scale"] / reconstruction_scale, 6)
+        return scores
+
     reconstruction_points = np.asarray(reconstruction_points, dtype=float) * reconstruction_scale
     aligned, alignment = align_to_reference(reconstruction_points, gt_points, with_scale=with_scale)
     precision, recall, f_score = precision_recall_f(aligned, gt_points, tau)
