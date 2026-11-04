@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -87,11 +88,45 @@ def run_sparse_alignment(
                 if K is not None:
                     init[str(img_path)] = {"intrinsics": K}
 
-    return sparse_global_alignment(
-        str_paths,
-        pairs,
-        cache_path=cache_path,
-        model=model,
-        device=device,
-        init=init,
-    )
+    with _model_offloaded_after_forward(model, device):
+        return sparse_global_alignment(
+            str_paths,
+            pairs,
+            cache_path=cache_path,
+            model=model,
+            device=device,
+            init=init,
+        )
+
+
+@contextmanager
+def _model_offloaded_after_forward(model: Any, device: str) -> Iterator[None]:
+    """Move the network off the GPU once every pair has been through it.
+
+    sparse_global_alignment runs the network over all pairs first, caching the
+    outputs to disk, and never touches it again. Its scene optimizer holds the
+    correspondences of every pair on the GPU (about 6 MB a pair at 512 px)
+    while the ~2.7 GB of ViT-L weights sit there unused. Freeing them is the
+    difference between fitting ~450 pairs on an 8 GB card and ~900.
+    """
+    if not str(device).startswith("cuda") or not hasattr(model, "to"):
+        yield
+        return
+    import torch
+    from mast3r.cloud_opt import sparse_ga
+
+    original = sparse_ga.forward_mast3r
+
+    def forward_then_offload(*args: Any, **kwargs: Any) -> Any:
+        result = original(*args, **kwargs)
+        model.to("cpu")
+        torch.cuda.empty_cache()
+        return result
+
+    sparse_ga.forward_mast3r = forward_then_offload
+    try:
+        yield
+    finally:
+        sparse_ga.forward_mast3r = original
+        # load_model caches this instance for the next run.
+        model.to(device)
