@@ -9,7 +9,9 @@ reference cloud (88-140 MB).
 
     uv run python -m bench.fetch_dtu --scans 24 37 40 --dest data/dtu
 
-Writes <dest>/Rectified/scanNN/*.png, <dest>/Points/stl/stlNNN_total.ply and
+Writes <dest>/Rectified/scanNN/*.png, <dest>/Points/stl/stlNNN_total.ply,
+DTU's camera matrices (<dest>/Calibration/cal18/pos_NNN.txt) and each scan's
+observation mask and table plane (<dest>/ObsMask/) for bench/dtu_eval.py, and
 <dest>/manifest.json. Everything lands under data/, which is gitignored.
 Re-running is cheap: scans already on disk are not fetched again, and every
 file is written to .part and renamed, so an interrupted download never leaves
@@ -33,6 +35,9 @@ from bench.tier_b_common import DTU_TAU_MM, is_photo
 
 DTU_IMAGES_URL = "https://roboimagedata2.compute.dtu.dk/data/MVS/Rectified.zip"
 DTU_POINTS_URL = "https://roboimagedata2.compute.dtu.dk/data/MVS/Points.zip"
+# DTU's evaluation kit (6.3 GB): only the camera matrices and each scan's
+# observation mask and table plane are taken from it, a few MB in all.
+DTU_SAMPLESET_URL = "https://roboimagedata2.compute.dtu.dk/data/MVS/SampleSet.zip"
 
 # The head of DTU's standard 15-scan evaluation subset, so an F-score here is
 # comparable with published DTU numbers.
@@ -46,6 +51,9 @@ FRAMES_PER_SCAN = 49
 
 DTU_STL_RE = re.compile(r"stl(\d+)_total\.ply$", re.IGNORECASE)
 DTU_RECT_RE = re.compile(r"(?:^|/)scan(\d+)/([^/]+)$", re.IGNORECASE)
+# cal18 is the calibration DTU's rectified images were produced with.
+DTU_CAMERA_RE = re.compile(r"/Calibration/cal18/(pos_\d{3}\.txt)$", re.IGNORECASE)
+DTU_EVAL_RE = re.compile(r"/ObsMask/((?:ObsMask(\d+)_10|Plane(\d+))\.mat)$", re.IGNORECASE)
 
 # Every block is a fresh HTTPS round trip to Denmark, so blocks are large
 # enough to serve several frames each; reads are sequential, so a small LRU
@@ -151,6 +159,18 @@ def scan_gt_path(dest: Path, scan: int) -> Path:
     return dest / "Points" / "stl" / f"stl{scan:03d}_total.ply"
 
 
+def calibration_dir(dest: Path) -> Path:
+    return dest / "Calibration" / "cal18"
+
+
+def scan_obs_mask_path(dest: Path, scan: int) -> Path:
+    return dest / "ObsMask" / f"ObsMask{scan}_10.mat"
+
+
+def scan_plane_path(dest: Path, scan: int) -> Path:
+    return dest / "ObsMask" / f"Plane{scan}.mat"
+
+
 def _images_present(directory: Path, glob: str) -> int:
     if not directory.is_dir():
         return 0
@@ -219,6 +239,42 @@ def fetch_points(scans: list[int], dest: Path, url: str = DTU_POINTS_URL) -> Non
             _extract(archive, info, target)
 
 
+def fetch_eval_files(scans: list[int], dest: Path, url: str = DTU_SAMPLESET_URL) -> None:
+    """Camera matrices (shared by every scan) and each scan's mask and plane."""
+    cameras_present = any(calibration_dir(dest).glob("pos_*.txt"))
+    missing = [
+        scan
+        for scan in scans
+        if not (scan_obs_mask_path(dest, scan).exists() and scan_plane_path(dest, scan).exists())
+    ]
+    if cameras_present and not missing:
+        logger.info("evaluation files for scans %s already on disk", scans)
+        return
+
+    logger.info("reading the SampleSet.zip directory for DTU's cameras and masks")
+    with zipfile.ZipFile(HttpRangeFile(url)) as archive:
+        wanted: list[tuple[zipfile.ZipInfo, Path]] = []
+        for info in archive.infolist():
+            camera = DTU_CAMERA_RE.search(info.filename)
+            if camera and not cameras_present:
+                wanted.append((info, calibration_dir(dest) / camera.group(1)))
+                continue
+            evaluation = DTU_EVAL_RE.search(info.filename)
+            if evaluation:
+                scan = int(evaluation.group(2) or evaluation.group(3))
+                if scan in missing:
+                    wanted.append((info, dest / "ObsMask" / evaluation.group(1)))
+        for info, target in wanted:
+            if target.exists():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            _extract(archive, info, target)
+        logger.info("  %d evaluation files", len(wanted))
+    absent = [scan for scan in missing if not scan_obs_mask_path(dest, scan).exists()]
+    if absent:
+        logger.warning("no observation mask for scan(s) %s; scored without DTU's protocol", absent)
+
+
 def write_manifest(scans: list[int], dest: Path, glob: str) -> Path:
     """Write a SceneSet manifest; paths are relative to the manifest itself."""
     scenes = []
@@ -229,15 +285,27 @@ def write_manifest(scans: list[int], dest: Path, glob: str) -> Path:
         if n_images == 0 or not gt_path.exists():
             logger.warning("scan%d incomplete on disk; left out of the manifest", scan)
             continue
-        scenes.append(
-            {
-                "name": f"scan{scan}",
-                "image_dir": image_dir.relative_to(dest).as_posix(),
-                "gt_path": gt_path.relative_to(dest).as_posix(),
-                "image_glob": glob,
-                "notes": f"DTU scan{scan}, {n_images} frames, structured-light ground truth",
-            }
+        entry = {
+            "name": f"scan{scan}",
+            "image_dir": image_dir.relative_to(dest).as_posix(),
+            "gt_path": gt_path.relative_to(dest).as_posix(),
+            "image_glob": glob,
+            "notes": f"DTU scan{scan}, {n_images} frames, structured-light ground truth",
+        }
+        eval_files = (
+            calibration_dir(dest),
+            scan_obs_mask_path(dest, scan),
+            scan_plane_path(dest, scan),
         )
+        if any(eval_files[0].glob("pos_*.txt")) and all(p.exists() for p in eval_files[1:]):
+            entry["dtu_eval"] = dict(
+                zip(
+                    ("calibration_dir", "obs_mask", "plane"),
+                    (p.relative_to(dest).as_posix() for p in eval_files),
+                    strict=True,
+                )
+            )
+        scenes.append(entry)
     manifest = {"tau": DTU_TAU_MM, "units": "mm", "scenes": scenes}
     path = dest / "manifest.json"
     path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -263,6 +331,7 @@ def main(argv: list[str] | None = None) -> int:
         if _images_present(scan_image_dir(dest, scan), args.lighting_glob)
     ]
     fetch_points(have_images, dest)
+    fetch_eval_files(have_images, dest)
     manifest = write_manifest(args.scans, dest, args.lighting_glob)
     print(manifest)
     return 0 if json.loads(manifest.read_text(encoding="utf-8"))["scenes"] else 1
