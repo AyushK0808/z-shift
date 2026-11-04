@@ -631,6 +631,11 @@ def test_a2_stage_profile_runs_without_the_profiler(tmp_path: Path) -> None:
     writer = exp_a2_stage_profile.run(results_dir=tmp_path, quick=True, seed=0, profile=False)
     assert len(writer) > 0
     assert {"component_filter", "finalize"} <= {row["stage"] for row in writer.rows}
+    # The as-submitted filter and its batched replacement are both timed.
+    assert {row["filter_method"] for row in writer.rows} == {"split_bodies", "labels"}
+    assert {
+        row["refine_device"] for row in writer.rows if row["filter_method"] == "split_bodies"
+    } == {"cpu"}
 
 
 # ---------------------------------------------------------------------------
@@ -836,6 +841,61 @@ def test_scene_image_paths_are_sorted_and_limited(tmp_path: Path) -> None:
     paths = scene.image_paths()
     assert [p.name for p in paths] == ["000.jpg", "001.jpg", "002.jpg"]
     assert len(scene.image_paths(2)) == 2
+
+
+def test_spread_image_paths_cover_the_whole_capture(tmp_path: Path) -> None:
+    """B2/B6 take views across DTU's rig, not the first arc of it."""
+    from bench.tier_b_common import Scene, evenly_spaced_indices
+
+    images = tmp_path / "images"
+    images.mkdir()
+    for view in range(1, 50):
+        (images / f"rect_{view:03d}_3_r5000.png").write_bytes(b"x")
+    scene = Scene(name="scan", image_dir=images)
+
+    spread = [p.name[5:8] for p in scene.image_paths(10, spread=True)]
+    assert spread[0] == "001" and spread[-1] == "049"
+    assert len(set(spread)) == 10
+    assert [p.name[5:8] for p in scene.image_paths(10)][-1] == "010"
+    assert len(scene.image_paths(60, spread=True)) == 49
+
+    for n_items, count in ((49, 40), (49, 17), (7, 7), (100, 3)):
+        indices = evenly_spaced_indices(n_items, count)
+        assert len(indices) == count == len(set(indices))
+        assert indices == sorted(indices) and indices[0] == 0 and indices[-1] == n_items - 1
+
+
+def test_case_study_takes_the_notebooks_eight_frames(tmp_path: Path) -> None:
+    """B9 picks the frames notebooks/co3d_teddybear_rig.ipynb would, at Table II's 8."""
+    from bench.exp_b9_case_study import select_frames
+
+    for index in range(1, 203):
+        (tmp_path / f"frame{index:06d}.jpg").write_bytes(b"x")
+    picked = [path.name for path in select_frames(tmp_path, 8)]
+    assert picked == [f"frame{index:06d}.jpg" for index in (1, 29, 58, 87, 115, 144, 173, 202)]
+
+
+def test_uniform_variant_fills_the_frame_budget() -> None:
+    """V3 is matched to V1/V2 on frame count; a ceil(N/budget) stride was not."""
+    from bench.exp_a5_frame_budget import select_variant
+
+    frames = [
+        FrameReference(
+            frame_id=f"f{i}",
+            uri=f"file:///tmp/f{i}.jpg",
+            index=i,
+            timestamp_ms=i * 40.0,
+            source_id="cam_a",
+            motion_score=((i * 37) % 49) / 49,
+        )
+        for i in range(49)
+    ]
+    for budget in (10, 20, 40):
+        selected = select_variant("V3_uniform", frames, budget=budget)
+        indices = [frame.index for frame in selected]
+        assert len(selected) == budget
+        assert indices == sorted(indices) and indices[0] == 0 and indices[-1] == 48
+    assert len(select_variant("V3_uniform", frames, budget=60)) == 49
 
 
 def test_image_paths_order_frames_numerically_not_lexically(tmp_path: Path) -> None:
