@@ -1,17 +1,17 @@
 group,metric,value,unit,source,note
-reconstruction,confidence_retention,0.3424,0-1,run_manifest outputs.conf_retention,MASt3R points retained after confidence masking
-reconstruction,pairing_coverage,1.0,0-1,run_manifest outputs.n_pairs,56 / 56 directed complete pairs
+reconstruction,confidence_retention,0.4147,0-1,run_manifest outputs.conf_retention,MASt3R points retained after confidence masking
+reconstruction,pairing_coverage,1.0,0-1,run_manifest outputs.n_pairs,552 / 552 directed complete pairs
 reconstruction,tsdf_success,1.0,0-1,run_manifest outputs.tsdf_fallback,1 means TSDF fallback was not used
-refinement,cell_reduction,0.6598613045186458,0-1,refinement_manifest cell counts,860302 -> 292622 cells
-refinement,point_reduction,0.7609357469612656,0-1,refinement_manifest point counts,311067 -> 74365 points
+refinement,cell_reduction,0.9186141982345073,0-1,refinement_manifest cell counts,2508988 -> 204196 cells
+refinement,point_reduction,0.9388481001550297,0-1,refinement_manifest point counts,1025610 -> 62718 points
 refinement,boundary_edge_cleanliness,1.0,0-1,refinement_manifest boundary_edge_count,0 boundary edges
-refinement,non_manifold_cleanliness,0.2543110224111652,0-1,refinement_manifest non_manifold_edge_count/output_cell_count,218205 non-manifold edges
+refinement,non_manifold_cleanliness,0.3089188818586064,0-1,refinement_manifest non_manifold_edge_count/output_cell_count,141116 non-manifold edges
 refinement,watertight_score,0.0,0-1,refinement_manifest is_watertight,1 means watertight output
 rigging,skeleton_graph_score,1.0,0-1,skeleton.json,"7 joints, 6 bones, root=hips"
-rigging,skinning_coverage,1.0,0-1,skinning_weights.json/refinement_manifest,74365 skinned vertices / 74365 refined points
-rigging,weight_normalization_score,1.0,0-1,skinning_weights.json,mean |sum(weights)-1| = 3.523e-17
+rigging,skinning_coverage,1.0,0-1,skinning_weights.json/refinement_manifest,62718 skinned vertices / 62718 refined points
+rigging,weight_normalization_score,1.0,0-1,skinning_weights.json,mean |sum(weights)-1| = 3.942e-17
 rigging,nonnegative_weight_score,1.0,0-1,skinning_weights.json,"fraction of weights in [0,1]"
 rigging,max_influence_score,1.0,0-1,skinning_weights.json,max influences <= 4
 rigging,warning_free_score,0.0,0-1,rigging_manifest warnings,"Template skeleton fitting assumes a world-axis-aligned, Y-up mesh; joints may be misplaced for arbitrary orientations."
-runtime,reconstruction_seconds,96.4799,seconds,run_manifest total_stage_seconds,
-runtime,refinement_seconds,792.2274,seconds,refinement_manifest total_stage_seconds,
+runtime,reconstruction_seconds,635.0397,seconds,run_manifest total_stage_seconds,
+runtime,refinement_seconds,3.7236,seconds,refinement_manifest total_stage_seconds,
