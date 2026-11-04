@@ -102,15 +102,68 @@ def test_view_number_reads_dtu_rectified_names() -> None:
     assert view_number("frame_0001.png") is None
 
 
+def _move_cameras(output_dir: Path, offsets_mm: dict[int, np.ndarray]) -> None:
+    """Displace some estimated cameras by a DTU-frame distance, as a pose error would."""
+    path = output_dir / "cameras.json"
+    data = json.loads(path.read_text())
+    for camera in data["cameras"]:
+        offset = offsets_mm.get(view_number(camera["image"]))
+        if offset is not None:
+            pose = np.asarray(camera["cam2world"])
+            pose[:3, 3] += np.asarray(offset) / SCALE
+            camera["cam2world"] = pose.tolist()
+    path.write_text(json.dumps(data))
+
+
 def test_camera_fit_recovers_frame_and_scale(tmp_path: Path) -> None:
     reference, _, output_dir = _write_scan(tmp_path)
-    alignment, spread = camera_alignment(
-        load_reconstruction_cameras(output_dir), reference.camera_centres
-    )
-    assert alignment.scale == pytest.approx(SCALE, rel=1e-9)
-    assert alignment.rmse < 1e-6
-    assert alignment.n_correspondences == N_VIEWS
-    assert spread > 0.05
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    assert fit.alignment.scale == pytest.approx(SCALE, rel=1e-9)
+    assert fit.alignment.rmse < 1e-6
+    assert fit.alignment.n_correspondences == N_VIEWS
+    assert fit.spread > 0.05
+    assert fit.outlier_views == []
+    assert fit.pose_failure is False
+
+
+def test_camera_fit_leaves_out_one_lost_camera(tmp_path: Path) -> None:
+    reference, reconstruction, output_dir = _write_scan(tmp_path)
+    _move_cameras(output_dir, {5: np.array([150.0, -80.0, 60.0])})
+
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    assert fit.outlier_views == [5]
+    # Untrimmed, the one view drags the fit past the failure line...
+    assert fit.rmse_all_mm > 10.0
+    # ...trimmed, the other eleven are exact and the rig has not failed.
+    assert fit.alignment.rmse < 1e-6
+    assert fit.pose_failure is False
+
+    scores = score_dtu(reconstruction, reference, output_dir, tau=2.0)
+    assert scores["camera_outliers"] == 1
+    assert scores["camera_outlier_views"] == "5"
+    assert scores["f_score"] > 0.99
+
+
+def test_camera_fit_fails_a_rig_with_many_lost_cameras(tmp_path: Path) -> None:
+    reference, _, output_dir = _write_scan(tmp_path)
+    rng = np.random.default_rng(3)
+    _move_cameras(output_dir, {view: rng.normal(0, 120.0, 3) for view in (2, 4, 7, 9)})
+
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    # A third of the rig lost: trimmed or not, the fit must not pass as a good one.
+    assert fit.alignment.rmse > 10.0 or fit.outlier_frac > 0.2
+    assert fit.pose_failure is True
+
+
+def test_camera_fit_fails_a_rig_that_drifted_everywhere(tmp_path: Path) -> None:
+    """Pose error spread over every camera is not trimmed away: no view stands out."""
+    reference, _, output_dir = _write_scan(tmp_path)
+    rng = np.random.default_rng(4)
+    _move_cameras(output_dir, {view: rng.normal(0, 15.0, 3) for view in range(1, N_VIEWS + 1)})
+
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    assert fit.alignment.rmse > 10.0
+    assert fit.pose_failure is True
 
 
 def test_score_dtu_ignores_background_and_scale_error(tmp_path: Path) -> None:
