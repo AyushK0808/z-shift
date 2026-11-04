@@ -67,6 +67,31 @@ def test_export_scene_to_mesh_writes_mesh_and_point_cloud(tmp_path: Path) -> Non
     assert fell_back is False
 
 
+def test_write_cameras_records_each_image_pose(tmp_path: Path) -> None:
+    pytest.importorskip("dust3r")
+    import json
+
+    from spatial_ingestion.reconstruction.export import write_cameras
+
+    poses = np.repeat(np.eye(4)[None], 2, axis=0)
+    poses[1, :3, 3] = [0.1, 0.2, 0.3]
+
+    class _Posed:
+        img_paths = ["/x/rect_001_3_r5000.png", "/x/rect_002_3_r5000.png"]
+
+        def get_im_poses(self) -> np.ndarray:
+            return poses
+
+        def get_focals(self) -> np.ndarray:
+            return np.array([800.0, 810.0])
+
+    write_cameras(_Posed(), tmp_path / "cameras.json")
+    cameras = json.loads((tmp_path / "cameras.json").read_text())["cameras"]
+    assert [c["image"] for c in cameras] == _Posed.img_paths
+    assert np.allclose(cameras[1]["cam2world"], poses[1])
+    assert cameras[1]["focal_px"] == [810.0]
+
+
 def test_patch_tsdf_cuda_hardcode_makes_cuda_a_noop_without_cuda() -> None:
     """Regression test for a vendored MASt3R bug: TSDFPostProcess calls
     `tensor.cuda()` unconditionally, which raises AssertionError on a
