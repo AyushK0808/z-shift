@@ -72,8 +72,18 @@ if [ "${INCLUDE_UPSTREAM_REQUIREMENTS:-0}" = "1" ]; then
 fi
 
 echo "Compiling RoPE CUDA kernels (optional, speeds up positional embeddings) ..."
+# REQUIRE_CUROPE=1 turns a failed build into an error instead of a silent
+# fallback to the slower PyTorch RoPE; it needs nvcc (CUDA_HOME or PATH), which
+# scripts/install-cuda-toolkit.sh provides.
+if [ -n "${CUDA_HOME:-}" ]; then
+  export PATH="$CUDA_HOME/bin:$PATH"
+fi
 cd "$DUST3R/croco/models/curope"
-if "${PYTHON:-python}" setup.py build_ext --inplace 2>/dev/null; then
+if [ "${REQUIRE_CUROPE:-0}" = "1" ]; then
+  rm -rf build ./*.so
+  "${PYTHON:-python}" setup.py build_ext --inplace
+  echo "RoPE kernels compiled."
+elif "${PYTHON:-python}" setup.py build_ext --inplace 2>/dev/null; then
   echo "RoPE kernels compiled."
 else
   echo "RoPE kernel compilation failed (non-CUDA env). PyTorch fallback will be used."
