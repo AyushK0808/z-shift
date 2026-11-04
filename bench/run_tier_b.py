@@ -59,7 +59,8 @@ EXPERIMENTS: dict[str, Experiment] = {
     exp.key: exp
     for exp in (
         # Ground-truth accuracy of MASt3R-as-integrated (reviewer 2, item 1), at
-        # 10 spread views and all 49; the 49-view complete graph is 2352 pairs.
+        # 10 spread views (complete, 90 pairs) and all 49 (swin-9-noncyclic,
+        # 792 pairs; the complete graph's 2352 do not fit 8 GB).
         Experiment(
             "b2",
             "b2_reconstruction_accuracy",
@@ -343,6 +344,10 @@ def child_env(work_dir: Path) -> dict[str, str]:
     # Persist the subsampled-GT cache across runs and reboots instead of the
     # temp dir, so DTU's multi-million-point clouds are parsed once.
     env.setdefault("ZSHIFT_GT_CACHE_DIR", str(work_dir / "gt_cache"))
+    # Sparse alignment allocates thousands of small per-pair tensors; growable
+    # segments keep fragmentation from eating the headroom DEFAULT_MAX_PAIRS
+    # leaves on an 8 GB card.
+    env.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     return env
 
 
