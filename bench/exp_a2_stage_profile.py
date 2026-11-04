@@ -15,6 +15,11 @@ If `component_filter` dominates, that is `split_bodies()` plus
 `merge_components`, and the cProfile distinguishes them. If `finalize` or
 `transfer_data` dominates, the optimisation target is different, and the
 paper's future-work item should say so.
+
+Both component filters are profiled (`filter_method`, as in A1):
+`split_bodies` on the CPU is what the submitted paper's stage table measured;
+`labels` is the batched GPU labelling that replaced it. The split_bodies
+cProfile keeps its old file names; the labels one gets a `_labels` suffix.
 """
 
 from __future__ import annotations
@@ -35,6 +40,8 @@ from bench.harness import experiment_parser, finish
 from bench.meshes import fragmented_mesh, ladder_mesh, to_pyvista
 from spatial_ingestion.instrumentation import peak_rss_mb
 from spatial_ingestion.refinement import MeshCleaningConfig, clean_mesh
+from spatial_ingestion.refinement.core import ComponentFilter
+from spatial_ingestion.refinement.gpu import Device
 
 EXP_ID = "a2_stage_profile"
 REPEATS = 5
@@ -44,6 +51,12 @@ CONFIGURATIONS: dict[str, dict[str, Any]] = {
     "big_triangles": {"kind": "triangles", "n_tri": 1_000_000, "n_components": 1},
     "many_components": {"kind": "components", "n_tri": 100_000, "n_components": 1000},
 }
+
+# (component filter, device); see A1's FILTER_BACKENDS.
+FILTER_BACKENDS: tuple[tuple[ComponentFilter, Device], ...] = (
+    ("split_bodies", "cpu"),
+    ("labels", "auto"),
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,56 +104,68 @@ def run(
         # mode now retains (bench/FINDINGS.md #2); big_triangles is a single
         # component, so mode makes no difference there and stays "object".
         mode = "room" if spec["kind"] == "components" else "object"
-        config = MeshCleaningConfig(
-            mode=mode,
-            smoothing_iters=15,
-            verify_watertight=True,
-            min_cell_count=0 if mode == "room" else 500,
-        )
+        for filter_method, device in FILTER_BACKENDS:
+            config = MeshCleaningConfig(
+                mode=mode,
+                smoothing_iters=15,
+                verify_watertight=True,
+                min_cell_count=0 if mode == "room" else 500,
+                component_filter=filter_method,
+                device=device,
+            )
 
-        for repeat in range(n_repeats):
-            start = time.perf_counter()
-            result = clean_mesh(mesh, config)
-            total = time.perf_counter() - start
-            stage_total = max(result["total_stage_seconds"], 1e-9)
+            for repeat in range(n_repeats):
+                start = time.perf_counter()
+                result = clean_mesh(mesh, config)
+                total = time.perf_counter() - start
+                stage_total = max(result["total_stage_seconds"], 1e-9)
 
-            for record in result["stage_timings"]:
-                writer.add(
-                    configuration=name,
-                    n_tri=int(mesh.n_cells),
-                    n_components_nominal=int(spec["n_components"]),
-                    repeat=repeat,
-                    seed=seed,
-                    stage=record["stage"],
-                    seconds=record["seconds"],
-                    pct_of_stage_total=round(100.0 * record["seconds"] / stage_total, 2),
-                    stage_peak_rss_mb=record["peak_rss_mb"],
-                    stage_rss_delta_mb=record["rss_delta_mb"],
-                    wall_total_seconds=round(total, 4),
-                    stage_total_seconds=result["total_stage_seconds"],
-                    unaccounted_seconds=round(total - result["total_stage_seconds"], 4),
-                    peak_rss_mb=peak_rss_mb(),
-                )
-            logger.info("%s repeat %d: %.2f s", name, repeat, total)
+                for record in result["stage_timings"]:
+                    writer.add(
+                        configuration=name,
+                        filter_method=filter_method,
+                        refine_device=result["compute_device"],
+                        n_tri=int(mesh.n_cells),
+                        n_components_nominal=int(spec["n_components"]),
+                        repeat=repeat,
+                        seed=seed,
+                        stage=record["stage"],
+                        seconds=record["seconds"],
+                        pct_of_stage_total=round(100.0 * record["seconds"] / stage_total, 2),
+                        stage_peak_rss_mb=record["peak_rss_mb"],
+                        stage_rss_delta_mb=record["rss_delta_mb"],
+                        wall_total_seconds=round(total, 4),
+                        stage_total_seconds=result["total_stage_seconds"],
+                        unaccounted_seconds=round(total - result["total_stage_seconds"], 4),
+                        peak_rss_mb=peak_rss_mb(),
+                    )
+                logger.info("%s %s repeat %d: %.2f s", name, filter_method, repeat, total)
 
-        if profile:
-            prof_path = out_dir / f"{EXP_ID}_{name}.prof"
-            text = _profile_to_text(mesh, config, prof_path)
-            logger.info("profile written: %s", prof_path)
-            print(f"\n--- cProfile top {PROFILE_TOP_N} ({name}) ---")
-            print("\n".join(text.splitlines()[:12]))
+            if profile:
+                suffix = "" if filter_method == "split_bodies" else f"_{filter_method}"
+                prof_path = out_dir / f"{EXP_ID}_{name}{suffix}.prof"
+                text = _profile_to_text(mesh, config, prof_path)
+                logger.info("profile written: %s", prof_path)
+                print(f"\n--- cProfile top {PROFILE_TOP_N} ({name}, {filter_method}) ---")
+                print("\n".join(text.splitlines()[:12]))
     return writer
 
 
 def _summarise(writer: ResultWriter) -> None:
-    print(f"\n  {'configuration':<17}{'stage':<20}{'mean_s':>9}{'sd':>7}{'pct':>7}")
-    for configuration in dict.fromkeys(r["configuration"] for r in writer.rows):
-        rows = [r for r in writer.rows if r["configuration"] == configuration]
+    print(f"\n  {'configuration':<17}{'filter':<14}{'stage':<20}{'mean_s':>9}{'sd':>7}{'pct':>7}")
+    for configuration, method in dict.fromkeys(
+        (r["configuration"], r["filter_method"]) for r in writer.rows
+    ):
+        rows = [
+            r
+            for r in writer.rows
+            if r["configuration"] == configuration and r["filter_method"] == method
+        ]
         for stage in dict.fromkeys(r["stage"] for r in rows):
             group = [r for r in rows if r["stage"] == stage]
             mean, std, _ = mean_std([r["seconds"] for r in group])
             pct, _, _ = mean_std([r["pct_of_stage_total"] for r in group])
-            print(f"  {configuration:<17}{stage:<20}{mean:>9.3f}{std:>7.3f}{pct:>7.1f}")
+            print(f"  {configuration:<17}{method:<14}{stage:<20}{mean:>9.3f}{std:>7.3f}{pct:>7.1f}")
 
 
 def main(argv: list[str] | None = None) -> int:
