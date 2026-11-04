@@ -161,6 +161,37 @@ class Scene:
         return paths[:limit]
 
 
+# Directed pairs sparse alignment can hold on an 8 GB GPU with headroom. Its
+# scene optimizer keeps every pair's correspondences on the GPU, ~6 MB a pair
+# at 512x384, and with the network offloaded once the pairs are through it
+# (reconstruction.alignment) little else. Measured: DTU's 49-view complete
+# graph (2352 pairs, network resident) needed 18 GB and ran out of memory on
+# 4 of 5 scans; CO3D at 24 views (552 pairs, 512x288, offloaded) peaked at
+# 4.4 GB. 800 pairs at 512x384 comes to ~5.5 GB.
+DEFAULT_MAX_PAIRS = 800
+
+
+def bounded_pairing(n_images: int, max_pairs: int = DEFAULT_MAX_PAIRS, *, cyclic: bool) -> str:
+    """`complete` when its n(n-1) directed pairs fit `max_pairs`, else the widest swin that does.
+
+    `cyclic` closes the window around the end of the sequence, which suits an
+    orbit that returns to its start (CO3D) and not a rig numbered along a
+    path whose two ends are far apart (DTU).
+    """
+    if n_images * (n_images - 1) <= max_pairs:
+        return "complete"
+
+    def directed_pairs(window: int) -> int:
+        if cyclic:
+            return 2 * n_images * window
+        return 2 * (n_images * window - window * (window + 1) // 2)
+
+    window = 1
+    while window + 1 < n_images and directed_pairs(window + 1) <= max_pairs:
+        window += 1
+    return f"swin-{window}" + ("" if cyclic else "-noncyclic")
+
+
 def evenly_spaced_indices(n_items: int, count: int) -> list[int]:
     """`count` distinct indices into `n_items`, first and last included."""
     if count >= n_items:

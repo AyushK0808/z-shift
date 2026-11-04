@@ -1209,3 +1209,29 @@ def test_b4_builds_frames_with_motion_scores(tmp_path: Path) -> None:
     assert frames[0].motion_score == 1.0
     assert all(0.0 <= (f.motion_score or 0.0) <= 1.0 for f in frames)
     assert all(f.timestamp_ms is not None for f in frames)
+
+
+def test_bounded_pairing_keeps_complete_while_it_fits() -> None:
+    from bench.tier_b_common import bounded_pairing
+
+    assert bounded_pairing(10, 800, cyclic=False) == "complete"  # 90 pairs
+    assert bounded_pairing(24, 800, cyclic=True) == "complete"  # 552 pairs
+    assert bounded_pairing(49, 800, cyclic=False) == "swin-9-noncyclic"  # 792 pairs
+    assert bounded_pairing(49, 800, cyclic=True) == "swin-8"  # 784 pairs
+    assert bounded_pairing(49, 600, cyclic=False) == "swin-6-noncyclic"  # 546 pairs
+
+
+@pytest.mark.parametrize(("n_images", "cyclic"), [(49, False), (49, True), (40, False), (30, True)])
+def test_bounded_pairing_stays_under_the_pair_budget(n_images: int, cyclic: bool) -> None:
+    """The window is sized from dust3r's own pair count, not an estimate of it."""
+    image_pairs = pytest.importorskip("dust3r.image_pairs")
+    from bench.tier_b_common import bounded_pairing
+
+    max_pairs = 800
+    strategy = bounded_pairing(n_images, max_pairs, cyclic=cyclic)
+    images = [{"idx": index} for index in range(n_images)]
+    n_pairs = len(image_pairs.make_pairs(images, scene_graph=strategy, symmetrize=True))
+    assert n_pairs <= max_pairs
+    window = int(strategy.split("-")[1])
+    wider = strategy.replace(f"swin-{window}", f"swin-{window + 1}")
+    assert len(image_pairs.make_pairs(images, scene_graph=wider, symmetrize=True)) > max_pairs
