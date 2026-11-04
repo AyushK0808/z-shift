@@ -733,6 +733,120 @@ than three scenes can.
 
 ---
 
+## 12. Object mode keeps the floor once there are enough views (B9)
+
+**Source:** `b9_co3d_case_study.csv`, CO3D teddybear `187_20215_38541`
+
+"Largest connected component" is not object isolation on a real capture.
+The support surface is reconstructed as one large sheet the subject sits on,
+and it grows with view count:
+
+- 8 views: the refined mesh is the floor with the bear attached to it.
+- 24 views: the floor is a separate, larger piece than the bear, and the
+  refined mesh (230,412 cells) is floor alone. The rig was fitted to it.
+
+`MeshCleaningConfig(isolate_object=True)` cuts the dominant RANSAC plane when
+it holds at least 30% of the faces (69-71% on both runs), then keeps the
+largest remaining piece plus the fragments inside its padded box. Gathering
+matters as much as the cut: after it, the largest piece holds only 18% (8
+views) or 8% (24 views) of the cells, the rest of the bear being scattered
+over thousands of TSDF fragments. Off by default, so A1-A3 are unchanged.
+
+## 13. DTU camera fit: one lost view failed the whole run (B2, B4, B6)
+
+**Source:** saved `cameras.json` of every B4 run
+
+The similarity fit to DTU's cameras was plain least squares. On 40-view B4
+runs single views sat 100-280 mm off (scan24 V1: view 39 at 171 mm, median
+7.8 mm), which put the RMSE past the 10 mm failure line and dragged the
+placement every score depends on. The fit is now trimmed (`dtu_eval`,
+`camera_outlier_views`), and `bench.rescore_dtu` re-scored the saved runs.
+
+Trimming explains only part of B4's failures. Of 18 distinct cells, 14 failed
+before and 10 still fail (rows: 42 of 57 before, 30 after). The four that
+flipped are scan24 V1, scan24 budget 60, scan40 V3 and scan55 V1. The rule was
+chosen after seeing these residuals, so `camera_align_rmse_all_mm` keeps the
+untrimmed value and both should be reported.
+
+The camera fit is identical across seeds in all 18 cells, and dtu_overall
+varies by at most 0.044 mm (SD), since the seed only reaches TSDF's sampling.
+So B4's 3-of-3 failure counts are one pose solution seen three times, and the
+effective sample for a variant comparison is 5 scenes, not 15 runs per variant.
+
+## 15. Restoring capture order did not improve reconstruction on DTU (B4)
+
+**Source:** `b4_frame_budget_ablation.csv`, V1 vs V2 (same 40 frames on all five
+scans, confirmed from `cameras.json`; only the order differs). Cells give how
+many of the 5 scans V1 beat V2 on:
+
+| score | untrimmed fit | trimmed fit |
+|---|---|---|
+| dtu_overall | 4 | 4 |
+| f_score | 3 | 4 |
+| dtu_overall, after ICP | 2 | 5 |
+| f_score, after ICP | 2 | 3 |
+
+A5's locality result stands: re-sorting cuts the median pair gap 6.7x. But
+nothing here shows that this helps reconstruction, and the headline scores lean
+the other way. Five scenes cannot settle it (5 of 5 is p = 0.06 two-sided, 4 of
+5 is p = 0.38), trimming favours V1 and was chosen post hoc, 10 of the 15
+variant cells are pose failures, and DTU is a rig with synthetic timestamps
+rather than a video. Do not describe motion-rank order as degrading
+reconstruction on this evidence.
+
+## 16. On real scans, refinement lowers scores against ground truth (B6)
+
+**Source:** `b6_refinement_effect.csv`, 5 DTU scans, 10 views, re-scored with
+the trimmed fit. Change from raw at 15 smoothing iterations (object mode keeps
+the largest component; `isolate_object` was off):
+
+| mode | mean F change | scans F improved | mean Chamfer change | scans Chamfer improved |
+|---|---|---|---|---|
+| object | -0.020 | 2 of 5 | +0.65 mm | 1 of 5 |
+| room | -0.021 | 0 of 5 | +0.44 mm | 0 of 5 |
+
+This is the opposite direction from the synthetic A3 headline (object mode
+Chamfer -64.2%), where the damage being removed was injected. Refinement drops
+geometry, and on DTU completeness pays for it in every object-mode row. Smoothing
+barely matters (0 vs 15 iterations differ by at most 0.05 mm overall). Only
+scan55 improves clearly in object mode. Scan37 remains a pose failure, and
+scan40 passes only at the limit: 2 of its 10 cameras trimmed, exactly the 20%
+allowed. Do not let the synthetic row read as a real-data accuracy gain.
+
+## 14. B2's 49-view complete graph does not fit 8 GB
+
+2352 pairs needed ~18 GB in MASt3R's scene optimizer and ran out of memory
+on 4 of 5 scans; the fifth spilled into shared memory and took 2.75 h. The
+network's weights now leave the GPU once the pairs have been through it
+(`reconstruction.alignment`), and B2 bounds the graph
+(`tier_b_common.bounded_pairing`): complete at 10 views, swin-9-noncyclic
+(792 pairs) at 49. CO3D at 24 views, complete (552 pairs), peaked at 4.4 GB.
+
+## 17. 49 views did not beat 10 on DTU (B2)
+
+**Source:** `b2_reconstruction_accuracy.csv`, 5 DTU scans, trimmed camera fit
+
+| scan | 10 views: overall, F | 49 views: overall, F | 10 / 49 pose failure |
+|---|---|---|---|
+| scan24 | 5.99, .126 | 4.28, .331 | no / no |
+| scan37 | 8.59, .112 | 7.99, .090 | yes / yes |
+| scan40 | 5.99, .171 | 6.36, .106 | no / no |
+| scan55 | 3.30, .411 | 4.56, .340 | no / no |
+| scan63 | 5.39, .231 | 7.63, .128 | no / yes |
+| mean | 5.85, .210 | 6.16, .199 | |
+
+49 views cost 7.4x the wall time (157 s against 1156 s) and win overall on 2
+scans, F on 1. The pairing graph changes with the view count (finding 14), so
+this is not a clean view-count effect: on scan24 at 49 views, B4's window of 3
+gives 8.04 mm where the window of 9 gives 4.28 mm.
+
+Placement is a large share of the error. At 10 views ICP takes the mean overall
+from 5.85 to 3.64 mm and F from .210 to .422. Overall can flatter a failed run,
+because it ignores distances over 20 mm: scan37 at 49 views drops 37% of its
+points and 53% of the ground truth, and still reads 7.99 mm.
+
+---
+
 ## Smaller items from the protocol's checklist
 
 - `compute_priority_score` is computed by `LatencyAwareResourceTagger`, stored

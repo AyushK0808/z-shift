@@ -72,7 +72,13 @@ What each Tier B experiment runs on DTU:
 
 - B2: 10 views and all 49, spread evenly over the rig (`view_selection`). The
   first ten views by number are one short arc of the robot arm's path, and
-  score as a narrow-baseline capture.
+  score as a narrow-baseline capture. Pairing is complete while its pairs fit
+  `--max-pairs` (`tier_b_common.bounded_pairing`), so 10 views are complete
+  and 49 use the widest non-cyclic sliding window that fits; the 49-view
+  complete graph (2352 pairs) needs ~18 GB and ran out of memory on an 8 GB
+  card. Phase 2 also moves MASt3R's weights off the GPU once the pairs have
+  been through the network (`reconstruction.alignment`), which is ~2.7 GB more
+  for the scene optimizer.
 - B4: every scan, three seeds a cell. MASt3R's TSDF depth refinement samples
   with `torch.randn`, so the seed is a real source of variation. V3 takes
   exactly `budget` frames, evenly spaced; the budget-60 point takes all 49.
@@ -83,6 +89,10 @@ What each Tier B experiment runs on DTU:
   `paper/outputs/teddy.jpeg`; 8 evenly spaced frames, complete pairing, seed
   42, object-mode refinement, biped rig). Refinement runs with `split_bodies`
   on the CPU, as submitted, and then with `labels` on the same raw mesh.
+  `--n-images 24 --isolate-object --filters labels --output-root <dir>` runs the same capture
+  at 24 views (complete pairing, 552 pairs) and adds its rows next to the
+  8-view ones; `split_bodies` is left out there because it scales with the
+  component count of a mesh three times the size.
 
 A1 and A2 time both component filters (`filter_method`): `split_bodies` on the
 CPU, which is what the submitted paper's Fig. 9 and stage table measured, and
@@ -134,10 +144,21 @@ method that estimates its own cameras (`dtu_eval.py`):
    wrong. On the first 4-view smoke run it rotated 14 degrees away from a
    camera fit with a 2 mm residual. Large `icp_rotation_deg` / `icp_shift_mm`
    values flag this.
-5. `pose_failure` is true when the camera fit's residual is over 10 mm. Working
-   runs on DTU sit at 3-6 mm; above 10 mm MASt3R's poses have broken, and the
-   row's scores measure that failure rather than the surface. Report those
-   rows as failures, not as low accuracy.
+5. The camera fit is trimmed: a camera whose residual is over both 10 mm and
+   3x the median is left out and the fit redone (`camera_outlier_views`).
+   Untrimmed, one lost view (B4 had single views 100-280 mm off) drags the
+   whole placement, which both fails the run and skews its scores.
+   `camera_align_rmse_all_mm` keeps the untrimmed residual.
+6. `pose_failure` is true when the trimmed fit's residual is over 10 mm, or
+   more than 20% of the cameras were left out. Working runs on DTU sit at
+   3-6 mm; above 10 mm MASt3R's poses have broken, and the row's scores
+   measure that failure rather than the surface. Report those rows as
+   failures, not as low accuracy.
+
+`bench.rescore_dtu` re-scores finished B2, B4 and B6 runs from their saved
+outputs (no MASt3R, no GPU beyond B6's refinement), keeping each row's timing
+and env columns and stamping `rescored_git_commit`. Use it after a scoring
+change instead of reconstructing again.
 
 ICP from scratch (the fallback when a manifest has no `dtu_eval` entry) does
 not work on DTU. The reconstruction includes table and backdrop that the
