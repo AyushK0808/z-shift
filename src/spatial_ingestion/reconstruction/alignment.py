@@ -24,6 +24,47 @@ except ImportError as exc:
     _mast3r_import_error = exc
 
 
+def select_pairs(
+    image_paths: list[Path],
+    images: list[dict],
+    pairing_strategy: str,
+    sync_view_groups: list[SyncViewGroup] | None = None,
+    *,
+    stats: dict[str, Any] | None = None,
+) -> list[tuple[dict, dict]]:
+    """The image pairs a backend's network is run over, shared by every backend.
+
+    Sync-aware pairing when view groups are given and yield pairs, otherwise the
+    named scene graph. `stats`, when given, is populated in place with the
+    pairing counters (`n_images`, `n_pairs`, `pairing_strategy_used`) the run
+    manifest needs.
+    """
+    if sync_view_groups:
+        idx_pairs = build_sync_pairs(image_paths, sync_view_groups)
+        if idx_pairs:
+            pairs = [(images[a], images[b]) for a, b in idx_pairs]
+        else:
+            logger.warning(
+                "Sync-aware pairing produced no pairs, falling back to %s",
+                pairing_strategy,
+            )
+            pairs = build_pairs(images, strategy=pairing_strategy)
+    else:
+        pairs = build_pairs(images, strategy=pairing_strategy)
+
+    if stats is not None:
+        stats.update(
+            {
+                "n_images": len(images),
+                "n_pairs": len(pairs),
+                "pairing_strategy_used": (
+                    "sync" if sync_view_groups and len(pairs) else pairing_strategy
+                ),
+            }
+        )
+    return pairs
+
+
 def run_sparse_alignment(
     *,
     image_paths: list[Path],
@@ -53,30 +94,7 @@ def run_sparse_alignment(
 
     model = load_model(model_name, device)
     images = load_images(image_paths, image_size=image_size)
-
-    if sync_view_groups:
-        idx_pairs = build_sync_pairs(image_paths, sync_view_groups)
-        if idx_pairs:
-            pairs = [(images[a], images[b]) for a, b in idx_pairs]
-        else:
-            logger.warning(
-                "Sync-aware pairing produced no pairs, falling back to %s",
-                pairing_strategy,
-            )
-            pairs = build_pairs(images, strategy=pairing_strategy)
-    else:
-        pairs = build_pairs(images, strategy=pairing_strategy)
-
-    if stats is not None:
-        stats.update(
-            {
-                "n_images": len(images),
-                "n_pairs": len(pairs),
-                "pairing_strategy_used": (
-                    "sync" if sync_view_groups and len(pairs) else pairing_strategy
-                ),
-            }
-        )
+    pairs = select_pairs(image_paths, images, pairing_strategy, sync_view_groups, stats=stats)
 
     cache_path = str((output_dir / "cache").resolve())
     str_paths = [str(path) for path in image_paths]

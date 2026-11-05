@@ -45,6 +45,7 @@ def build_run_manifest(
     dry_run: bool,
     sync_view_groups: list[SyncViewGroup] | None = None,
     outputs: dict[str, Any] | None = None,
+    backend: str = "mast3r",
 ) -> dict[str, Any]:
     """Record the configuration *and* the measured shape of a reconstruction run.
 
@@ -54,7 +55,7 @@ def build_run_manifest(
     what came back.
     """
     manifest: dict[str, Any] = {
-        "backend": "mast3r",
+        "backend": backend,
         "model_name": model_name,
         "device": device,
         "image_size": image_size,
@@ -196,6 +197,59 @@ def write_cameras(scene: Any, path: Path) -> None:
     )
 
 
+def write_scene_artifacts(
+    imgs: list[np.ndarray],
+    pts3d: list[np.ndarray],
+    confs: list[np.ndarray],
+    scene: Any,
+    output_path: Path,
+    output_dir: Path,
+    *,
+    min_conf_thr: float,
+    tsdf_fell_back: bool,
+    stats: dict[str, Any] | None = None,
+) -> None:
+    """Write a backend's dense output as the mesh, point cloud and cameras downstream reads.
+
+    This is the artifact contract of the reconstruction stage: `output_path`
+    (the mesh), `point_cloud.ply` and `cameras.json` in `output_dir`. Any
+    backend that can produce per-view images, 3D points and confidences ends
+    here, whatever produced them.
+    """
+    mesh = _dense_points_to_mesh(imgs, pts3d, confs, min_conf_thr)
+
+    fmt = output_path.suffix.lower()
+    if fmt not in _SUPPORTED_FORMATS:
+        logger.warning(
+            "Unsupported format '%s', falling back to .glb. Supported: .obj, .glb, .ply",
+            fmt,
+        )
+        output_path = output_path.with_suffix(".glb")
+    mesh.export(str(output_path))
+
+    xyz, rgb = _dense_points_xyz_rgb(imgs, pts3d, confs, min_conf_thr)
+    write_ply(output_dir / "point_cloud.ply", xyz, rgb)
+    write_cameras(scene, output_dir / "cameras.json")
+
+    if stats is not None:
+        total_points = int(sum(int(np.prod(img.shape[:2])) for img in imgs))
+        masked_points = int(len(xyz))
+        stats.update(
+            {
+                "n_vertices": int(len(mesh.vertices)),
+                "n_faces": int(len(mesh.faces)),
+                "n_points_pre_mask": total_points,
+                "n_points_post_mask": masked_points,
+                "conf_retention": round(masked_points / max(total_points, 1), 4),
+                "tsdf_fallback": tsdf_fell_back,
+            }
+        )
+
+    logger.info(
+        "Exported %s (vertex colors: %s)", output_path, mesh.visual.vertex_colors is not None
+    )
+
+
 def export_scene_to_mesh(
     scene: Any,
     output_path: Path,
@@ -238,36 +292,15 @@ def export_scene_to_mesh(
     else:
         pts3d, _, confs = to_numpy(scene.get_dense_pts3d(clean_depth=True))
 
-    mesh = _dense_points_to_mesh(imgs, pts3d, confs, min_conf_thr)
-
-    fmt = output_path.suffix.lower()
-    if fmt not in _SUPPORTED_FORMATS:
-        logger.warning(
-            "Unsupported format '%s', falling back to .glb. Supported: .obj, .glb, .ply",
-            fmt,
-        )
-        output_path = output_path.with_suffix(".glb")
-    mesh.export(str(output_path))
-
-    xyz, rgb = _dense_points_xyz_rgb(imgs, pts3d, confs, min_conf_thr)
-    write_ply(output_dir / "point_cloud.ply", xyz, rgb)
-    write_cameras(scene, output_dir / "cameras.json")
-
-    if stats is not None:
-        total_points = int(sum(int(np.prod(img.shape[:2])) for img in imgs))
-        masked_points = int(len(xyz))
-        stats.update(
-            {
-                "n_vertices": int(len(mesh.vertices)),
-                "n_faces": int(len(mesh.faces)),
-                "n_points_pre_mask": total_points,
-                "n_points_post_mask": masked_points,
-                "conf_retention": round(masked_points / max(total_points, 1), 4),
-                "tsdf_fallback": tsdf_fell_back,
-            }
-        )
-
-    logger.info(
-        "Exported %s (vertex colors: %s)", output_path, mesh.visual.vertex_colors is not None
+    write_scene_artifacts(
+        imgs,
+        pts3d,
+        confs,
+        scene,
+        output_path,
+        output_dir,
+        min_conf_thr=min_conf_thr,
+        tsdf_fell_back=tsdf_fell_back,
+        stats=stats,
     )
     return tsdf_fell_back

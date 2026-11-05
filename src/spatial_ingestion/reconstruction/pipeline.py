@@ -6,12 +6,9 @@ from pathlib import Path
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
 from spatial_ingestion.instrumentation import StageLog
 from spatial_ingestion.reconstruction._io import uri_to_path, write_json
-from spatial_ingestion.reconstruction.alignment import run_sparse_alignment
+from spatial_ingestion.reconstruction.backends import get_backend
 from spatial_ingestion.reconstruction.device import resolve_device, set_seed
-from spatial_ingestion.reconstruction.export import (
-    build_run_manifest,
-    export_scene_to_mesh,
-)
+from spatial_ingestion.reconstruction.export import build_run_manifest
 from spatial_ingestion.reconstruction.models import Mast3rRunParams, ReconstructionJob
 
 logger = logging.getLogger(__name__)
@@ -19,10 +16,12 @@ logger = logging.getLogger(__name__)
 
 def run(job: ReconstructionJob) -> int:
     params = _resolve_params(job)
+    backend = get_backend(job.backend_name)
+    params = params.model_copy(update={"model_name": backend.resolve_model(params.model_name)})
     image_paths = [uri_to_path(u) for u in job.image_uris]
 
     if len(image_paths) < 2:
-        raise ValueError("MASt3R reconstruction requires at least two images")
+        raise ValueError(f"{backend.name} reconstruction requires at least two images")
 
     output_path, output_dir = _resolve_output_paths(job)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -49,7 +48,7 @@ def run(job: ReconstructionJob) -> int:
     outputs: dict[str, object] = {}
 
     with stage_log.stage("sparse_alignment", n_images=len(image_paths)):
-        sparse_scene = run_sparse_alignment(
+        sparse_scene = backend.align(
             image_paths=image_paths,
             output_dir=output_dir,
             model_name=params.model_name,
@@ -62,7 +61,7 @@ def run(job: ReconstructionJob) -> int:
         )
 
     with stage_log.stage("export_scene_to_mesh", tsdf_thresh=params.tsdf_thresh):
-        tsdf_fell_back = export_scene_to_mesh(
+        tsdf_fell_back = backend.export(
             sparse_scene,
             output_path,
             output_dir,
@@ -123,6 +122,7 @@ def _build_manifest(
         seed=params.seed,
         dry_run=params.dry_run,
         sync_view_groups=job.sync_view_groups or None,
+        backend=job.backend_name,
     )
     manifest["job_id"] = job.job_id
     manifest["mode"] = job.mode.value

@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from spatial_ingestion.config import RECONSTRUCTION_OUTPUT_ROOT
+from spatial_ingestion.reconstruction.backends import available_backends
 from spatial_ingestion.reconstruction.models import (
     Mast3rRunParams,
     ReconstructionJob,
@@ -33,6 +34,12 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--device", default="auto", help="cuda, cpu, mps, or auto")
+    parser.add_argument(
+        "--backend",
+        default="mast3r",
+        choices=available_backends(),
+        help="reconstruction backend; each uses its own default checkpoint unless --model is given",
+    )
     parser.add_argument(
         "--model", default=DEFAULT_MODEL, help="MASt3R model id or local checkpoint path"
     )
@@ -78,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     job = ReconstructionJob(
         mode=ReconstructionMode.MULTI_VIEW,
         label=input_path.name,
+        backend_name=args.backend,
         image_uris=[str(p) for p in image_paths],
         output_path=str(output_path),
         metadata=Mast3rRunParams(
