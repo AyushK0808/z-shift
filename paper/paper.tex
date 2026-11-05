@@ -39,7 +39,7 @@
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 \begin{document}
 
-\title{A Unified Ingestion-to-Delivery Pipeline for Converting Heterogeneous
+\title{A Unified Ingestion-to-Delivery Pipeline for Converting Multi-View
 2D Media into 3D Assets}
 
 % Seven authors, in the order of the submitted manuscript. The department line
@@ -112,8 +112,9 @@ however, requires ingestion, frame selection, temporal synchronization,
 geometry refinement, and application-specific delivery to work together. We
 present z-shift, a four-stage pipeline in which each stage is replaceable, and
 data passes between stages only as serializable artifacts. Ingestion unifies
-images, videos, synchronized captures, and live feeds under a common spatial
-schema. Reconstruction uses MASt3R for the initial scene geometry, may
+image folders, videos, and synchronized multi-camera captures under a common
+spatial schema, and buffers live WebSocket frames on a separate track.
+Reconstruction uses MASt3R for the initial scene geometry, may
 optionally fuse Truncated Signed Distance Functions (TSDFs), and falls back to
 a point map when fusion is unavailable. Refinement applies a fixed sequence of
 operations, while delivery routes GLB or point-cloud output under a
@@ -128,10 +129,11 @@ thereafter, reaching 20-fold at 1,000 components; a batched labeling pass
 removes that dependence. Repeating a run on the same
 GPU and configuration produced byte-identical output on both GPUs tested.
 Against DTU ground truth, ten views score 3.3--8.6~mm overall, and neither 49
-views, restored capture order, nor refinement improved scores consistently.
+views, restored capture order, nor refinement improved scores consistently. Object isolation removes most of a real mesh without lowering its score on four of five scans, and swapping in DUSt3R as a second reconstruction backend leaves every other stage unchanged.
 Component- and integration-level correctness is established across the
-pipeline. Real-time delivery and efficient large-scale mesh processing remain
-future work.
+pipeline. Reconstruction from a single image or a live stream, which the
+pipeline rejects, real-time delivery, and efficient large-scale mesh processing
+remain future work.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -157,8 +159,9 @@ refinement, and output delivery tailored to the application.
 
 z-shift is presented as a four-stage process where individually replaceable
 stages exchange data in the form of serializable artifacts. The ingestion stage
-unites images, videos, synchronized captures, and live streams under a uniform
-spatial representation. The reconstruction stage uses MASt3R optionally with
+unites image folders, videos, and synchronized captures, and buffers live
+streams, under a uniform spatial representation; reconstruction accepts the
+multi-view inputs and rejects single images and live streams. The reconstruction stage uses MASt3R optionally with
 TSDF fusion and a fallback point-map representation, while the refinement and
 delivery stages respectively handle geometry post-processing and routing of
 outputs according to media type and application requirements. Thus, the focus
@@ -764,6 +767,106 @@ damage we injected; that row shows it removes such damage, not that it makes a
 real reconstruction more accurate. Scan37 remains a pose failure here, and scan40
 passes only at the limit, with 2 of its 10 cameras left out.
 
+\subsection{Further Evaluation: Real Meshes, CO3D, Synchronization, and a Second Backend}
+\label{sec:further}
+
+Four further experiments use the same five DTU scans (24, 37, 40, 55, and 63)
+and the CO3D capture of Section~\ref{sec:trace}. Their results are in
+\texttt{bench/results/b10\_*} to \texttt{b13\_*}.
+
+\emph{Refinement on real meshes.} We timed both component filters on the raw
+meshes of the five scans (1.3--2.6M cells), with five repeats per
+cell on the GPU path. Batched labeling takes 0.30--0.84~s per mesh (SD at most
+0.09~s) and returns the same cell count as the per-body filter wherever the
+latter finished. The per-body filter finished within the 30-min budget on one
+scan, scan37, where it took 1,259~s, about 4,000 times longer. On the other four it did not finish. A
+real mesh therefore lands far above the knee of
+Section~\ref{sec:comp-performance}, as the CO3D mesh did, and the speedup
+measured on synthetic meshes understates what the batched pass saves in
+practice. Table~\ref{tab:isolation} shows what each object-mode variant keeps and
+scores. Plain object mode keeps 11--26\% of the faces and lowers mean F-score
+from 0.213 to 0.193. Object isolation, which cuts the dominant support plane
+(32--60\% of the faces) before gathering the subject's fragments, keeps
+15--43\% on four scans and matches or exceeds the raw mesh's F-score on those
+four (mean 0.239 against 0.229 raw and 0.217 for object mode). On scan37,
+which is a pose failure in every configuration of Table~\ref{tab:dtu}, the plane cut
+removes the subject and the score collapses. Object isolation thus removes most
+of the mesh without lowering the DTU score on four of five scans, while the
+largest-component rule does not.
+
+% B10: bench/results/b10_real_mesh_refinement.csv, part=accuracy.
+\begin{table}[tbp]
+\caption{Refinement on Real DTU Meshes (Ten Views): Share of Faces Kept /
+F-Score at 2~mm}
+\begin{center}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Scan} & \textbf{Raw} & \textbf{Object} & \textbf{Object + isolation} \\
+\hline
+24 & 1.00/.165 & .26/.138 & .43/.164 \\
+\hline
+37 & 1.00/.152 & .18/.097 & .11/.002 \\
+\hline
+40 & 1.00/.239 & .19/.154 & .39/.241 \\
+\hline
+55 & 1.00/.318 & .11/.378 & .33/.336 \\
+\hline
+63 & 1.00/.194 & .14/.198 & .15/.217 \\
+\hline
+\textbf{Mean} & \textbf{1.00/.213} & \textbf{.18/.193} & \textbf{.28/.192} \\
+\hline
+\end{tabular}
+\label{tab:isolation}
+\end{center}
+\end{table}
+
+\emph{CO3D against its reference cloud.} CO3D's point cloud is a COLMAP
+reconstruction rather than an independent ground truth, and the single-sequence
+release has no camera annotations. We therefore register each result to it with
+a fixed RMS-radius scale and a rigid ICP, report the registration residual
+(1.4--1.5\% of the bounding-box diagonal), and treat the cloud as a
+pseudo-reference. Accuracy and completeness are fractions of that diagonal.
+At eight views the refined, isolated mesh reaches F-score 0.745 at 2\% of the
+diagonal and accuracy 0.019, against 0.586 and 0.061 for the raw point cloud;
+at 24 views the values are 0.769 and 0.016 against 0.502 and 0.058. Without
+isolation the eight-view refined mesh reaches 0.603, so isolation accounts for
+most of the gain there. Because registration to the reference favors any
+well-shaped surface, these figures compare variants with one another and do not
+rank the pipeline against other methods.
+
+\emph{Synchronization on real images.} Section~\ref{sec:bench-validation}
+validates the synchronizer on synthetic motion traces. Here we use the images
+of the five DTU scans: the production sampler's motion score is computed on
+consecutive real frames, a second camera's scores come from its own perturbed
+pixels (gain, offset, blur, and sensor noise), and its clock is shifted by 0 to
+640~ms with 0 or 20~ms of jitter, over two or three sources and five seeds
+(1,100 trials). DTU's cameras carry no timestamps, so the clocks are
+injected and recovery is scored against the injected offset. The median
+absolute error is 12--30~ms per scan, against a 40~ms frame interval. The
+recovered sign is correct in 82--95\% of trials with a nonzero offset, and
+group formation is 83--90\%. The mean error (31--145~ms) is much larger than
+the median because a minority of trials lock onto the wrong motion peak, which
+the mean-error figure of the synthetic row does not show. This is a test of
+the synchronizer on a real scene's signal, not on a multi-camera recording
+with true clocks, which we did not collect.
+
+\emph{A second reconstruction backend.} The reconstruction stage sits behind a
+backend interface selected per job, and we ran DUSt3R \cite{b6} through it on
+the five scans at the ten views of Table~\ref{tab:dtu}. DUSt3R has a different
+network and a different global optimizer and performs no TSDF fusion. For
+each of the five scans the stage wrote the same mesh, point cloud, camera, and
+manifest artifacts, the manifest recorded the backend that ran, and refinement
+consumed the mesh with no change to it or to delivery. A contract test states
+what any backend must produce. The swap also changes the score, so the measurement is
+sensitive to the stage and not to the interface: DUSt3R reaches a mean F-score of
+0.069 and overall error of 8.3~mm, against 0.210 and 5.85~mm for MASt3R, with
+all five scans flagged as pose failures, while taking 64~s per scan against
+157~s. This shows that the reconstruction stage can be replaced and its effect
+measured under one protocol; we make no claim of this kind for the other stages.
+
+
 \section{Conclusions}
 
 This paper presents a system architecture of independently replaceable stages
@@ -804,10 +907,9 @@ Reconstruction requires at least two views, and authentication, rate limiting,
 and streaming state remain in-memory and single-process, reflecting
 research-prototype status.
 
-Our DTU scores characterize this pipeline alone: no baseline ran under the same
-protocol, and published MVS scores, which are given DTU's cameras, are not
-comparable. More robust camera estimation, and comparison against classical MVS,
-DUSt3R, and MASt3R baselines under one protocol using Chamfer distance,
+Our DTU scores characterize this pipeline and, at ten views, its DUSt3R variant; published MVS scores, which are given DTU's cameras, are not
+comparable. More robust camera estimation, and comparison against classical MVS
+baselines under one protocol using Chamfer distance,
 point-to-surface error, and F-score, are the priorities for future work.
 
 % Keys b1--b29 match the reference numbers of the submitted manuscript.
