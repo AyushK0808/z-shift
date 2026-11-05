@@ -847,6 +847,38 @@ points and 53% of the ground truth, and still reads 7.99 mm.
 
 ---
 
+## 18. On real meshes the batched filter is 4,000x faster and isolation recovers the score (B10)
+
+Five DTU raw meshes (1.3-2.6M cells). `labels`: 0.30-0.84 s, SD <= 0.09 s over
+5 repeats. `split_bodies`: finished only on scan37 (1,259 s, identical output);
+the other four hit the 1,800 s budget. Object mode keeps 11-26% of faces and
+lowers mean F from .213 to .193. Object isolation (support plane 32-60% of
+faces) keeps 15-43% on four scans with mean F .239 vs .229 raw; on scan37 it
+removes the subject (F .002). Mean |cos| of mesh normals vs estimated GT normals
+is about .52 in every variant, indistinguishable from random, so it is not used
+as a result.
+
+## 19. CO3D against its own reference cloud (B11)
+
+COLMAP pseudo-reference registered by fixed scale + ICP (residual 1.4-1.5% of
+the diagonal). Refined+isolated F@2%: .745 (8 views), .769 (24); raw point
+cloud .586, .502. Registration favours any well-shaped surface, so this
+compares variants, not methods.
+
+## 20. Synchronisation on real DTU images with injected clocks (B12)
+
+1,100 trials. Median absolute error 12-30 ms per scan (frame interval 40 ms),
+sign correct 82-95%, groups 83-90%. Mean error 31-145 ms: a minority of trials
+lock onto the wrong motion peak. Clocks are injected, not recorded.
+
+## 21. A second backend meets the contract but scores worse (B13)
+
+DUSt3R behind the backend interface wrote the same artifacts and refinement
+consumed its mesh on all five scans. Mean F .069 and 8.3 mm overall against .210
+and 5.85 mm for MASt3R; all five are pose failures. 64 s vs 157 s per scan.
+
+---
+
 ## Smaller items from the protocol's checklist
 
 - `compute_priority_score` is computed by `LatencyAwareResourceTagger`, stored
