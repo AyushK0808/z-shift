@@ -67,12 +67,12 @@ def _config(mode: str, isolate: bool, component_filter: str, device: str = "auto
     from spatial_ingestion.refinement import MeshCleaningConfig
 
     return MeshCleaningConfig(
-        mode=mode,  # type: ignore[arg-type]
+        mode=mode,  # ty: ignore[invalid-argument-type]
         smoothing_iters=SMOOTHING_ITERS,
         verify_watertight=True,
         isolate_object=isolate,
-        component_filter=component_filter,  # type: ignore[arg-type]
-        device=device,  # type: ignore[arg-type]
+        component_filter=component_filter,  # ty: ignore[invalid-argument-type]
+        device=device,  # ty: ignore[invalid-argument-type]
     )
 
 

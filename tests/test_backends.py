@@ -60,7 +60,7 @@ class FakeBackend(ReconstructionBackend):
             np.full((len(sphere.vertices), 3), 128, dtype=np.uint8),
         )
         write_json(output_dir / "cameras.json", {"cameras": []})
-        stats["scene_model"] = scene["model"]  # type: ignore[index]
+        stats["scene_model"] = scene["model"]  # ty: ignore[not-subscriptable]
         return False
 
 

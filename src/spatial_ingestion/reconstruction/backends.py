@@ -174,9 +174,9 @@ class Dust3rBackend(ReconstructionBackend):
 
         if tsdf_thresh > 0:
             logger.info("DUSt3R has no TSDF fusion; ignoring tsdf_thresh=%s", tsdf_thresh)
-        imgs = to_numpy(scene.imgs)  # type: ignore[attr-defined]
-        pts3d = to_numpy(scene.get_pts3d())  # type: ignore[attr-defined]
-        confs = [to_numpy(conf) for conf in scene.im_conf]  # type: ignore[attr-defined]
+        imgs = to_numpy(scene.imgs)  # ty: ignore[unresolved-attribute]
+        pts3d = to_numpy(scene.get_pts3d())  # ty: ignore[unresolved-attribute]
+        confs = [to_numpy(conf) for conf in scene.im_conf]  # ty: ignore[unresolved-attribute]
         write_scene_artifacts(
             imgs,
             pts3d,

@@ -206,8 +206,8 @@ def run(
             pass_band=0.1,
             decimate_target_reduction=None,
             verify_watertight=True,
-            component_filter=filter_method,  # type: ignore[arg-type]
-            device=FILTER_DEVICES[filter_method],  # type: ignore[arg-type]
+            component_filter=filter_method,  # ty: ignore[invalid-argument-type]
+            device=FILTER_DEVICES[filter_method],  # ty: ignore[invalid-argument-type]
             isolate_object=isolate_object,
         )
 
@@ -237,7 +237,7 @@ def run(
         deliverables_root=root / "deliverables",
     )
     pipeline_seconds = round(time.perf_counter() - start, 3)
-    pipeline = getattr(result, "pipeline_result", result)
+    pipeline: Any = getattr(result, "pipeline_result", result)
 
     manifest = json.loads(Path(pipeline.reconstruction_manifest_path).read_text(encoding="utf-8"))
     outputs = manifest.get("outputs", {})

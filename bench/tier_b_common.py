@@ -132,12 +132,18 @@ class Scene:
     def dtu_reference(self) -> DtuReference | None:
         from bench.dtu_eval import DtuReference
 
-        fields = (self.gt_path, self.calibration_dir, self.obs_mask_path, self.plane_path)
-        if any(value is None for value in fields):
+        gt, calibration, obs_mask, plane = (
+            self.gt_path,
+            self.calibration_dir,
+            self.obs_mask_path,
+            self.plane_path,
+        )
+        if gt is None or calibration is None or obs_mask is None or plane is None:
             return None
+        fields = (gt, calibration, obs_mask, plane)
         cached = _DTU_REFERENCES.get(fields)
         if cached is None:
-            cached = _DTU_REFERENCES[fields] = DtuReference(*fields)  # type: ignore[arg-type]
+            cached = _DTU_REFERENCES[fields] = DtuReference(*fields)
         return cached
 
     def image_paths(self, limit: int | None = None, *, spread: bool = False) -> list[Path]:

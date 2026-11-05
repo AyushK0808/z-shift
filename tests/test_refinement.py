@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
@@ -14,6 +15,9 @@ from spatial_ingestion.refinement import (
     load_mesh_file,
     write_mesh_file,
 )
+
+if TYPE_CHECKING:
+    from spatial_ingestion.refinement.gpu import Device
 
 
 def _make_colored_sphere_with_hole() -> pv.PolyData:
@@ -273,7 +277,7 @@ def _same_geometry(a: pv.PolyData, b: pv.PolyData) -> bool:
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
-def test_labelled_component_filter_matches_split_bodies(device: str) -> None:
+def test_labelled_component_filter_matches_split_bodies(device: Device) -> None:
     from spatial_ingestion.refinement.core import (
         filter_room_components,
         keep_object_components,
@@ -302,7 +306,7 @@ def test_labelled_component_filter_matches_split_bodies(device: str) -> None:
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
-def test_edge_use_counts_match_vtk_feature_edges(device: str) -> None:
+def test_edge_use_counts_match_vtk_feature_edges(device: Device) -> None:
     from spatial_ingestion.refinement.core import count_topology_issues
 
     torch = pytest.importorskip("torch")

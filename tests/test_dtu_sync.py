@@ -19,7 +19,7 @@ def _scene(root: Path, n_frames: int = 30) -> Path:
     background = rng.integers(30, 60, (90, 160), dtype=np.uint8)
     position = 0
     for index in range(n_frames):
-        frame = background.copy()
+        frame: np.ndarray = background.copy()
         position += 2 if index % 10 < 5 else 12
         frame[20:60, position % 120 : position % 120 + 30] = 220
         cv2.imwrite(str(images / f"rect_{index + 1:03d}_3_r5000.png"), frame)

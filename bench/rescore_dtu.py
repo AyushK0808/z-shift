@@ -107,7 +107,7 @@ def rescore_rows(
                 result = clean_mesh(
                     raw_poly,
                     MeshCleaningConfig(
-                        mode=row["mode"],  # type: ignore[arg-type]
+                        mode=row["mode"],  # ty: ignore[invalid-argument-type]
                         smoothing_iters=int(float(row["smoothing_iters"])),
                         verify_watertight=True,
                     ),

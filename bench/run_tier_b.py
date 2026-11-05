@@ -199,7 +199,7 @@ def preflight(manifest_path: Path, work_dir: Path) -> dict[str, Any]:
         # croco falls back to a pure-PyTorch RoPE, with only a printed warning,
         # when its CUDA kernel was never compiled.
         import dust3r.utils.path_to_croco  # noqa: F401  (puts croco's `models` on sys.path)
-        from models.pos_embed import RoPE2D
+        from models.pos_embed import RoPE2D  # ty: ignore[unresolved-import]
 
         report["rope2d"] = RoPE2D.__name__
         if report["rope2d"] != "cuRoPE2D":

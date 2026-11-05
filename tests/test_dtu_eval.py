@@ -93,7 +93,9 @@ def _write_scan(root: Path) -> tuple[DtuReference, np.ndarray, Path]:
         pose[:3, 3] = into_reconstruction(centre[None])[0]
         cameras.append({"image": f"/data/scan1/rect_{view:03d}_3_r5000.png", "cam2world": pose})
     (output_dir / "cameras.json").write_text(
-        json.dumps({"cameras": [{**c, "cam2world": c["cam2world"].tolist()} for c in cameras]})
+        json.dumps(
+            {"cameras": [{**c, "cam2world": np.asarray(c["cam2world"]).tolist()} for c in cameras]}
+        )
     )
     return reference, reconstruction, output_dir
 
