@@ -261,3 +261,45 @@ corresponding experiment's commentary and the Section IV/V text together.
 | B7 | §V-D determinism bound | yes |
 | B8 | §IV-C EXIF intrinsics initialisation | yes |
 | B9 | §V-D CO3D teddybear end-to-end trace (Table II, fig13) | yes |
+
+## Reviewer-response experiments (B10-B13)
+
+One command runs the experiments added for the second review round, from the
+repository root inside WSL2 (it needs the environment and DTU scans the Tier B
+runner sets up, and B6's outputs):
+
+```bash
+bash scripts/run-reviewer-response.sh                 # tests, B10-B13, then a summary
+bash scripts/run-reviewer-response.sh --only "b12 b13"
+```
+
+```powershell
+wsl.exe -d Ubuntu --cd /mnt/c/Users/theof/projects/personal/z-shift --exec bash scripts/run-reviewer-response.sh
+```
+
+- B10 (`exp_b10_real_mesh_refinement`): refinement on the raw DTU meshes B6
+  saved. `part=accuracy` scores raw, object, room and object-with-isolation
+  (`isolate_object`) against DTU's ground truth, with the share of faces kept and
+  `normal_consistency` (`dtu_eval.mesh_normal_consistency`: mean |cos| against
+  normals estimated from the structured-light points; not a standard DTU metric).
+  `part=timing` times `labels` and `split_bodies` with repeats; `split_bodies` runs
+  in a child process under `--split-budget-s`, so a hung cell is a `timeout` row.
+- B11 (`exp_b11_co3d_accuracy`): the CO3D teddybear runs scored against CO3D's own
+  `pointcloud.ply`. That cloud is a COLMAP reconstruction, so it is a
+  pseudo-reference, and the single-sequence release has no cameras, so the
+  reconstruction is registered by a fixed RMS-radius scale and then ICP
+  (`co3d_eval.register`); the registration residual is on every row. Distances are
+  fractions of the reference's bounding-box diagonal.
+- B12 (`exp_b12_dtu_sync`): the synchroniser on the real DTU rig images. Motion
+  scores come from real consecutive frames and a second camera's from perturbed
+  pixels; only the clocks are injected, since DTU has none.
+- B13 (`exp_b13_backend_swap`): DUSt3R behind `reconstruction/backends.py` on the
+  same five scans and views as B2's 10-view rows, scored identically, with
+  `contract_ok` (the stage's artifacts and a manifest naming the backend) and
+  `refine_ok` (refinement consumed the mesh unchanged) per run.
+
+A reconstruction backend is a `ReconstructionBackend` (`align`, `export`) in
+`spatial_ingestion/reconstruction/backends.py`, selected by
+`ReconstructionJob.backend_name` or `zshift-image-to-3d --backend`;
+`tests/test_backends.py` states what one must produce.
+
