@@ -21,7 +21,9 @@ from scipy.spatial.transform import Rotation
 from bench.dtu_eval import (
     DtuReference,
     camera_alignment,
+    estimate_normals,
     load_reconstruction_cameras,
+    mesh_normal_consistency,
     score_dtu,
     view_number,
 )
@@ -221,3 +223,47 @@ def test_score_against_gt_takes_the_dtu_path_from_a_manifest(tmp_path: Path) -> 
     assert scores["protocol"] == "dtu_obsmask"
     assert scores["mast3r_scale_ratio"] == pytest.approx(SCALE / 1000.0, rel=1e-6)
     assert scores["f_score"] > 0.99
+
+
+def test_estimated_normals_of_a_sphere_are_radial() -> None:
+    points = np.random.default_rng(0).normal(size=(20_000, 3))
+    points /= np.linalg.norm(points, axis=1, keepdims=True)
+    normals = estimate_normals(points)
+    assert np.allclose(np.linalg.norm(normals, axis=1), 1.0)
+    assert np.abs((normals * points).sum(axis=1)).mean() > 0.99
+
+
+def _ellipsoid_in_reconstruction_frame(
+    reference: DtuReference, output_dir: Path
+) -> trimesh.Trimesh:
+    """The scan's ellipsoid as a mesh, in the reconstruction's own frame."""
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    mesh = trimesh.creation.icosphere(subdivisions=4)
+    mesh.apply_scale([100.0, 70.0, 45.0])
+    mesh.apply_translation([0, 0, 600.0])
+    alignment = fit.alignment
+    mesh.vertices = ((np.asarray(mesh.vertices) - alignment.translation) @ alignment.rotation) / (
+        alignment.scale
+    )
+    return mesh
+
+
+def test_mesh_normal_consistency_is_high_for_the_right_surface_and_lower_for_a_turned_one(
+    tmp_path: Path,
+) -> None:
+    reference, _, output_dir = _write_scan(tmp_path)
+    mesh = _ellipsoid_in_reconstruction_frame(reference, output_dir)
+
+    right = mesh_normal_consistency(mesh, reference, output_dir)
+    assert right["normal_consistency"] > 0.95
+    assert right["normal_consistency_n"] > 1000
+
+    # The same shape turned a quarter-turn about one axis through its centre no
+    # longer lies on the ground truth, so what stays within the distance cap
+    # meets normals that disagree.
+    turned = mesh.copy()
+    centre = turned.vertices.mean(axis=0)
+    turn = Rotation.from_euler("x", 90, degrees=True).as_matrix()
+    turned.vertices = (turned.vertices - centre) @ turn.T + centre
+    wrong = mesh_normal_consistency(turned, reference, output_dir)
+    assert wrong["normal_consistency"] < right["normal_consistency"] - 0.1
