@@ -344,9 +344,11 @@ def build_job(
     params: Mast3rRunParams,
     mode: ReconstructionMode = ReconstructionMode.MULTI_VIEW,
     label: str = "tier_b",
+    backend: str = "mast3r",
 ) -> ReconstructionJob:
     return ReconstructionJob(
         mode=mode,
+        backend_name=backend,
         image_uris=[path.resolve().as_uri() for path in image_paths],
         label=label,
         output_path=str(output_path.resolve()),

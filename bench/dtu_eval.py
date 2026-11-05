@@ -42,7 +42,9 @@ __all__ = [
     "DTU_MAX_DIST_MM",
     "DtuReference",
     "camera_alignment",
+    "estimate_normals",
     "load_reconstruction_cameras",
+    "mesh_normal_consistency",
     "score_dtu",
     "view_number",
 ]
@@ -79,6 +81,11 @@ MAX_CAMERA_OUTLIER_FRAC = 0.2
 # 30 iterations against all ~5M structured-light points took 150 s a scoring.
 _ICP_GT_POINTS = 500_000
 _ICP_SOURCE_POINTS = 100_000
+# DTU's ground truth carries no normals, so they are estimated from the
+# structured-light points: the smallest principal axis of each point's
+# neighbourhood. 16 neighbours of the 500k subsample span a few millimetres.
+_NORMAL_NEIGHBOURS = 16
+_NORMAL_CHUNK = 100_000
 
 _VIEW_RE = re.compile(r"rect_(\d{3})_", re.IGNORECASE)
 
@@ -151,6 +158,11 @@ class DtuReference:
         return KDTree(self.stl_sample)
 
     @cached_property
+    def stl_sample_normals(self) -> np.ndarray:
+        """Unoriented PCA normals of `stl_sample`; consistency compares |cos|, so sign is moot."""
+        return estimate_normals(self.stl_sample, self.stl_sample_tree)
+
+    @cached_property
     def stl_above_plane(self) -> np.ndarray:
         return self.stl_points[self.above_plane(self.stl_points)]
 
@@ -176,6 +188,27 @@ class DtuReference:
         cells = grid[candidates]
         inside[candidates] = mask[cells[:, 0], cells[:, 1], cells[:, 2]]
         return inside
+
+
+def estimate_normals(
+    points: np.ndarray, tree: KDTree | None = None, k: int = _NORMAL_NEIGHBOURS
+) -> np.ndarray:
+    """Unit normal of every point: the least-variance axis of its k nearest neighbours.
+
+    The sign is arbitrary. A point whose neighbourhood is degenerate (all
+    coincident) gets an arbitrary axis, which the callers' distance cap and the
+    sheer number of points make immaterial.
+    """
+    points = np.asarray(points, dtype=float)
+    tree = tree if tree is not None else KDTree(points)
+    normals = np.empty_like(points)
+    for start in range(0, len(points), _NORMAL_CHUNK):
+        chunk = points[start : start + _NORMAL_CHUNK]
+        neighbours = points[tree.query(chunk, k=min(k, len(points)), workers=-1)[1]]
+        centred = neighbours - neighbours.mean(axis=1, keepdims=True)
+        covariance = np.einsum("nki,nkj->nij", centred, centred)
+        normals[start : start + len(chunk)] = np.linalg.eigh(covariance)[1][:, :, 0]
+    return normals
 
 
 def load_reconstruction_cameras(output_dir: Path) -> dict[int, np.ndarray]:
@@ -430,4 +463,48 @@ def score_dtu(
         # The trimmed camera fit is the alignment the scores come from.
         **cameras.as_row(),
         **icp_row,
+    }
+
+
+def mesh_normal_consistency(
+    mesh: Any,
+    reference: DtuReference,
+    output_dir: Path,
+    *,
+    n_samples: int = 100_000,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Mean |cos| between sampled mesh normals and the nearest ground-truth normal.
+
+    The mesh is placed in DTU's frame by the same trimmed camera fit as the
+    other scores (normals take the rotation only), kept to the observation
+    mask, and matched to the nearest ground-truth point within DTU's 20 mm cap.
+    The ground-truth normals are estimated from the points, so this measures
+    agreement with the structured-light surface as DTU samples it; it is not a
+    standard DTU metric.
+    """
+    from bench.metrics import sample_points_with_normals
+
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    points, normals = sample_points_with_normals(mesh, n_samples, seed)
+    placed = apply_alignment(points, fit.alignment)
+    rotated = normals @ fit.alignment.rotation.T
+    inside = reference.in_mask(placed)
+    placed, rotated = placed[inside], rotated[inside]
+    empty = {"normal_consistency": float("nan"), "normal_consistency_n": 0}
+    if len(placed) == 0:
+        return empty
+    distance, index = reference.stl_sample_tree.query(
+        placed, k=1, workers=-1, distance_upper_bound=DTU_MAX_DIST_MM
+    )
+    matched = np.isfinite(distance)
+    if not matched.any():
+        return empty
+    cosine = np.abs(
+        np.einsum("ij,ij->i", rotated[matched], reference.stl_sample_normals[index[matched]])
+    )
+    return {
+        "normal_consistency": round(float(cosine.mean()), 5),
+        "normal_consistency_p10": round(float(np.percentile(cosine, 10)), 5),
+        "normal_consistency_n": int(matched.sum()),
     }
