@@ -853,8 +853,8 @@ Five DTU raw meshes (1.3-2.6M cells). `labels`: 0.30-0.84 s, SD <= 0.09 s over
 5 repeats. `split_bodies`: finished only on scan37 (1,259 s, identical output);
 the other four hit the 1,800 s budget. Object mode keeps 11-26% of faces and
 lowers mean F from .213 to .193. Object isolation (support plane 32-60% of
-faces) keeps 15-43% on four scans with mean F .239 vs .229 raw; on scan37 it
-removes the subject (F .002). Mean |cos| of mesh normals vs estimated GT normals
+faces) keeps 15-43% on four scans with mean F .239 vs .229 raw; on scan37 its
+score collapses (F .002; cause not diagnosed). Mean |cos| of mesh normals vs estimated GT normals
 is about .52 in every variant, indistinguishable from random, so it is not used
 as a result.
 
@@ -869,7 +869,7 @@ compares variants, not methods.
 
 1,100 trials. Median absolute error 12-30 ms per scan (frame interval 40 ms),
 sign correct 82-95%, groups 83-90%. Mean error 31-145 ms: a minority of trials
-lock onto the wrong motion peak. Clocks are injected, not recorded.
+fail by much more than the median (cause not diagnosed). Clocks are injected, not recorded.
 
 ## 21. A second backend meets the contract but scores worse (B13)
 
