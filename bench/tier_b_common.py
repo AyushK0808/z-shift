@@ -132,12 +132,18 @@ class Scene:
     def dtu_reference(self) -> DtuReference | None:
         from bench.dtu_eval import DtuReference
 
-        fields = (self.gt_path, self.calibration_dir, self.obs_mask_path, self.plane_path)
-        if any(value is None for value in fields):
+        gt, calibration, obs_mask, plane = (
+            self.gt_path,
+            self.calibration_dir,
+            self.obs_mask_path,
+            self.plane_path,
+        )
+        if gt is None or calibration is None or obs_mask is None or plane is None:
             return None
+        fields = (gt, calibration, obs_mask, plane)
         cached = _DTU_REFERENCES.get(fields)
         if cached is None:
-            cached = _DTU_REFERENCES[fields] = DtuReference(*fields)  # type: ignore[arg-type]
+            cached = _DTU_REFERENCES[fields] = DtuReference(*fields)
         return cached
 
     def image_paths(self, limit: int | None = None, *, spread: bool = False) -> list[Path]:
@@ -159,6 +165,37 @@ class Scene:
         if spread:
             return [paths[index] for index in evenly_spaced_indices(len(paths), limit)]
         return paths[:limit]
+
+
+# Directed pairs sparse alignment can hold on an 8 GB GPU with headroom. Its
+# scene optimizer keeps every pair's correspondences on the GPU, ~6 MB a pair
+# at 512x384, and with the network offloaded once the pairs are through it
+# (reconstruction.alignment) little else. Measured: DTU's 49-view complete
+# graph (2352 pairs, network resident) needed 18 GB and ran out of memory on
+# 4 of 5 scans; CO3D at 24 views (552 pairs, 512x288, offloaded) peaked at
+# 4.4 GB. 800 pairs at 512x384 comes to ~5.5 GB.
+DEFAULT_MAX_PAIRS = 800
+
+
+def bounded_pairing(n_images: int, max_pairs: int = DEFAULT_MAX_PAIRS, *, cyclic: bool) -> str:
+    """`complete` when its n(n-1) directed pairs fit `max_pairs`, else the widest swin that does.
+
+    `cyclic` closes the window around the end of the sequence, which suits an
+    orbit that returns to its start (CO3D) and not a rig numbered along a
+    path whose two ends are far apart (DTU).
+    """
+    if n_images * (n_images - 1) <= max_pairs:
+        return "complete"
+
+    def directed_pairs(window: int) -> int:
+        if cyclic:
+            return 2 * n_images * window
+        return 2 * (n_images * window - window * (window + 1) // 2)
+
+    window = 1
+    while window + 1 < n_images and directed_pairs(window + 1) <= max_pairs:
+        window += 1
+    return f"swin-{window}" + ("" if cyclic else "-noncyclic")
 
 
 def evenly_spaced_indices(n_items: int, count: int) -> list[int]:
@@ -313,9 +350,11 @@ def build_job(
     params: Mast3rRunParams,
     mode: ReconstructionMode = ReconstructionMode.MULTI_VIEW,
     label: str = "tier_b",
+    backend: str = "mast3r",
 ) -> ReconstructionJob:
     return ReconstructionJob(
         mode=mode,
+        backend_name=backend,
         image_uris=[path.resolve().as_uri() for path in image_paths],
         label=label,
         output_path=str(output_path.resolve()),

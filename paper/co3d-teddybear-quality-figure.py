@@ -26,7 +26,6 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-
 ROOT = Path(__file__).resolve().parents[1]
 # A re-run by bench/exp_b9_case_study.py keeps everything under one run
 # directory (run_manifest.json, refinement_manifest.json, rig/*.json); point

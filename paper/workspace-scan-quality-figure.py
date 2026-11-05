@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import csv
 import math
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -112,7 +111,9 @@ def score(args: argparse.Namespace) -> dict[str, Any]:
     gt_mesh = _maybe_mesh(args.gt)
     normal_score = None
     if recon_mesh is not None and gt_mesh is not None:
-        normal_score = normal_consistency(recon_mesh, gt_mesh, n=args.normal_samples, seed=args.seed)
+        normal_score = normal_consistency(
+            recon_mesh, gt_mesh, n=args.normal_samples, seed=args.seed
+        )
 
     return {
         "reconstruction": str(args.reconstruction),

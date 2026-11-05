@@ -1,33 +1,33 @@
-         4854397 function calls (4117209 primitive calls) in 14.234 seconds
+         4836987 function calls (4100168 primitive calls) in 4.150 seconds
 
    Ordered by: cumulative time
-   List reduced from 437 to 25 due to restriction <25>
+   List reduced from 466 to 25 due to restriction <25>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-        1    0.000    0.000   14.234   14.234 C:\Users\theof\projects\personal\z-shift\src\spatial_ingestion\refinement\core.py:324(clean_mesh)
-        5    0.000    0.000   14.230    2.846 C:\Users\theof\projects\personal\z-shift\src\spatial_ingestion\refinement\core.py:137(run_step)
-        5    0.020    0.004   14.229    2.846 C:\Users\theof\projects\personal\z-shift\src\spatial_ingestion\refinement\core.py:150(_invoke_step)
-11052/1012    0.194    0.000   14.061    0.014 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\_deprecate_positional_args.py:191(inner_f)
-        1    0.013    0.013   13.769   13.769 C:\Users\theof\projects\personal\z-shift\src\spatial_ingestion\refinement\core.py:213(filter_room_components)
-        1    0.008    0.008   13.594   13.594 C:\Users\theof\projects\personal\z-shift\src\spatial_ingestion\refinement\core.py:178(get_component_pieces)
-        1    0.146    0.146   10.553   10.553 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\data_set.py:2673(split_bodies)
-     1000    0.090    0.000    9.480    0.009 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\data_set.py:765(threshold)
-     2010    0.017    0.000    5.670    0.003 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\__init__.py:40(_update_alg)
-     2010    5.630    0.003    5.630    0.003 {method 'Update' of 'vtkmodules.vtkCommonExecutionModel.vtkStreamingDemandDrivenPipeline' objects}
-     2010    0.307    0.000    4.506    0.002 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\__init__.py:69(_get_output)
-730057/240846    1.124    0.000    3.977    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\_vtk_utilities.py:144(__getattribute__)
-     1001    0.008    0.000    2.930    0.003 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\data_object.py:4028(extract_surface)
-     1001    0.075    0.000    2.906    0.003 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\data_set.py:5655(_extract_surface)
-     1001    0.052    0.000    2.829    0.003 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\filters\data_set.py:1461(_geometry_filter)
-     2011    0.032    0.000    2.441    0.001 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\dataset.py:909(copy_meta_from)
-    26124    0.130    0.000    2.413    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\utilities\misc.py:441(__call__)
-     6003    0.290    0.000    2.307    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\utilities\arrays.py:503(_assoc_array)
-129648/129628    0.267    0.000    1.579    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\utilities\misc.py:528(__setattr__)
-751152/560462    0.841    0.000    1.516    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\_vtk_utilities.py:116(check_attribute)
-     6008    0.057    0.000    1.365    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\datasetattributes.py:425(get_array)
-     7020    0.065    0.000    1.269    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\utilities\helpers.py:173(wrap)
-     1001    0.014    0.000    1.228    0.001 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\utilities\arrays.py:332(get_array)
-     1000    0.016    0.000    1.147    0.001 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\utilities\arrays.py:408(get_array_association)
-   129648    0.483    0.000    1.091    0.000 C:\Users\theof\projects\personal\z-shift\.venv\Lib\site-packages\pyvista\core\utilities\misc.py:493(_check_new_attribute)
+        1    0.000    0.000    4.154    4.154 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:391(clean_mesh)
+        5    0.000    0.000    4.153    0.831 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:158(run_step)
+        5    0.005    0.001    4.152    0.830 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:171(_invoke_step)
+11048/1012    0.055    0.000    4.065    0.004 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/_deprecate_positional_args.py:191(inner_f)
+        1    0.005    0.005    4.025    4.025 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:263(filter_room_components)
+        1    0.003    0.003    3.976    3.976 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:199(get_component_pieces)
+        1    0.056    0.056    2.749    2.749 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/data_set.py:2673(split_bodies)
+     1000    0.026    0.000    2.444    0.002 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/data_set.py:765(threshold)
+     2008    0.171    0.000    1.674    0.001 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/__init__.py:69(_get_output)
+729712/240757    0.400    0.000    1.308    0.000 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/_vtk_utilities.py:144(__getattribute__)
+     2008    0.004    0.000    1.266    0.001 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/__init__.py:40(_update_alg)
+     2008    1.255    0.001    1.255    0.001 {method 'Update' of 'vtkmodules.vtkCommonExecutionModel.vtkStreamingDemandDrivenPipeline' objects}
+     1001    0.002    0.000    1.194    0.001 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/data_object.py:4028(extract_surface)
+     1001    0.023    0.000    1.187    0.001 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/data_set.py:5655(_extract_surface)
+     1001    0.014    0.000    1.164    0.001 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/data_set.py:1461(_geometry_filter)
+     2009    0.011    0.000    0.895    0.000 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/dataset.py:909(copy_meta_from)
+     6003    0.137    0.000    0.679    0.000 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/utilities/arrays.py:503(_assoc_array)
+    26110    0.037    0.000    0.647    0.000 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/utilities/misc.py:441(__call__)
+     7016    0.018    0.000    0.469    0.000 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/utilities/helpers.py:173(wrap)
+129582/129562    0.073    0.000    0.428    0.000 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/utilities/misc.py:528(__setattr__)
+750795/560169    0.219    0.000    0.405    0.000 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/_vtk_utilities.py:116(check_attribute)
+     1001    0.004    0.000    0.370    0.000 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/utilities/arrays.py:332(get_array)
+     6008    0.016    0.000    0.365    0.000 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/datasetattributes.py:425(get_array)
+     1000    0.004    0.000    0.326    0.000 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/utilities/arrays.py:408(get_array_association)
+     2010    0.163    0.000    0.314    0.000 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/dataset.py:157(active_scalars_info)
 
 

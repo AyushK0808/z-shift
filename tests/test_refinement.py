@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
@@ -14,6 +15,9 @@ from spatial_ingestion.refinement import (
     load_mesh_file,
     write_mesh_file,
 )
+
+if TYPE_CHECKING:
+    from spatial_ingestion.refinement.gpu import Device
 
 
 def _make_colored_sphere_with_hole() -> pv.PolyData:
@@ -273,7 +277,7 @@ def _same_geometry(a: pv.PolyData, b: pv.PolyData) -> bool:
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
-def test_labelled_component_filter_matches_split_bodies(device: str) -> None:
+def test_labelled_component_filter_matches_split_bodies(device: Device) -> None:
     from spatial_ingestion.refinement.core import (
         filter_room_components,
         keep_object_components,
@@ -302,7 +306,7 @@ def test_labelled_component_filter_matches_split_bodies(device: str) -> None:
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
-def test_edge_use_counts_match_vtk_feature_edges(device: str) -> None:
+def test_edge_use_counts_match_vtk_feature_edges(device: Device) -> None:
     from spatial_ingestion.refinement.core import count_topology_issues
 
     torch = pytest.importorskip("torch")
@@ -334,3 +338,70 @@ def test_edge_use_counts_match_vtk_feature_edges(device: str) -> None:
 def test_clean_mesh_reports_compute_device() -> None:
     result = clean_mesh(_make_colored_sphere_with_hole(), MeshCleaningConfig(device="cpu"))
     assert result["compute_device"] == "cpu"
+
+
+def _make_subject_on_a_floor() -> tuple[pv.PolyData, int]:
+    """A floor bigger than the subject, a subject in two overlapping pieces, debris off to the side.
+
+    Returns the mesh and the subject's cell count. The floor alone is the
+    largest component, as it was on the 24-view CO3D teddybear, and the
+    subject is in pieces that overlap, as a TSDF mesh breaks a real one.
+    """
+    floor = pv.Plane(
+        center=(0.0, 0.0, 0.0),
+        direction=(0, 0, 1),
+        i_size=10,
+        j_size=10,
+        i_resolution=120,
+        j_resolution=120,
+    ).triangulate()
+    body = pv.Sphere(radius=0.6, center=(0.0, 0.0, 0.75), theta_resolution=40, phi_resolution=40)
+    arm = pv.Sphere(radius=0.25, center=(0.45, 0.0, 0.8), theta_resolution=24, phi_resolution=24)
+    debris = pv.Sphere(radius=0.2, center=(4.0, 4.0, 1.0), theta_resolution=16, phi_resolution=16)
+    pieces = [floor, body, arm, debris]
+    mesh = pieces[0].merge(pieces[1:], merge_points=False).extract_surface(algorithm=None)
+    return mesh.triangulate(), body.n_cells + arm.n_cells
+
+
+def test_object_mode_keeps_the_floor_when_it_is_the_largest_piece() -> None:
+    mesh, _ = _make_subject_on_a_floor()
+    result = clean_mesh(mesh, MeshCleaningConfig(mode="object", smoothing_iters=0))
+    # The behaviour isolate_object exists to fix: the subject is dropped.
+    assert np.ptp(np.asarray(result["mesh"].points)[:, 2]) < 1e-6
+    assert "support_plane_removed" not in result
+
+
+def test_isolate_object_cuts_the_floor_and_gathers_the_subject() -> None:
+    mesh, subject_cells = _make_subject_on_a_floor()
+    result = clean_mesh(
+        mesh, MeshCleaningConfig(mode="object", smoothing_iters=0, isolate_object=True)
+    )
+    points = np.asarray(result["mesh"].points)
+    assert result["support_plane_removed"] is True
+    assert result["support_plane_face_frac"] > 0.3
+    # Body and arm both kept, the floor and the far debris not.
+    assert points[:, 2].min() > 0.1
+    assert points[:, 0].max() == pytest.approx(0.7, abs=0.02)
+    assert np.abs(points[:, :2]).max() < 1.0
+    assert result["output_cell_count"] == pytest.approx(subject_cells, rel=0.05)
+
+
+def test_isolate_object_does_not_gather_pieces_outside_the_main_body() -> None:
+    """Gathering is bounded by the largest piece's box; it cannot chain out into the room."""
+    mesh, subject_cells = _make_subject_on_a_floor()
+    lamp = pv.Sphere(radius=0.3, center=(0.0, 0.0, 2.4), theta_resolution=30, phi_resolution=30)
+    mesh = mesh.merge(lamp, merge_points=False).extract_surface(algorithm=None).triangulate()
+    result = clean_mesh(
+        mesh, MeshCleaningConfig(mode="object", smoothing_iters=0, isolate_object=True)
+    )
+    assert np.asarray(result["mesh"].points)[:, 2].max() < 1.4
+    assert result["output_cell_count"] == pytest.approx(subject_cells, rel=0.05)
+
+
+def test_isolate_object_leaves_a_mesh_that_is_only_a_plane() -> None:
+    sheet = pv.Plane(i_resolution=40, j_resolution=40).triangulate()
+    result = clean_mesh(
+        sheet, MeshCleaningConfig(mode="object", smoothing_iters=0, isolate_object=True)
+    )
+    assert result["support_plane_removed"] is False
+    assert result["output_cell_count"] == sheet.n_cells

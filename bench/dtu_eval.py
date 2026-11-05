@@ -42,7 +42,9 @@ __all__ = [
     "DTU_MAX_DIST_MM",
     "DtuReference",
     "camera_alignment",
+    "estimate_normals",
     "load_reconstruction_cameras",
+    "mesh_normal_consistency",
     "score_dtu",
     "view_number",
 ]
@@ -65,10 +67,25 @@ _MIN_CAMERA_SPREAD = 0.05
 # scored meaningfully by those cameras; its F-score measures the pose failure,
 # not the surface. Working runs on DTU sit at 3-6 mm, failures at 10-130 mm.
 POSE_FAILURE_RMSE_MM = 10.0
+# The camera fit is trimmed: a camera whose residual is past both this floor
+# and _OUTLIER_MEDIAN_FACTOR times the median is left out and the fit redone.
+# A plain least-squares fit lets one lost camera drag the whole placement: on
+# B4's 40-view runs single views sat 100-280 mm off while the rest had a 4-8 mm
+# median, and the lost view alone pushed the RMSE past the failure line.
+_OUTLIER_FLOOR_MM = POSE_FAILURE_RMSE_MM
+_OUTLIER_MEDIAN_FACTOR = 3.0
+# More outliers than this and the rig as a whole has failed, however well the
+# remaining cameras fit one another.
+MAX_CAMERA_OUTLIER_FRAC = 0.2
 # The ICP refinement is a diagnostic, not the score, so it runs on subsamples:
 # 30 iterations against all ~5M structured-light points took 150 s a scoring.
 _ICP_GT_POINTS = 500_000
 _ICP_SOURCE_POINTS = 100_000
+# DTU's ground truth carries no normals, so they are estimated from the
+# structured-light points: the smallest principal axis of each point's
+# neighbourhood. 16 neighbours of the 500k subsample span a few millimetres.
+_NORMAL_NEIGHBOURS = 16
+_NORMAL_CHUNK = 100_000
 
 _VIEW_RE = re.compile(r"rect_(\d{3})_", re.IGNORECASE)
 
@@ -141,6 +158,11 @@ class DtuReference:
         return KDTree(self.stl_sample)
 
     @cached_property
+    def stl_sample_normals(self) -> np.ndarray:
+        """Unoriented PCA normals of `stl_sample`; consistency compares |cos|, so sign is moot."""
+        return estimate_normals(self.stl_sample, self.stl_sample_tree)
+
+    @cached_property
     def stl_above_plane(self) -> np.ndarray:
         return self.stl_points[self.above_plane(self.stl_points)]
 
@@ -168,6 +190,27 @@ class DtuReference:
         return inside
 
 
+def estimate_normals(
+    points: np.ndarray, tree: KDTree | None = None, k: int = _NORMAL_NEIGHBOURS
+) -> np.ndarray:
+    """Unit normal of every point: the least-variance axis of its k nearest neighbours.
+
+    The sign is arbitrary. A point whose neighbourhood is degenerate (all
+    coincident) gets an arbitrary axis, which the callers' distance cap and the
+    sheer number of points make immaterial.
+    """
+    points = np.asarray(points, dtype=float)
+    tree = tree if tree is not None else KDTree(points)
+    normals = np.empty_like(points)
+    for start in range(0, len(points), _NORMAL_CHUNK):
+        chunk = points[start : start + _NORMAL_CHUNK]
+        neighbours = points[tree.query(chunk, k=min(k, len(points)), workers=-1)[1]]
+        centred = neighbours - neighbours.mean(axis=1, keepdims=True)
+        covariance = np.einsum("nki,nkj->nij", centred, centred)
+        normals[start : start + len(chunk)] = np.linalg.eigh(covariance)[1][:, :, 0]
+    return normals
+
+
 def load_reconstruction_cameras(output_dir: Path) -> dict[int, np.ndarray]:
     """Estimated camera centres by DTU view number, from Phase 2's cameras.json."""
     path = Path(output_dir) / CAMERAS_FILE
@@ -185,13 +228,56 @@ def load_reconstruction_cameras(output_dir: Path) -> dict[int, np.ndarray]:
     return centres
 
 
+@dataclass(frozen=True)
+class CameraFit:
+    """The trimmed camera fit, and what it left out."""
+
+    alignment: AlignmentResult  # fitted to the inlier cameras only
+    spread: float
+    views: list[int]
+    residuals_mm: np.ndarray  # per view, under `alignment`
+    inliers: np.ndarray
+    rmse_all_mm: float  # untrimmed least-squares fit over every camera
+
+    @property
+    def outlier_views(self) -> list[int]:
+        return [view for view, keep in zip(self.views, self.inliers, strict=True) if not keep]
+
+    @property
+    def outlier_frac(self) -> float:
+        return float(np.mean(~self.inliers))
+
+    @property
+    def pose_failure(self) -> bool:
+        return bool(
+            self.alignment.rmse > POSE_FAILURE_RMSE_MM
+            or self.outlier_frac > MAX_CAMERA_OUTLIER_FRAC
+        )
+
+    def as_row(self) -> dict[str, Any]:
+        return {
+            "camera_align_scale": round(self.alignment.scale, 6),
+            "camera_align_rmse_mm": round(self.alignment.rmse, 4),
+            "camera_align_rmse_all_mm": round(self.rmse_all_mm, 4),
+            "camera_align_median_mm": round(float(np.median(self.residuals_mm)), 4),
+            "camera_align_n_cameras": len(self.views),
+            "camera_outliers": len(self.outlier_views),
+            "camera_outlier_views": " ".join(str(view) for view in self.outlier_views),
+            "camera_spread": round(self.spread, 4),
+            "pose_failure": self.pose_failure,
+        }
+
+
 def camera_alignment(
     estimated: dict[int, np.ndarray], reference: dict[int, np.ndarray]
-) -> tuple[AlignmentResult, float]:
-    """Similarity transform taking estimated camera centres onto DTU's.
+) -> CameraFit:
+    """Similarity transform taking estimated camera centres onto DTU's, trimmed of lost views.
 
-    Returns the fit and the spread of the reference centres, the ratio of
-    their second to first principal extent: near 0 means near-collinear.
+    Fits every camera, leaves out those far past the median residual
+    (_OUTLIER_FLOOR_MM, _OUTLIER_MEDIAN_FACTOR), and refits until the inlier
+    set stops changing. At least half the cameras, and three, always stay in.
+    The spread is that of the reference centres, the ratio of their second to
+    first principal extent: near 0 means near-collinear.
     """
     views = sorted(set(estimated) & set(reference))
     if len(views) < 3:
@@ -199,8 +285,30 @@ def camera_alignment(
             f"only {len(views)} camera(s) match DTU views; a similarity fit needs 3. "
             "Are the images DTU's rect_NNN_* files?"
         )
+    source = np.stack([estimated[view] for view in views])
     target = np.stack([reference[view] for view in views])
-    alignment = umeyama(np.stack([estimated[view] for view in views]), target, with_scale=True)
+    min_inliers = max(3, (len(views) + 1) // 2)
+
+    def residuals(fit: AlignmentResult) -> np.ndarray:
+        return np.linalg.norm(apply_alignment(source, fit) - target, axis=1)
+
+    untrimmed = umeyama(source, target, with_scale=True)
+    inliers = np.ones(len(views), dtype=bool)
+    alignment = untrimmed
+    for _ in range(len(views)):
+        residual = residuals(alignment)
+        median = float(np.median(residual[inliers]))
+        threshold = max(_OUTLIER_FLOOR_MM, _OUTLIER_MEDIAN_FACTOR * median)
+        trimmed = residual <= threshold
+        if trimmed.sum() < min_inliers:
+            # Keep the best-fitting half rather than drop below it.
+            trimmed = np.zeros(len(views), dtype=bool)
+            trimmed[np.argsort(residual)[:min_inliers]] = True
+        if np.array_equal(trimmed, inliers):
+            break
+        inliers = trimmed
+        alignment = umeyama(source[inliers], target[inliers], with_scale=True)
+
     singular = np.linalg.svd(target - target.mean(axis=0), compute_uv=False)
     spread = float(singular[1] / singular[0]) if singular[0] > 0 else 0.0
     if spread < _MIN_CAMERA_SPREAD:
@@ -209,7 +317,22 @@ def camera_alignment(
             "their line is poorly constrained",
             spread,
         )
-    return alignment, spread
+    fit = CameraFit(
+        alignment=alignment,
+        spread=spread,
+        views=views,
+        residuals_mm=residuals(alignment),
+        inliers=inliers,
+        rmse_all_mm=untrimmed.rmse,
+    )
+    if fit.outlier_views:
+        logger.info(
+            "camera fit left out view(s) %s; RMSE %.1f mm untrimmed, %.1f mm on the rest",
+            fit.outlier_views,
+            fit.rmse_all_mm,
+            alignment.rmse,
+        )
+    return fit
 
 
 def _mean(values: np.ndarray) -> float:
@@ -283,9 +406,8 @@ def score_dtu(
     `icp_rotation_deg` or `icp_shift_mm` flags that.
     """
     points = np.asarray(points, dtype=float)
-    cameras, spread = camera_alignment(
-        load_reconstruction_cameras(output_dir), reference.camera_centres
-    )
+    camera_fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    cameras = camera_fit.alignment
     placed = apply_alignment(points, cameras)
     scores = _protocol_metrics(placed, reference, tau)
 
@@ -337,12 +459,52 @@ def score_dtu(
         "n_reconstruction_points": int(len(points)),
         "n_gt_points": int(len(reference.stl_points)),
         "mask_retention": round(scores["n_points_in_mask"] / max(len(points), 1), 4),
-        "camera_align_scale": round(cameras.scale, 6),
-        "camera_align_rmse_mm": round(cameras.rmse, 4),
-        "camera_align_n_cameras": cameras.n_correspondences,
-        "camera_spread": round(spread, 4),
-        "pose_failure": bool(cameras.rmse > POSE_FAILURE_RMSE_MM),
-        # The camera fit is the alignment the scores come from.
+        **camera_fit.as_row(),
+        # The trimmed camera fit is the alignment the scores come from.
         **cameras.as_row(),
         **icp_row,
+    }
+
+
+def mesh_normal_consistency(
+    mesh: Any,
+    reference: DtuReference,
+    output_dir: Path,
+    *,
+    n_samples: int = 100_000,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Mean |cos| between sampled mesh normals and the nearest ground-truth normal.
+
+    The mesh is placed in DTU's frame by the same trimmed camera fit as the
+    other scores (normals take the rotation only), kept to the observation
+    mask, and matched to the nearest ground-truth point within DTU's 20 mm cap.
+    The ground-truth normals are estimated from the points, so this measures
+    agreement with the structured-light surface as DTU samples it; it is not a
+    standard DTU metric.
+    """
+    from bench.metrics import sample_points_with_normals
+
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    points, normals = sample_points_with_normals(mesh, n_samples, seed)
+    placed = apply_alignment(points, fit.alignment)
+    rotated = normals @ fit.alignment.rotation.T
+    inside = reference.in_mask(placed)
+    placed, rotated = placed[inside], rotated[inside]
+    empty = {"normal_consistency": float("nan"), "normal_consistency_n": 0}
+    if len(placed) == 0:
+        return empty
+    distance, index = reference.stl_sample_tree.query(
+        placed, k=1, workers=-1, distance_upper_bound=DTU_MAX_DIST_MM
+    )
+    matched = np.isfinite(distance)
+    if not matched.any():
+        return empty
+    cosine = np.abs(
+        np.einsum("ij,ij->i", rotated[matched], reference.stl_sample_normals[index[matched]])
+    )
+    return {
+        "normal_consistency": round(float(cosine.mean()), 5),
+        "normal_consistency_p10": round(float(np.percentile(cosine, 10)), 5),
+        "normal_consistency_n": int(matched.sum()),
     }

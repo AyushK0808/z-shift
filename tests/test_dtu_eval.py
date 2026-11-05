@@ -21,7 +21,9 @@ from scipy.spatial.transform import Rotation
 from bench.dtu_eval import (
     DtuReference,
     camera_alignment,
+    estimate_normals,
     load_reconstruction_cameras,
+    mesh_normal_consistency,
     score_dtu,
     view_number,
 )
@@ -91,7 +93,9 @@ def _write_scan(root: Path) -> tuple[DtuReference, np.ndarray, Path]:
         pose[:3, 3] = into_reconstruction(centre[None])[0]
         cameras.append({"image": f"/data/scan1/rect_{view:03d}_3_r5000.png", "cam2world": pose})
     (output_dir / "cameras.json").write_text(
-        json.dumps({"cameras": [{**c, "cam2world": c["cam2world"].tolist()} for c in cameras]})
+        json.dumps(
+            {"cameras": [{**c, "cam2world": np.asarray(c["cam2world"]).tolist()} for c in cameras]}
+        )
     )
     return reference, reconstruction, output_dir
 
@@ -102,15 +106,68 @@ def test_view_number_reads_dtu_rectified_names() -> None:
     assert view_number("frame_0001.png") is None
 
 
+def _move_cameras(output_dir: Path, offsets_mm: dict[int, np.ndarray]) -> None:
+    """Displace some estimated cameras by a DTU-frame distance, as a pose error would."""
+    path = output_dir / "cameras.json"
+    data = json.loads(path.read_text())
+    for camera in data["cameras"]:
+        offset = offsets_mm.get(view_number(camera["image"]))
+        if offset is not None:
+            pose = np.asarray(camera["cam2world"])
+            pose[:3, 3] += np.asarray(offset) / SCALE
+            camera["cam2world"] = pose.tolist()
+    path.write_text(json.dumps(data))
+
+
 def test_camera_fit_recovers_frame_and_scale(tmp_path: Path) -> None:
     reference, _, output_dir = _write_scan(tmp_path)
-    alignment, spread = camera_alignment(
-        load_reconstruction_cameras(output_dir), reference.camera_centres
-    )
-    assert alignment.scale == pytest.approx(SCALE, rel=1e-9)
-    assert alignment.rmse < 1e-6
-    assert alignment.n_correspondences == N_VIEWS
-    assert spread > 0.05
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    assert fit.alignment.scale == pytest.approx(SCALE, rel=1e-9)
+    assert fit.alignment.rmse < 1e-6
+    assert fit.alignment.n_correspondences == N_VIEWS
+    assert fit.spread > 0.05
+    assert fit.outlier_views == []
+    assert fit.pose_failure is False
+
+
+def test_camera_fit_leaves_out_one_lost_camera(tmp_path: Path) -> None:
+    reference, reconstruction, output_dir = _write_scan(tmp_path)
+    _move_cameras(output_dir, {5: np.array([150.0, -80.0, 60.0])})
+
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    assert fit.outlier_views == [5]
+    # Untrimmed, the one view drags the fit past the failure line...
+    assert fit.rmse_all_mm > 10.0
+    # ...trimmed, the other eleven are exact and the rig has not failed.
+    assert fit.alignment.rmse < 1e-6
+    assert fit.pose_failure is False
+
+    scores = score_dtu(reconstruction, reference, output_dir, tau=2.0)
+    assert scores["camera_outliers"] == 1
+    assert scores["camera_outlier_views"] == "5"
+    assert scores["f_score"] > 0.99
+
+
+def test_camera_fit_fails_a_rig_with_many_lost_cameras(tmp_path: Path) -> None:
+    reference, _, output_dir = _write_scan(tmp_path)
+    rng = np.random.default_rng(3)
+    _move_cameras(output_dir, {view: rng.normal(0, 120.0, 3) for view in (2, 4, 7, 9)})
+
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    # A third of the rig lost: trimmed or not, the fit must not pass as a good one.
+    assert fit.alignment.rmse > 10.0 or fit.outlier_frac > 0.2
+    assert fit.pose_failure is True
+
+
+def test_camera_fit_fails_a_rig_that_drifted_everywhere(tmp_path: Path) -> None:
+    """Pose error spread over every camera is not trimmed away: no view stands out."""
+    reference, _, output_dir = _write_scan(tmp_path)
+    rng = np.random.default_rng(4)
+    _move_cameras(output_dir, {view: rng.normal(0, 15.0, 3) for view in range(1, N_VIEWS + 1)})
+
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    assert fit.alignment.rmse > 10.0
+    assert fit.pose_failure is True
 
 
 def test_score_dtu_ignores_background_and_scale_error(tmp_path: Path) -> None:
@@ -168,3 +225,47 @@ def test_score_against_gt_takes_the_dtu_path_from_a_manifest(tmp_path: Path) -> 
     assert scores["protocol"] == "dtu_obsmask"
     assert scores["mast3r_scale_ratio"] == pytest.approx(SCALE / 1000.0, rel=1e-6)
     assert scores["f_score"] > 0.99
+
+
+def test_estimated_normals_of_a_sphere_are_radial() -> None:
+    points = np.random.default_rng(0).normal(size=(20_000, 3))
+    points /= np.linalg.norm(points, axis=1, keepdims=True)
+    normals = estimate_normals(points)
+    assert np.allclose(np.linalg.norm(normals, axis=1), 1.0)
+    assert np.abs((normals * points).sum(axis=1)).mean() > 0.99
+
+
+def _ellipsoid_in_reconstruction_frame(
+    reference: DtuReference, output_dir: Path
+) -> trimesh.Trimesh:
+    """The scan's ellipsoid as a mesh, in the reconstruction's own frame."""
+    fit = camera_alignment(load_reconstruction_cameras(output_dir), reference.camera_centres)
+    mesh = trimesh.creation.icosphere(subdivisions=4)
+    mesh.apply_scale([100.0, 70.0, 45.0])
+    mesh.apply_translation([0, 0, 600.0])
+    alignment = fit.alignment
+    mesh.vertices = ((np.asarray(mesh.vertices) - alignment.translation) @ alignment.rotation) / (
+        alignment.scale
+    )
+    return mesh
+
+
+def test_mesh_normal_consistency_is_high_for_the_right_surface_and_lower_for_a_turned_one(
+    tmp_path: Path,
+) -> None:
+    reference, _, output_dir = _write_scan(tmp_path)
+    mesh = _ellipsoid_in_reconstruction_frame(reference, output_dir)
+
+    right = mesh_normal_consistency(mesh, reference, output_dir)
+    assert right["normal_consistency"] > 0.95
+    assert right["normal_consistency_n"] > 1000
+
+    # The same shape turned a quarter-turn about one axis through its centre no
+    # longer lies on the ground truth, so what stays within the distance cap
+    # meets normals that disagree.
+    turned = mesh.copy()
+    centre = turned.vertices.mean(axis=0)
+    turn = Rotation.from_euler("x", 90, degrees=True).as_matrix()
+    turned.vertices = (turned.vertices - centre) @ turn.T + centre
+    wrong = mesh_normal_consistency(turned, reference, output_dir)
+    assert wrong["normal_consistency"] < right["normal_consistency"] - 0.1

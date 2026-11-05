@@ -78,7 +78,16 @@ def aggregate(rows, group_by, value_key):
             continue
         key = tuple(row.get(col) for col in group_by)
         buckets.setdefault(key, []).append(float(value))
-    return {key: mean_std(vals) for key, vals in sorted(buckets.items(), key=repr)}
+
+    # Numbers in numeric order (sorting the keys' repr put 100 before 15),
+    # with strings and None after them so mixed keys still compare.
+    def order(item):
+        return tuple(
+            (0, value, "") if isinstance(value, (int, float)) else (1, 0, str(value))
+            for value in item[0]
+        )
+
+    return {key: mean_std(vals) for key, vals in sorted(buckets.items(), key=order)}
 
 
 rows = read_rows(CSV_PATH)

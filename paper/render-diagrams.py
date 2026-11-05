@@ -17,9 +17,7 @@ PUPPETEER_CONFIG = PAPER_DIR / "puppeteer-config.json"
 def main() -> None:
     npx = shutil.which("npx")
     if npx is None:
-        raise SystemExit(
-            "npx was not found. Install Node.js, then rerun this script."
-        )
+        raise SystemExit("npx was not found. Install Node.js, then rerun this script.")
 
     sources = sorted(DIAGRAM_DIR.glob("*.mmd"))
     if not sources:

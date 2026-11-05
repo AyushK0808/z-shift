@@ -72,7 +72,13 @@ What each Tier B experiment runs on DTU:
 
 - B2: 10 views and all 49, spread evenly over the rig (`view_selection`). The
   first ten views by number are one short arc of the robot arm's path, and
-  score as a narrow-baseline capture.
+  score as a narrow-baseline capture. Pairing is complete while its pairs fit
+  `--max-pairs` (`tier_b_common.bounded_pairing`), so 10 views are complete
+  and 49 use the widest non-cyclic sliding window that fits; the 49-view
+  complete graph (2352 pairs) needs ~18 GB and ran out of memory on an 8 GB
+  card. Phase 2 also moves MASt3R's weights off the GPU once the pairs have
+  been through the network (`reconstruction.alignment`), which is ~2.7 GB more
+  for the scene optimizer.
 - B4: every scan, three seeds a cell. MASt3R's TSDF depth refinement samples
   with `torch.randn`, so the seed is a real source of variation. V3 takes
   exactly `budget` frames, evenly spaced; the budget-60 point takes all 49.
@@ -83,6 +89,10 @@ What each Tier B experiment runs on DTU:
   `paper/outputs/teddy.jpeg`; 8 evenly spaced frames, complete pairing, seed
   42, object-mode refinement, biped rig). Refinement runs with `split_bodies`
   on the CPU, as submitted, and then with `labels` on the same raw mesh.
+  `--n-images 24 --isolate-object --filters labels --output-root <dir>` runs the same capture
+  at 24 views (complete pairing, 552 pairs) and adds its rows next to the
+  8-view ones; `split_bodies` is left out there because it scales with the
+  component count of a mesh three times the size.
 
 A1 and A2 time both component filters (`filter_method`): `split_bodies` on the
 CPU, which is what the submitted paper's Fig. 9 and stage table measured, and
@@ -134,10 +144,21 @@ method that estimates its own cameras (`dtu_eval.py`):
    wrong. On the first 4-view smoke run it rotated 14 degrees away from a
    camera fit with a 2 mm residual. Large `icp_rotation_deg` / `icp_shift_mm`
    values flag this.
-5. `pose_failure` is true when the camera fit's residual is over 10 mm. Working
-   runs on DTU sit at 3-6 mm; above 10 mm MASt3R's poses have broken, and the
-   row's scores measure that failure rather than the surface. Report those
-   rows as failures, not as low accuracy.
+5. The camera fit is trimmed: a camera whose residual is over both 10 mm and
+   3x the median is left out and the fit redone (`camera_outlier_views`).
+   Untrimmed, one lost view (B4 had single views 100-280 mm off) drags the
+   whole placement, which both fails the run and skews its scores.
+   `camera_align_rmse_all_mm` keeps the untrimmed residual.
+6. `pose_failure` is true when the trimmed fit's residual is over 10 mm, or
+   more than 20% of the cameras were left out. Working runs on DTU sit at
+   3-6 mm; above 10 mm MASt3R's poses have broken, and the row's scores
+   measure that failure rather than the surface. Report those rows as
+   failures, not as low accuracy.
+
+`bench.rescore_dtu` re-scores finished B2, B4 and B6 runs from their saved
+outputs (no MASt3R, no GPU beyond B6's refinement), keeping each row's timing
+and env columns and stamping `rescored_git_commit`. Use it after a scoring
+change instead of reconstructing again.
 
 ICP from scratch (the fallback when a manifest has no `dtu_eval` entry) does
 not work on DTU. The reconstruction includes table and backdrop that the
@@ -240,3 +261,45 @@ corresponding experiment's commentary and the Section IV/V text together.
 | B7 | §V-D determinism bound | yes |
 | B8 | §IV-C EXIF intrinsics initialisation | yes |
 | B9 | §V-D CO3D teddybear end-to-end trace (Table II, fig13) | yes |
+
+## Reviewer-response experiments (B10-B13)
+
+One command runs the experiments added for the second review round, from the
+repository root inside WSL2 (it needs the environment and DTU scans the Tier B
+runner sets up, and B6's outputs):
+
+```bash
+bash scripts/run-reviewer-response.sh                 # tests, B10-B13, then a summary
+bash scripts/run-reviewer-response.sh --only "b12 b13"
+```
+
+```powershell
+wsl.exe -d Ubuntu --cd /mnt/c/Users/theof/projects/personal/z-shift --exec bash scripts/run-reviewer-response.sh
+```
+
+- B10 (`exp_b10_real_mesh_refinement`): refinement on the raw DTU meshes B6
+  saved. `part=accuracy` scores raw, object, room and object-with-isolation
+  (`isolate_object`) against DTU's ground truth, with the share of faces kept and
+  `normal_consistency` (`dtu_eval.mesh_normal_consistency`: mean |cos| against
+  normals estimated from the structured-light points; not a standard DTU metric).
+  `part=timing` times `labels` and `split_bodies` with repeats; `split_bodies` runs
+  in a child process under `--split-budget-s`, so a hung cell is a `timeout` row.
+- B11 (`exp_b11_co3d_accuracy`): the CO3D teddybear runs scored against CO3D's own
+  `pointcloud.ply`. That cloud is a COLMAP reconstruction, so it is a
+  pseudo-reference, and the single-sequence release has no cameras, so the
+  reconstruction is registered by a fixed RMS-radius scale and then ICP
+  (`co3d_eval.register`); the registration residual is on every row. Distances are
+  fractions of the reference's bounding-box diagonal.
+- B12 (`exp_b12_dtu_sync`): the synchroniser on the real DTU rig images. Motion
+  scores come from real consecutive frames and a second camera's from perturbed
+  pixels; only the clocks are injected, since DTU has none.
+- B13 (`exp_b13_backend_swap`): DUSt3R behind `reconstruction/backends.py` on the
+  same five scans and views as B2's 10-view rows, scored identically, with
+  `contract_ok` (the stage's artifacts and a manifest naming the backend) and
+  `refine_ok` (refinement consumed the mesh unchanged) per run.
+
+A reconstruction backend is a `ReconstructionBackend` (`align`, `export`) in
+`spatial_ingestion/reconstruction/backends.py`, selected by
+`ReconstructionJob.backend_name` or `zshift-image-to-3d --backend`;
+`tests/test_backends.py` states what one must produce.
+

@@ -19,15 +19,22 @@ HTTP byte range (bench.fetch_dtu.HttpRangeFile), about 70 MB for all three
 sequences in it.
 
     uv run python -m bench.exp_b9_case_study --data-dir data/co3d
+    uv run python -m bench.exp_b9_case_study --data-dir data/co3d --n-images 24 \\
+        --isolate-object --filters labels --output-root data/bench/b9_views24
 
-Writes one row per filter_method to results/b9_co3d_case_study.csv. The run
-directory (<output-root>/run) keeps run_manifest.json,
+Writes one row per filter_method to results/b9_co3d_case_study.csv, keeping
+the rows of runs at other frame counts. `--pairing auto` keeps complete
+pairing while its pairs fit the GPU (tier_b_common.bounded_pairing; 24 views
+is 552 pairs) and falls back to a cyclic sliding window, since the capture is
+an orbit. The run directory (<output-root>/run) keeps run_manifest.json,
 refinement_manifest.json and rig/*.json, the layout
-paper/co3d-teddybear-quality-figure.py reads via ZSHIFT_CASE_STUDY_DIR.
+paper/co3d-teddybear-quality-figure.py reads via ZSHIFT_CASE_STUDY_DIR, so
+give each frame count its own --output-root.
 """
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import shutil
@@ -41,7 +48,13 @@ import numpy as np
 from bench.csvio import ResultWriter
 from bench.harness import experiment_parser, finish
 from bench.instrument import peak_rss_mb
-from bench.tier_b_common import clear_alignment_cache, require_cuda_device
+from bench.tier_b_common import (
+    DEFAULT_MAX_PAIRS,
+    bounded_pairing,
+    clear_alignment_cache,
+    gpu_peak_mb,
+    require_cuda_device,
+)
 
 EXP_ID = "b9_co3d_case_study"
 
@@ -94,6 +107,31 @@ def select_frames(image_dir: Path, count: int = N_FRAMES) -> list[Path]:
     return [frames[index] for index in picks]
 
 
+def _rows_at_other_frame_counts(path: Path, n_images: int) -> list[dict[str, str]]:
+    """The rows a previous run at a different frame count left in `path`, verbatim."""
+    if not path.exists():
+        return []
+    with path.open(newline="", encoding="utf-8") as handle:
+        return [row for row in csv.DictReader(handle) if row.get("n_images") != str(n_images)]
+
+
+def _merge_back(path: Path, kept: list[dict[str, str]]) -> None:
+    """Put `kept` ahead of the rows just written, with their own env columns intact."""
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        fresh = list(reader)
+        fieldnames = list(reader.fieldnames or [])
+    for row in kept:
+        fieldnames += [key for key in row if key not in fieldnames]
+    rows = kept + fresh
+    for index, row in enumerate(rows):
+        row["row_index"] = str(index)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, restval="")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def _stage_seconds(records: list[dict[str, Any]], prefix: str) -> dict[str, Any]:
     row: dict[str, Any] = {}
     for record in records:
@@ -114,6 +152,9 @@ def run(
     output_root: Path | None = None,
     rig: bool = True,
     filters: tuple[str, ...] = FILTERS,
+    pairing: str = "auto",
+    max_pairs: int = DEFAULT_MAX_PAIRS,
+    isolate_object: bool = False,
 ) -> ResultWriter:
     from spatial_ingestion.auto_rigging.models import ArticulationType, AutoRigConfig
     from spatial_ingestion.final_pipeline.handoff import run_ingested_pipeline
@@ -145,11 +186,13 @@ def run(
 
     # The notebook's settings, except the frame count, which Table II's run
     # (56 pairs) shows was eight.
+    if pairing == "auto":
+        pairing = bounded_pairing(len(inputs), max_pairs, cyclic=True)
     mast3r_params = Mast3rRunParams(
         model_name=DEFAULT_MODEL,
         device=require_cuda_device(),
         image_size=image_size,
-        pairing_strategy="complete",
+        pairing_strategy=pairing,
         tsdf_thresh=0.2,
         min_conf_thr=1.5,
         seed=seed,
@@ -163,8 +206,9 @@ def run(
             pass_band=0.1,
             decimate_target_reduction=None,
             verify_watertight=True,
-            component_filter=filter_method,  # type: ignore[arg-type]
-            device=FILTER_DEVICES[filter_method],  # type: ignore[arg-type]
+            component_filter=filter_method,  # ty: ignore[invalid-argument-type]
+            device=FILTER_DEVICES[filter_method],  # ty: ignore[invalid-argument-type]
+            isolate_object=isolate_object,
         )
 
     start = time.perf_counter()
@@ -193,7 +237,7 @@ def run(
         deliverables_root=root / "deliverables",
     )
     pipeline_seconds = round(time.perf_counter() - start, 3)
-    pipeline = getattr(result, "pipeline_result", result)
+    pipeline: Any = getattr(result, "pipeline_result", result)
 
     manifest = json.loads(Path(pipeline.reconstruction_manifest_path).read_text(encoding="utf-8"))
     outputs = manifest.get("outputs", {})
@@ -234,6 +278,9 @@ def run(
             "refine_out_cells": diagnostics.get("output_cell_count"),
             "refine_out_points": diagnostics.get("output_point_count"),
             "is_watertight": diagnostics.get("is_watertight"),
+            "isolate_object": isolate_object,
+            "support_plane_removed": diagnostics.get("support_plane_removed"),
+            "support_plane_face_frac": diagnostics.get("support_plane_face_frac"),
             **_stage_seconds(diagnostics.get("stage_timings", []), "refine_"),
         }
 
@@ -244,6 +291,7 @@ def run(
         **refine_row(filters[0], first),
         pipeline_wall_seconds=pipeline_seconds,
         peak_rss_mb=peak_rss_mb(),
+        gpu_peak_mb=gpu_peak_mb(),
         **rig_row,
     )
 
@@ -272,6 +320,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--no-rig", action="store_true")
     parser.add_argument(
+        "--pairing",
+        default="auto",
+        help="MASt3R scene graph (complete, swin-N, ...); auto = complete while it fits "
+        "--max-pairs",
+    )
+    parser.add_argument("--max-pairs", type=int, default=DEFAULT_MAX_PAIRS)
+    parser.add_argument(
+        "--isolate-object",
+        action="store_true",
+        help="cut the floor and gather the subject's fragments before keeping it "
+        "(MeshCleaningConfig.isolate_object); without it the largest component is kept, "
+        "which at 24 views is the floor",
+    )
+    parser.add_argument(
         "--filters",
         nargs="+",
         choices=sorted(FILTER_DEVICES),
@@ -282,6 +344,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO)
 
+    results_path = ResultWriter(EXP_ID, args.results_dir).path
+    kept = _rows_at_other_frame_counts(results_path, args.n_images)
     writer = run(
         results_dir=args.results_dir,
         data_dir=args.data_dir,
@@ -292,8 +356,13 @@ def main(argv: list[str] | None = None) -> int:
         output_root=args.output_root,
         rig=not args.no_rig,
         filters=tuple(args.filters),
+        pairing=args.pairing,
+        max_pairs=args.max_pairs,
+        isolate_object=args.isolate_object,
     )
     finish(writer)
+    if kept:
+        _merge_back(writer.path, kept)
     for row in writer.rows:
         print(
             f"  {row['filter_method']:<13} device={row.get('refine_device')} "

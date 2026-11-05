@@ -1,0 +1,33 @@
+         14581 function calls (12393 primitive calls) in 1.610 seconds
+
+   Ordered by: cumulative time
+   List reduced from 428 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    1.610    1.610 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:391(clean_mesh)
+        5    0.000    0.000    1.608    0.322 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:158(run_step)
+        5    0.000    0.000    1.607    0.321 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:171(_invoke_step)
+    37/13    0.010    0.000    1.413    0.109 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/_deprecate_positional_args.py:191(inner_f)
+        7    0.000    0.000    1.362    0.195 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/__init__.py:40(_update_alg)
+        7    1.362    0.195    1.362    0.195 {method 'Update' of 'vtkmodules.vtkCommonExecutionModel.vtkStreamingDemandDrivenPipeline' objects}
+        1    0.000    0.000    0.960    0.960 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:355(finalize_mesh)
+        1    0.000    0.000    0.609    0.609 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/poly_data.py:2208(clean)
+        1    0.000    0.000    0.340    0.340 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/poly_data.py:1852(compute_normals)
+        1    0.000    0.000    0.244    0.244 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:312(smooth_mesh)
+        1    0.000    0.000    0.244    0.244 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/poly_data.py:950(smooth_taubin)
+        1    0.002    0.002    0.228    0.228 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:247(keep_object_components)
+        1    0.000    0.000    0.171    0.171 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:224(label_components)
+        1    0.114    0.114    0.169    0.169 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/gpu.py:56(region_ids)
+        1    0.000    0.000    0.162    0.162 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:291(fill_mesh_holes)
+        1    0.000    0.000    0.159    0.159 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/poly_data.py:2145(fill_holes)
+        1    0.000    0.000    0.055    0.055 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:236(extract_regions)
+        1    0.000    0.000    0.046    0.046 /home/ayush08/zshift/venv/lib/python3.11/site-packages/pyvista/core/filters/data_set.py:4626(extract_cells)
+        1    0.034    0.034    0.034    0.034 {method 'SetCellIds' of 'vtkmodules.vtkFiltersCore.vtkExtractCells' objects}
+       29    0.024    0.001    0.024    0.001 {built-in method torch.equal}
+        4    0.017    0.004    0.017    0.004 {built-in method torch.as_tensor}
+        1    0.000    0.000    0.013    0.013 /mnt/c/Users/theof/projects/personal/z-shift/src/spatial_ingestion/refinement/core.py:368(count_topology_issues)
+      4/2    0.000    0.000    0.013    0.007 /home/ayush08/zshift/venv/lib/python3.11/site-packages/torch/_jit_internal.py:627(fn)
+        2    0.000    0.000    0.013    0.007 /home/ayush08/zshift/venv/lib/python3.11/site-packages/torch/functional.py:803(_unique_impl)
+        2    0.013    0.007    0.013    0.007 {built-in method torch._unique2}
+
+
